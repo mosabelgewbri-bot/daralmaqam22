@@ -1,0 +1,21 @@
+{
+  "name": "Dara Al-Maqam ERP",
+  "short_name": "Dara ERP",
+  "description": "Professional Umrah Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#d4af37",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/dara/192/192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://picsum.photos/seed/dara/512/512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

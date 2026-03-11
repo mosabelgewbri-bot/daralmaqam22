@@ -1,0 +1,7 @@
+{
+  "name": "Dara Al-Maqam Umrah ERP",
+  "description": "Luxury Umrah Management System with Booking, Rooming, Visa, and Financial Reporting features.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
