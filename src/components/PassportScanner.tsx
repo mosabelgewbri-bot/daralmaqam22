@@ -15,6 +15,38 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
+  const resizeImage = (base64: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = base64;
+    });
+  };
+
   const capture = useCallback(async () => {
     console.log("PassportScanner: Capture triggered");
     const imageSrc = webcamRef.current?.getScreenshot();
@@ -24,37 +56,15 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
       setLoading(true);
       setError(null);
       try {
-        // Check if API key is selected if environment key is missing
-        const envKey = process.env.GEMINI_API_KEY;
-        console.log("PassportScanner: envKey status:", envKey ? "Present" : "Missing");
+        console.log("PassportScanner: Resizing image...");
+        const resizedImage = await resizeImage(imageSrc);
         
-        if (!envKey || envKey === 'undefined' || envKey === '') {
-          console.log("PassportScanner: envKey missing, checking aistudio...");
-          if (window && (window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
-            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-            console.log("PassportScanner: hasSelectedApiKey:", hasKey);
-            if (!hasKey) {
-              setError('يرجى اختيار مفتاح API الخاص بك لتفعيل ميزة المسح الذكي.');
-              await (window as any).aistudio.openSelectKey();
-              setCapturedImage(null);
-              setLoading(false);
-              return;
-            }
-          } else {
-            console.warn("PassportScanner: aistudio API not available");
-            setError('مفتاح API غير موجود. إذا كنت تستخدم Vercel، يرجى إضافة GEMINI_API_KEY في إعدادات Environment Variables ثم إعادة النشر.');
-            setCapturedImage(null);
-            setLoading(false);
-            return;
-          }
-        }
-
         console.log("PassportScanner: Calling extractPassportData...");
-        const data = await extractPassportData(imageSrc);
+        const data = await extractPassportData(resizedImage);
         console.log("PassportScanner: OCR result:", data ? "Success" : "Failed");
         
         if (data) {
-          onScan(data, imageSrc);
+          onScan(data, resizedImage);
           onClose();
         } else {
           setError('لم نتمكن من استخراج البيانات. يرجى المحاولة مرة أخرى أو التأكد من وضوح الصورة والإضاءة.');
@@ -189,9 +199,10 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                           setLoading(true);
                           setError(null);
                           try {
-                            const data = await extractPassportData(base64);
+                            const resizedImage = await resizeImage(base64);
+                            const data = await extractPassportData(resizedImage);
                             if (data) {
-                              onScan(data, base64);
+                              onScan(data, resizedImage);
                               onClose();
                             } else {
                               setError('لم نتمكن من استخراج البيانات. يرجى التأكد من وضوح الصورة.');

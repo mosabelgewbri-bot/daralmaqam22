@@ -5,6 +5,8 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import multer from "multer";
+import { GoogleGenAI, Type } from "@google/genai";
+import "dotenv/config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -279,6 +281,79 @@ async function startServer() {
 
   app.get("/api/test", (req, res) => {
     res.send("Server is running correctly");
+  });
+
+  // Passport OCR Endpoint
+  app.post("/api/ocr/passport", async (req, res) => {
+    try {
+      const { image } = req.body;
+      if (!image) {
+        return res.status(400).json({ error: "Image is required" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error("Server OCR: GEMINI_API_KEY is missing");
+        return res.status(500).json({ error: "API key is not configured on the server" });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      // Detect mime type from base64
+      const mimeMatch = image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const base64Data = image.includes(",") ? image.split(",")[1] : image;
+
+      console.log("Server OCR: Sending request to Gemini (3-flash)...");
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Data,
+              },
+            },
+            {
+              text: `Extract passport information from this image. 
+              Return ONLY a JSON object with these exact keys:
+              - passportNumber: (the passport number)
+              - expiryDate: (the expiry date in YYYY-MM-DD format)
+              - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+              
+              Do not include any other text or markdown formatting.`,
+            },
+          ],
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              passportNumber: { type: Type.STRING },
+              expiryDate: { type: Type.STRING },
+              fullNameArabic: { type: Type.STRING },
+            },
+            required: ["passportNumber", "expiryDate", "fullNameArabic"],
+          },
+          systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
+        },
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new Error("No text returned from Gemini");
+      }
+
+      const data = JSON.parse(text);
+      console.log("Server OCR: Success", { passportNumber: data.passportNumber });
+      res.json(data);
+    } catch (error: any) {
+      console.error("Server OCR Error:", error);
+      res.status(500).json({ error: error.message || "Failed to process passport image" });
+    }
   });
 
   // Auth
