@@ -11,52 +11,66 @@ export async function extractPassportData(base64Image: string) {
     }
     
     const ai = new GoogleGenAI({ apiKey });
-    console.log("OCR Service: Sending request to Gemini (Flash)...");
+    console.log("OCR Service: Sending request to Gemini (1.5 Flash)...");
     
+    // Detect mime type from base64
+    const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const base64Data = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: "image/jpeg",
-              data: base64Image.split(",")[1] || base64Image,
+              mimeType: mimeType,
+              data: base64Data,
             },
           },
           {
             text: `Extract passport information from this image. 
-            Return ONLY a JSON object with these exact keys:
-            - passportNumber: (the passport number)
-            - expiryDate: (the expiry date in YYYY-MM-DD format)
-            - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+            You must find:
+            1. Passport Number (رقم الجواز)
+            2. Expiry Date (تاريخ الانتهاء) in YYYY-MM-DD format
+            3. Full Name in Arabic (الاسم الكامل بالعربي). If not written in Arabic, transliterate the English name to Arabic.
             
-            Do not include any other text or markdown formatting.`,
+            Return the data in the specified JSON format.`,
           },
         ],
       },
       config: {
         responseMimeType: "application/json",
-        systemInstruction: "You are a specialized passport OCR tool. You extract data with 100% accuracy. You prioritize Arabic names and passport numbers. If the Arabic name is missing, you MUST transliterate the English name to Arabic.",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            passportNumber: { type: Type.STRING },
+            expiryDate: { type: Type.STRING },
+            fullNameArabic: { type: Type.STRING },
+          },
+          required: ["passportNumber", "expiryDate", "fullNameArabic"],
+        },
+        systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
       },
     });
 
-    console.log("OCR Service: Response received from Gemini");
+    console.log("OCR Service: Response received");
     const text = response.text;
-    console.log("OCR Service: Extracted text:", text);
     
     if (!text) {
-      console.warn("OCR Service: No text returned from Gemini");
-      return null;
+      throw new Error("لم يتم إرجاع أي نص من محرك الذكاء الاصطناعي");
     }
     
     try {
-      return JSON.parse(text);
+      const data = JSON.parse(text);
+      console.log("OCR Service: Parsed data:", data);
+      return data;
     } catch (parseError) {
-      console.error("OCR Service: Failed to parse JSON:", parseError);
-      return null;
+      console.error("OCR Service: JSON Parse Error:", text);
+      throw new Error("فشل في تحليل بيانات الاستجابة");
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error("OCR Service Error:", e);
-    return null;
+    throw e;
   }
 }
