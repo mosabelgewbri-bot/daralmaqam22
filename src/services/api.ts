@@ -55,12 +55,12 @@ export const api = {
     
     return (data || []).map((t: any) => ({
       id: t.id,
-      tripNumber: t.tripNumber || t.trip_number || t.tripnumber,
+      tripNumber: t.trip_number || t.tripNumber || '',
       name: t.name,
       airline: t.airline,
-      totalSeats: t.totalSeats || t.total_seats || t.totalseats || 0,
-      availableSeats: t.availableSeats || t.available_seats || t.availableseats || 0,
-      ticketPrice: t.ticketPrice || t.ticket_price || t.ticketprice || 0,
+      totalSeats: t.total_seats || t.totalSeats || 0,
+      availableSeats: t.available_seats || t.availableSeats || 0,
+      ticketPrice: t.ticket_price || t.ticketPrice || 0,
       currency: t.currency,
       status: t.status
     }));
@@ -107,16 +107,12 @@ export const api = {
         *,
         trips (
           name,
-          tripNumber
+          trip_number
         )
       `);
     
     if (error) {
       console.error('Get bookings error:', error);
-      // Try fallback to trip_number if tripNumber fails
-      if (error.message.includes('tripNumber')) {
-         return this.getBookingsFallback();
-      }
       throw new Error('فشل تحميل الحجوزات: ' + error.message);
     }
     
@@ -136,42 +132,7 @@ export const api = {
       createdAt: b.createdAt || b.created_at || b.createdat,
       createdBy: b.createdBy || b.created_by || b.createdby,
       tripName: b.trips?.name,
-      tripNumber: b.trips?.tripNumber || b.trips?.trip_number || b.trips?.tripnumber,
-      totals: (typeof b.totals === 'string' ? JSON.parse(b.totals) : b.totals) || { ticketsLYD: 0, ticketsUSD: 0, packageLYD: 0, packageUSD: 0, totalLYD: 0, totalUSD: 0 },
-      pilgrims: (typeof b.pilgrims === 'string' ? JSON.parse(b.pilgrims) : b.pilgrims) || [],
-    }));
-  },
-
-  async getBookingsFallback(): Promise<Booking[]> {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
-        *,
-        trips (
-          name,
-          trip_number
-        )
-      `);
-    
-    if (error) throw new Error('فشل تحميل الحجوزات: ' + error.message);
-    
-    return (data || []).map((b: any) => ({
-      id: b.id,
-      tripId: b.trip_id || b.tripId || b.tripid,
-      headName: b.head_name || b.headName || b.headname,
-      regId: b.reg_id || b.regId || b.regid,
-      phone: b.phone,
-      passengerCount: b.passenger_count || b.passengerCount || b.passengercount,
-      status: b.status,
-      makkahHotel: b.makkah_hotel || b.makkahHotel || b.makkahhotel,
-      makkahNights: b.makkah_nights || b.makkahNights || b.makkahnights,
-      madinahHotel: b.madinah_hotel || b.madinahHotel || b.madinahhotel,
-      madinahNights: b.madinah_nights || b.madinahNights || b.madinahnights,
-      isVisaOnly: b.is_visa_only || b.isVisaOnly || b.isvisaonly,
-      createdAt: b.created_at || b.createdAt || b.createdat,
-      createdBy: b.created_by || b.createdBy || b.createdby,
-      tripName: b.trips?.name,
-      tripNumber: b.trips?.trip_number || b.trips?.tripNumber || b.trips?.tripnumber,
+      tripNumber: b.trips?.trip_number || b.trips?.tripNumber || b.trips?.trip_number,
       totals: (typeof b.totals === 'string' ? JSON.parse(b.totals) : b.totals) || { ticketsLYD: 0, ticketsUSD: 0, packageLYD: 0, packageUSD: 0, totalLYD: 0, totalUSD: 0 },
       pilgrims: (typeof b.pilgrims === 'string' ? JSON.parse(b.pilgrims) : b.pilgrims) || [],
     }));

@@ -25,10 +25,17 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
         // Check if API key is selected if environment key is missing
         const envKey = process.env.GEMINI_API_KEY;
         if (!envKey || envKey === 'undefined' || envKey === '') {
-          const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-          if (!hasKey) {
-            setError('يرجى اختيار مفتاح API الخاص بك لتفعيل ميزة المسح الذكي.');
-            await (window as any).aistudio.openSelectKey();
+          if (window && (window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
+            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+            if (!hasKey) {
+              setError('يرجى اختيار مفتاح API الخاص بك لتفعيل ميزة المسح الذكي.');
+              await (window as any).aistudio.openSelectKey();
+              setCapturedImage(null);
+              setLoading(false);
+              return;
+            }
+          } else {
+            setError('مفتاح API الخاص بـ Gemini غير متوفر. يرجى ضبط GEMINI_API_KEY في إعدادات البيئة.');
             setCapturedImage(null);
             setLoading(false);
             return;

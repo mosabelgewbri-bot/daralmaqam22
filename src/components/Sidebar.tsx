@@ -47,6 +47,8 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
   ];
 
   const filteredItems = menuItems.filter(item => {
+    if (user.role === 'admin') return true;
+
     try {
       const savedPermissions = localStorage.getItem('role_permissions');
       if (savedPermissions) {
@@ -60,8 +62,7 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
       console.error('Error parsing permissions:', e);
     }
 
-    // Fallback to basic logic if no permissions found or empty
-    if (user.role === 'admin') return true;
+    // Fallback to basic logic if no permissions found or role not in saved permissions
     if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'cards'].includes(item.id);
     if (user.role === 'accountant') return ['dashboard', 'reports', 'finance'].includes(item.id);
     if (user.role === 'manager') return ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'cards'].includes(item.id);

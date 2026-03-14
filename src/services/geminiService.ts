@@ -4,7 +4,7 @@ export async function extractPassportData(base64Image: string) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-      console.error("GEMINI_API_KEY is not defined");
+      console.error("GEMINI_API_KEY is not defined. Please set it in your environment variables.");
       return null;
     }
     
