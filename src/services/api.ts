@@ -68,32 +68,16 @@ export const api = {
   async saveTrip(trip: Trip): Promise<void> {
     console.log('Attempting to save trip:', trip);
     
-    // Create a comprehensive payload that covers multiple naming conventions
-    // to ensure compatibility with different database schemas
-    const payload: any = {
+    const payload = {
       id: trip.id,
       name: trip.name,
       airline: trip.airline,
       currency: trip.currency,
       status: trip.status,
-      
-      // CamelCase
-      tripNumber: trip.tripNumber || '',
-      totalSeats: trip.totalSeats,
-      availableSeats: trip.availableSeats,
-      ticketPrice: trip.ticketPrice,
-      
-      // snake_case
       trip_number: trip.tripNumber || '',
       total_seats: trip.totalSeats,
       available_seats: trip.availableSeats,
-      ticket_price: trip.ticketPrice,
-      
-      // lowercase (to fix "totalseats" error)
-      tripnumber: trip.tripNumber || '',
-      totalseats: trip.totalSeats,
-      availableseats: trip.availableSeats,
-      ticketprice: trip.ticketPrice
+      ticket_price: trip.ticketPrice
     };
 
     const { error } = await supabase
@@ -101,29 +85,8 @@ export const api = {
       .upsert(payload);
     
     if (error) {
-      console.warn('Save attempt failed with full payload, trying minimal:', error.message);
-      
-      // If the full payload fails (likely because some columns don't exist),
-      // we try to save only the fields that are most likely to exist.
-      // But based on the user's error, "totalseats" is the one causing issues.
-      
-      const fallbackPayload = {
-        id: trip.id,
-        name: trip.name,
-        airline: trip.airline,
-        currency: trip.currency,
-        status: trip.status,
-        totalseats: trip.totalSeats,
-        availableseats: trip.availableSeats,
-        ticketprice: trip.ticketPrice,
-        tripnumber: trip.tripNumber || ''
-      };
-      
-      const { error: error2 } = await supabase.from('trips').upsert(fallbackPayload);
-      if (error2) {
-        console.error('Final save attempt failed:', error2.message);
-        throw new Error('فشل حفظ الرحلة: ' + error2.message);
-      }
+      console.error('Save trip error:', error.message);
+      throw new Error('فشل حفظ الرحلة: ' + error.message);
     }
     console.log('Trip saved successfully');
   },
@@ -215,27 +178,12 @@ export const api = {
   },
 
   async saveBooking(booking: Booking): Promise<void> {
-    // Create a comprehensive payload covering multiple naming conventions
-    const payload: any = {
+    const payload = {
       id: booking.id,
       phone: booking.phone,
       status: booking.status,
       totals: booking.totals,
       pilgrims: booking.pilgrims,
-
-      // CamelCase
-      tripId: booking.tripId,
-      headName: booking.headName,
-      regId: booking.regId,
-      passengerCount: booking.passengerCount,
-      makkahHotel: booking.makkahHotel,
-      makkahNights: booking.makkahNights,
-      madinahHotel: booking.madinahHotel,
-      madinahNights: booking.madinahNights,
-      isVisaOnly: booking.isVisaOnly,
-      createdBy: booking.createdBy,
-
-      // snake_case
       trip_id: booking.tripId,
       head_name: booking.headName,
       reg_id: booking.regId,
@@ -245,19 +193,7 @@ export const api = {
       madinah_hotel: booking.madinahHotel,
       madinah_nights: booking.madinahNights,
       is_visa_only: booking.isVisaOnly,
-      created_by: booking.createdBy,
-
-      // lowercase
-      tripid: booking.tripId,
-      headname: booking.headName,
-      regid: booking.regId,
-      passengercount: booking.passengerCount,
-      makkahhotel: booking.makkahHotel,
-      makkahnights: booking.makkahNights,
-      madinahhotel: booking.madinahHotel,
-      madinahnights: booking.madinahNights,
-      isvisaonly: booking.isVisaOnly,
-      createdby: booking.createdBy
+      created_by: booking.createdBy
     };
 
     const { error } = await supabase
@@ -265,31 +201,8 @@ export const api = {
       .upsert(payload);
     
     if (error) {
-      console.warn('Booking save failed with full payload, trying minimal lowercase:', error.message);
-      // Fallback to minimal lowercase which seems to be the pattern in user's DB
-      const fallbackPayload = {
-        id: booking.id,
-        phone: booking.phone,
-        status: booking.status,
-        totals: booking.totals,
-        pilgrims: booking.pilgrims,
-        tripid: booking.tripId,
-        headname: booking.headName,
-        regid: booking.regId,
-        passengercount: booking.passengerCount,
-        makkahhotel: booking.makkahHotel,
-        makkahnights: booking.makkahNights,
-        madinahhotel: booking.madinahHotel,
-        madinahnights: booking.madinahNights,
-        isvisaonly: booking.isVisaOnly,
-        createdby: booking.createdBy
-      };
-      
-      const { error: error2 } = await supabase.from('bookings').upsert(fallbackPayload);
-      if (error2) {
-        console.error('Final booking save attempt failed:', error2.message);
-        throw new Error('فشل حفظ الحجز: ' + error2.message);
-      }
+      console.error('Save booking error:', error.message);
+      throw new Error('فشل حفظ الحجز: ' + error.message);
     }
   },
   async deleteBooking(id: string): Promise<void> {
