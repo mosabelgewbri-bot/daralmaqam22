@@ -11,10 +11,10 @@ export async function extractPassportData(base64Image: string) {
     }
     
     const ai = new GoogleGenAI({ apiKey });
-    console.log("OCR Service: Sending request to Gemini...");
+    console.log("OCR Service: Sending request to Gemini (Pro)...");
     
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-pro-preview",
       contents: {
         parts: [
           {
@@ -24,13 +24,23 @@ export async function extractPassportData(base64Image: string) {
             },
           },
           {
-            text: `You are an expert passport OCR system. 
-            Extract the following information from the passport image:
-            1. Passport Number: Look for the 'Passport No' or 'رقم الجواز' field, or the number in the top right corner, or the first 9 characters of the second line of the MRZ (Machine Readable Zone).
-            2. Expiry Date: Look for 'Date of Expiry' or 'تاريخ الانتهاء'. Format as YYYY-MM-DD.
-            3. Full Name in Arabic: Look for the Arabic name field (usually 'الاسم الكامل' or similar). If the Arabic name is not explicitly written in the visual zone, look for it elsewhere on the page. If it's absolutely not there, transliterate the English name (from the visual zone or MRZ) into Arabic accurately.
+            text: `You are a highly accurate passport OCR expert. 
+            Analyze the provided passport image and extract the following details:
             
-            Return the data in a strict JSON format.`,
+            1. Passport Number: 
+               - Look for 'Passport No.', 'رقم الجواز', or the number in the top-right corner.
+               - Also check the second line of the MRZ (Machine Readable Zone) at the bottom; the first 9 characters are usually the passport number.
+            
+            2. Expiry Date: 
+               - Look for 'Date of Expiry' or 'تاريخ الانتهاء'. 
+               - Format the output strictly as YYYY-MM-DD.
+            
+            3. Full Name in Arabic: 
+               - Look for the Arabic name field (الاسم الكامل). 
+               - If not found, look for individual name fields in Arabic (اللقب, الاسم).
+               - If NO Arabic text is found for the name, you MUST transliterate the English name from the passport into Arabic characters accurately.
+            
+            Return the result as a JSON object.`,
           },
         ],
       },
@@ -45,7 +55,7 @@ export async function extractPassportData(base64Image: string) {
           },
           required: ["passportNumber", "expiryDate", "fullNameArabic"],
         },
-        systemInstruction: "You are a specialized OCR tool for passports. You prioritize accuracy, especially for Arabic names and passport numbers. You understand both the visual zone and the Machine Readable Zone (MRZ) of a passport.",
+        systemInstruction: "You are a specialized OCR tool for passports. You prioritize accuracy for Arabic names and passport numbers. You are capable of reading both the visual zone and the Machine Readable Zone (MRZ). If Arabic name is missing, you transliterate from English.",
       },
     });
 

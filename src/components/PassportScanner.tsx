@@ -110,26 +110,30 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                   },
                   videoConstraints: {
                     facingMode: "environment",
-                    width: 1280,
-                    height: 720
+                    width: 1920,
+                    height: 1080
                   },
                   className: "w-full h-full object-cover"
                 } as any)}
               />
               {/* Scanner Overlay */}
               <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute inset-12 border-2 border-gold/50 rounded-2xl shadow-[0_0_0_1000px_rgba(0,0,0,0.5)]">
-                  <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-gold rounded-tl-lg" />
-                  <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-gold rounded-tr-lg" />
-                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-gold rounded-bl-lg" />
-                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-gold rounded-br-lg" />
+                <div className="absolute inset-8 border-2 border-gold/50 rounded-2xl shadow-[0_0_0_1000px_rgba(0,0,0,0.5)]">
+                  <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-gold rounded-tl-xl" />
+                  <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-gold rounded-tr-xl" />
+                  <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-gold rounded-bl-xl" />
+                  <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-gold rounded-br-xl" />
                   
                   {/* Scanning Line Animation */}
                   <motion.div 
-                    animate={{ top: ['0%', '100%', '0%'] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                    className="absolute left-0 right-0 h-0.5 bg-gold shadow-[0_0_15px_rgba(212,175,55,0.8)] z-10"
+                    animate={{ top: ['5%', '95%', '5%'] }}
+                    transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute left-4 right-4 h-1 bg-gradient-to-r from-transparent via-gold to-transparent shadow-[0_0_20px_rgba(212,175,55,1)] z-10"
                   />
+                  
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <p className="text-gold/60 text-[10px] uppercase tracking-[0.2em] font-bold">Passport Area</p>
+                  </div>
                 </div>
               </div>
             </>

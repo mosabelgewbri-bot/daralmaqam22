@@ -165,10 +165,15 @@ export default function BookingForm({ user }: { user: User }) {
   };
 
   const handleScanResult = (index: number, data: any, image: string) => {
+    console.log("BookingForm: Received scan result for index", index, data);
     const updated = [...pilgrims];
-    const extractedNo = data.passportNumber || data.passport_number || data.passportNo || '';
+    
+    // Support multiple naming conventions from OCR
+    const extractedNo = data.passportNumber || data.passport_number || data.passportNo || data.number || '';
     const extractedExpiry = data.expiryDate || data.expiry_date || data.expiry || '';
-    const extractedName = data.fullNameArabic || data.nameArabic || data.name || '';
+    const extractedName = data.fullNameArabic || data.nameArabic || data.name_arabic || data.name || '';
+    
+    console.log("BookingForm: Extracted fields:", { extractedNo, extractedExpiry, extractedName });
     
     const expiryDate = extractedExpiry || updated[index].expiryDate || '';
     const isInvalid = isExpiredSoon(expiryDate);
@@ -182,11 +187,12 @@ export default function BookingForm({ user }: { user: User }) {
     };
     
     if (index === 0 && !headName && extractedName) {
+      console.log("BookingForm: Setting headName to", extractedName);
       setHeadName(extractedName);
     }
     
     setPilgrims(updated);
-    console.log("State updated with OCR data:", { extractedNo, extractedExpiry, extractedName, isInvalid });
+    console.log("BookingForm: State updated successfully");
   };
 
   const selectedTrip = trips.find(t => t.id === selectedTripId);
