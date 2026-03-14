@@ -16,17 +16,23 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   const capture = useCallback(async () => {
+    console.log("PassportScanner: Capture triggered");
     const imageSrc = webcamRef.current?.getScreenshot();
     if (imageSrc) {
+      console.log("PassportScanner: Image captured successfully");
       setCapturedImage(imageSrc);
       setLoading(true);
       setError(null);
       try {
         // Check if API key is selected if environment key is missing
         const envKey = process.env.GEMINI_API_KEY;
+        console.log("PassportScanner: envKey status:", envKey ? "Present" : "Missing");
+        
         if (!envKey || envKey === 'undefined' || envKey === '') {
+          console.log("PassportScanner: envKey missing, checking aistudio...");
           if (window && (window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
             const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+            console.log("PassportScanner: hasSelectedApiKey:", hasKey);
             if (!hasKey) {
               setError('يرجى اختيار مفتاح API الخاص بك لتفعيل ميزة المسح الذكي.');
               await (window as any).aistudio.openSelectKey();
@@ -35,6 +41,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
               return;
             }
           } else {
+            console.warn("PassportScanner: aistudio API not available");
             setError('مفتاح API الخاص بـ Gemini غير متوفر. يرجى ضبط GEMINI_API_KEY في إعدادات البيئة.');
             setCapturedImage(null);
             setLoading(false);
@@ -42,21 +49,27 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
           }
         }
 
+        console.log("PassportScanner: Calling extractPassportData...");
         const data = await extractPassportData(imageSrc);
+        console.log("PassportScanner: OCR result:", data ? "Success" : "Failed");
+        
         if (data) {
           onScan(data, imageSrc);
           onClose();
         } else {
-          setError('لم نتمكن من استخراج البيانات. يرجى المحاولة مرة أخرى أو التأكد من وضوح الصورة.');
+          setError('لم نتمكن من استخراج البيانات. يرجى المحاولة مرة أخرى أو التأكد من وضوح الصورة والإضاءة.');
           setCapturedImage(null);
         }
-      } catch (err) {
-        console.error('Scan error:', err);
-        setError('حدث خطأ أثناء معالجة الصورة. يرجى المحاولة مرة أخرى.');
+      } catch (err: any) {
+        console.error('PassportScanner: Scan error:', err);
+        setError(`حدث خطأ أثناء معالجة الصورة: ${err.message || 'خطأ غير معروف'}`);
         setCapturedImage(null);
       } finally {
         setLoading(false);
       }
+    } else {
+      console.warn("PassportScanner: Failed to get screenshot from webcam");
+      setError("فشل التقاط الصورة من الكاميرا. يرجى التأكد من أن الكاميرا تعمل.");
     }
   }, [webcamRef, onScan, onClose]);
 
@@ -92,7 +105,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                   ref: webcamRef,
                   screenshotFormat: "image/jpeg",
                   onUserMediaError: (err: any) => {
-                    console.error("Camera error:", err);
+                    console.error("PassportScanner: Camera error:", err);
                     setError("فشل الوصول إلى الكاميرا. يرجى التأكد من منح الإذن.");
                   },
                   videoConstraints: {
