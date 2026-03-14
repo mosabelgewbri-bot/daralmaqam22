@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { Camera, X, Scan, Loader2, RefreshCw } from 'lucide-react';
+import { Camera, X, Scan, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { extractPassportData } from '../services/geminiService';
 
@@ -160,16 +160,56 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
             </motion.div>
           )}
 
-          <div className="flex justify-center gap-4">
+          <div className="flex flex-col items-center gap-4">
             {!capturedImage ? (
-              <button 
-                onClick={capture}
-                disabled={loading}
-                className="btn-gold px-12 py-4 rounded-2xl flex items-center gap-3 text-lg shadow-xl shadow-gold/20 active:scale-95 transition-all"
-              >
-                <Camera className="w-6 h-6" />
-                التقاط صورة للمسح
-              </button>
+              <div className="flex flex-wrap justify-center gap-4">
+                <button 
+                  onClick={capture}
+                  disabled={loading}
+                  className="btn-gold px-12 py-4 rounded-2xl flex items-center gap-3 text-lg shadow-xl shadow-gold/20 active:scale-95 transition-all"
+                >
+                  <Camera className="w-6 h-6" />
+                  التقاط صورة للمسح
+                </button>
+                
+                <label className="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-2xl flex items-center gap-3 transition-all cursor-pointer active:scale-95">
+                  <Upload className="w-5 h-5 text-gold" />
+                  <span>رفع صورة الجواز</span>
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                          const base64 = event.target?.result as string;
+                          setCapturedImage(base64);
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const data = await extractPassportData(base64);
+                            if (data) {
+                              onScan(data, base64);
+                              onClose();
+                            } else {
+                              setError('لم نتمكن من استخراج البيانات. يرجى التأكد من وضوح الصورة.');
+                              setCapturedImage(null);
+                            }
+                          } catch (err: any) {
+                            setError(`خطأ: ${err.message}`);
+                            setCapturedImage(null);
+                          } finally {
+                            setLoading(false);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
             ) : (
               <button 
                 onClick={() => setCapturedImage(null)}
