@@ -237,11 +237,27 @@ if (permsCount.count === 0) {
   `);
   
   insertPerm.run('admin', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 'all');
-  insertPerm.run('staff', JSON.stringify(['dashboard', 'booking', 'rooming', 'tracking', 'finance']), 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'own');
-  insertPerm.run('accountant', JSON.stringify(['dashboard', 'reports', 'finance']), 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 'all');
-  insertPerm.run('manager', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips']), 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 'all');
-  insertPerm.run('visa_specialist', JSON.stringify(['dashboard', 'tracking', 'reports']), 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 'all');
-  insertPerm.run('receptionist', JSON.stringify(['dashboard', 'booking']), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'own');
+  insertPerm.run('staff', JSON.stringify(['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'settings']), 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'own');
+  insertPerm.run('accountant', JSON.stringify(['dashboard', 'reports', 'finance', 'settings']), 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 'all');
+  insertPerm.run('manager', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'settings']), 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 'all');
+  insertPerm.run('visa_specialist', JSON.stringify(['dashboard', 'tracking', 'reports', 'settings']), 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 'all');
+  insertPerm.run('receptionist', JSON.stringify(['dashboard', 'booking', 'settings']), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'own');
+}
+
+// Migration for permissions: ensure settings is in allowedScreens for all roles
+try {
+  const allPerms = db.prepare("SELECT role, allowedScreens FROM permissions").all() as any[];
+  const updatePerm = db.prepare("UPDATE permissions SET allowedScreens = ? WHERE role = ?");
+  for (const p of allPerms) {
+    const screens = JSON.parse(p.allowedScreens) as string[];
+    if (!screens.includes('settings')) {
+      screens.push('settings');
+      updatePerm.run(JSON.stringify(screens), p.role);
+      console.log(`Migrated: Added settings to allowedScreens for role ${p.role}`);
+    }
+  }
+} catch (e) {
+  console.error("Failed to migrate permissions for settings screen:", e);
 }
 
 async function startServer() {

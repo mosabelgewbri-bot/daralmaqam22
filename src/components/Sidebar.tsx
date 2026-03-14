@@ -40,23 +40,31 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance' },
     { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/tracking', id: 'tracking' },
     { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
+    { icon: CreditCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
     { icon: PlusCircle, label: 'إدارة الرحلات', path: '/trips', id: 'trips' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
     { icon: Settings, label: 'الإعدادات', path: '/settings', id: 'settings' },
   ];
 
   const filteredItems = menuItems.filter(item => {
-    const savedPermissions = localStorage.getItem('role_permissions');
-    if (savedPermissions) {
-      const permissions = JSON.parse(savedPermissions) as any[];
-      const rolePerms = permissions.find(p => p.role === user.role);
-      return rolePerms?.allowedScreens.includes(item.id);
+    try {
+      const savedPermissions = localStorage.getItem('role_permissions');
+      if (savedPermissions) {
+        const permissions = JSON.parse(savedPermissions) as any[];
+        const rolePerms = permissions.find(p => p.role === user.role);
+        if (rolePerms && Array.isArray(rolePerms.allowedScreens) && rolePerms.allowedScreens.length > 0) {
+          return rolePerms.allowedScreens.includes(item.id);
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing permissions:', e);
     }
-    // Fallback to basic logic if no permissions found
+
+    // Fallback to basic logic if no permissions found or empty
     if (user.role === 'admin') return true;
-    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'tracking', 'finance'].includes(item.id);
+    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'cards'].includes(item.id);
     if (user.role === 'accountant') return ['dashboard', 'reports', 'finance'].includes(item.id);
-    if (user.role === 'manager') return ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips'].includes(item.id);
+    if (user.role === 'manager') return ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'cards'].includes(item.id);
     if (user.role === 'visa_specialist') return ['dashboard', 'tracking', 'reports'].includes(item.id);
     if (user.role === 'receptionist') return ['dashboard', 'booking'].includes(item.id);
     return false;

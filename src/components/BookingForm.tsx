@@ -26,6 +26,7 @@ export default function BookingForm({ user }: { user: User }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [savedBooking, setSavedBooking] = useState<any>(null);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const fieldRefs = React.useRef<Record<string, HTMLElement | null>>({});
   
   // Hotel Stay Details
@@ -548,24 +549,34 @@ export default function BookingForm({ user }: { user: User }) {
   }
 
   const handleSave = async () => {
-    if (loading) return;
+    console.log('handleSave triggered');
+    if (loading) {
+      console.log('Already loading, skipping');
+      return;
+    }
     const newErrors: Record<string, boolean> = {};
     let firstErrorField: string | null = null;
+    setFormError(null);
 
     const setError = (field: string) => {
       newErrors[field] = true;
       if (!firstErrorField) firstErrorField = field;
     };
 
+    console.log('Validating form data...');
     if (!selectedTripId) setError('selectedTripId');
     if (!headName) setError('headName');
     if (!regId) setError('regId');
     
     // Check for duplicate regId
+    let allBookings: any[] = [];
     try {
-      const savedBookings = await api.getBookings();
-      if (regId && savedBookings.some((b: any) => b.regId === regId && b.id !== id)) {
+      console.log('Fetching bookings for duplicate check...');
+      allBookings = await api.getBookings();
+      if (regId && allBookings.some((b: any) => String(b.regId).trim() === String(regId).trim() && b.id !== id)) {
+        console.warn('Duplicate regId found');
         setError('regId');
+        setFormError('رقم القيد هذا مسجل مسبقاً في حجز آخر');
       }
     } catch (error) {
       console.error('Error checking duplicate regId during save:', error);
@@ -593,20 +604,23 @@ export default function BookingForm({ user }: { user: User }) {
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length > 0) {
+      console.warn('Validation failed with errors:', newErrors);
       if (firstErrorField && fieldRefs.current[firstErrorField]) {
         fieldRefs.current[firstErrorField]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         fieldRefs.current[firstErrorField]?.focus?.();
       }
       
-      alert('الرجاء إكمال جميع الحقول المطلوبة والتأكد من صلاحية الجوازات (أو رقم الفاتورة مكرر)');
+      if (!formError) {
+        setFormError('الرجاء إكمال جميع الحقول المطلوبة والتأكد من صلاحية الجوازات');
+      }
       return;
     }
 
+    console.log('Validation passed, starting save process...');
     setLoading(true);
 
     try {
-      const savedBookings = await api.getBookings();
-      const oldBooking = id ? savedBookings.find((b: any) => b.id === id) : null;
+      const oldBooking = id ? allBookings.find((b: any) => b.id === id) : null;
 
       // 1. Create/Update Booking Object
       const bookingData = {
@@ -636,18 +650,21 @@ export default function BookingForm({ user }: { user: User }) {
         status: oldBooking ? oldBooking.status : 'Confirmed'
       };
 
+      console.log('Saving booking data:', bookingData);
       // 2. Save Booking to API
       await api.saveBooking(bookingData);
+      console.log('Booking saved successfully');
 
       // Refresh trips to get updated available seats from server
+      console.log('Refreshing trips...');
       const updatedTrips = await api.getTrips();
       setTrips(updatedTrips);
 
       setSavedBooking(bookingData);
       setShowSuccess(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Save error:', error);
-      alert('حدث خطأ أثناء حفظ الحجز');
+      setFormError(error.message || 'حدث خطأ أثناء حفظ الحجز');
     } finally {
       setLoading(false);
     }
@@ -759,8 +776,8 @@ export default function BookingForm({ user }: { user: User }) {
                     <input 
                       type="number"
                       className="input-field w-full py-1 text-lg font-bold text-gold"
-                      value={isNaN(manualTicketPrice) ? '' : manualTicketPrice}
-                      onChange={(e) => setManualTicketPrice(parseFloat(e.target.value))}
+                      value={manualTicketPrice === 0 ? '' : manualTicketPrice}
+                      onChange={(e) => setManualTicketPrice(parseFloat(e.target.value) || 0)}
                     />
                     <span className="text-gold font-bold">{selectedTrip.currency}</span>
                   </div>
@@ -796,9 +813,9 @@ export default function BookingForm({ user }: { user: User }) {
                   type="number" 
                   className={clsx("input-field w-full py-1.5 text-sm", errors.makkahNights && "border-red-500 bg-red-500/10")}
                   placeholder="0"
-                  value={isNaN(makkahNights) ? '' : makkahNights}
+                  value={makkahNights === 0 ? '' : makkahNights}
                   onChange={(e) => {
-                    setMakkahNights(parseInt(e.target.value));
+                    setMakkahNights(parseInt(e.target.value) || 0);
                     setErrors(prev => ({ ...prev, makkahNights: false }));
                   }}
                 />
@@ -824,9 +841,9 @@ export default function BookingForm({ user }: { user: User }) {
                   type="number" 
                   className={clsx("input-field w-full py-1.5 text-sm", errors.madinahNights && "border-red-500 bg-red-500/10")}
                   placeholder="0"
-                  value={isNaN(madinahNights) ? '' : madinahNights}
+                  value={madinahNights === 0 ? '' : madinahNights}
                   onChange={(e) => {
-                    setMadinahNights(parseInt(e.target.value));
+                    setMadinahNights(parseInt(e.target.value) || 0);
                     setErrors(prev => ({ ...prev, madinahNights: false }));
                   }}
                 />
@@ -890,8 +907,8 @@ export default function BookingForm({ user }: { user: User }) {
                 min="1" 
                 max="20"
                 className="input-field w-full" 
-                value={isNaN(passengerCount) ? '' : passengerCount}
-                onChange={(e) => setPassengerCount(parseInt(e.target.value))}
+                value={passengerCount === 0 ? '' : passengerCount}
+                onChange={(e) => setPassengerCount(parseInt(e.target.value) || 0)}
               />
             </div>
           </div>
@@ -1127,11 +1144,11 @@ export default function BookingForm({ user }: { user: User }) {
                     type="number" 
                     className={clsx("input-field flex-1 text-right", errors[`roomPrice-${type}`] && "border-red-500 bg-red-500/10")}
                     placeholder="السعر" 
-                    value={isNaN(roomPrices[type].price) ? '' : roomPrices[type].price}
+                    value={roomPrices[type].price === 0 ? '' : roomPrices[type].price}
                     onChange={(e) => {
                       setRoomPrices(prev => ({
                         ...prev,
-                        [type]: { ...prev[type], price: parseFloat(e.target.value) }
+                        [type]: { ...prev[type], price: parseFloat(e.target.value) || 0 }
                       }));
                       setErrors(prev => ({ ...prev, [`roomPrice-${type}`]: false }));
                     }}
@@ -1157,6 +1174,12 @@ export default function BookingForm({ user }: { user: User }) {
           <div className="glass-card p-6 space-y-6 bg-gold/5 border-gold/20">
             <h3 className="font-semibold text-gold text-right">الملخص المالي</h3>
             <div className="space-y-3">
+              {formError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  {formError}
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-white/60">إجمالي التذاكر</span>
                 <span className="font-mono">{totals.ticketsLYD.toLocaleString()} د.ل / {totals.ticketsUSD.toLocaleString()} دولار</span>

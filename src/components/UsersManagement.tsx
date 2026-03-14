@@ -80,6 +80,9 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
         ]);
         setUsers(usersData);
         setRolePermissions(permsData);
+        
+        // Update localStorage cache for Sidebar
+        localStorage.setItem('role_permissions', JSON.stringify(permsData));
       } catch (error) {
         console.error('Error loading users/permissions:', error);
       }
@@ -163,8 +166,8 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
   };
 
   const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase())
+    (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (u.username || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -358,7 +361,7 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                       >
                         <div className="col-span-2 flex items-center gap-4">
                           <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center text-gold font-bold shrink-0">
-                            {user.name.charAt(0)}
+                            {user.name?.charAt(0) || '?'}
                           </div>
                           <div className="truncate">
                             <div className="font-bold text-white truncate">{user.name}</div>
@@ -556,7 +559,7 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                 <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
                   <div className="flex flex-col items-center text-center space-y-4">
                     <div className="w-24 h-24 rounded-3xl bg-gold/20 flex items-center justify-center text-gold text-4xl font-bold border-2 border-gold/30">
-                      {selectedUser.name.charAt(0)}
+                      {selectedUser.name?.charAt(0) || '?'}
                     </div>
                     <div>
                       <h4 className="text-2xl font-bold text-white">{selectedUser.name}</h4>

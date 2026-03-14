@@ -14,7 +14,9 @@ import {
   Edit2,
   Plus,
   X,
-  Calendar
+  Calendar,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -52,22 +54,31 @@ export default function TripForm({ user }: { user: User }) {
     loadTrips();
   }, []);
 
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('handleSubmit triggered');
     setLoading(true);
+    setFormError(null);
+    setSuccessMessage(null);
     
     try {
+      console.log('Form data:', formData);
       // Validation
       if (!formData.name || !formData.airline || isNaN(formData.totalSeats!) || isNaN(formData.ticketPrice!)) {
-        alert('يرجى التأكد من ملء جميع الحقول المطلوبة بشكل صحيح');
+        const errorMsg = 'يرجى التأكد من ملء جميع الحقول المطلوبة بشكل صحيح';
+        console.warn('Validation failed:', errorMsg);
+        setFormError(errorMsg);
         setLoading(false);
         return;
       }
 
       if (editingId) {
+        console.log('Editing trip:', editingId);
         const tripToUpdate = trips.find(t => t.id === editingId);
         if (tripToUpdate) {
-          const seatDiff = formData.totalSeats! - tripToUpdate.totalSeats;
           const updatedTrip: Trip = { 
             ...tripToUpdate, 
             tripNumber: formData.tripNumber || '',
@@ -78,10 +89,15 @@ export default function TripForm({ user }: { user: User }) {
             currency: formData.currency as any,
             availableSeats: Math.max(0, tripToUpdate.availableSeats + (Number(formData.totalSeats) - tripToUpdate.totalSeats))
           };
+          console.log('Calling api.saveTrip for update:', updatedTrip);
           await api.saveTrip(updatedTrip);
           setTrips(prev => prev.map(t => t.id === editingId ? updatedTrip : t));
           setEditingId(null);
-          alert('تم تحديث الرحلة بنجاح!');
+          setSuccessMessage('تم تحديث الرحلة بنجاح!');
+          setTimeout(() => {
+            setShowForm(false);
+            setSuccessMessage(null);
+          }, 2000);
         }
       } else {
         const newTrip: Trip = {
@@ -95,15 +111,20 @@ export default function TripForm({ user }: { user: User }) {
           currency: formData.currency as any,
           status: 'Upcoming'
         };
+        console.log('Calling api.saveTrip for new trip:', newTrip);
         await api.saveTrip(newTrip);
         setTrips(prev => [...prev, newTrip]);
-        alert('تم حفظ الرحلة بنجاح!');
+        setSuccessMessage('تم حفظ الرحلة بنجاح!');
+        setTimeout(() => {
+          setShowForm(false);
+          setSuccessMessage(null);
+        }, 2000);
       }
 
       setFormData({ tripNumber: '', name: '', airline: '', totalSeats: 50, ticketPrice: 0, currency: 'LYD' });
     } catch (error: any) {
-      console.error('Error saving trip:', error);
-      alert(error.message || 'حدث خطأ أثناء حفظ الرحلة');
+      console.error('Error in handleSubmit:', error);
+      setFormError(error.message || 'حدث خطأ أثناء حفظ الرحلة');
     } finally {
       setLoading(false);
     }
@@ -275,8 +296,8 @@ export default function TripForm({ user }: { user: User }) {
                       required
                       min="1"
                       className="input-field w-full"
-                      value={isNaN(formData.totalSeats!) ? '' : formData.totalSeats}
-                      onChange={(e) => setFormData({...formData, totalSeats: parseInt(e.target.value)})}
+                      value={formData.totalSeats === 0 ? '' : formData.totalSeats}
+                      onChange={(e) => setFormData({...formData, totalSeats: parseInt(e.target.value) || 0})}
                     />
                   </div>
 
@@ -290,8 +311,8 @@ export default function TripForm({ user }: { user: User }) {
                       required
                       min="0"
                       className="input-field w-full"
-                      value={isNaN(formData.ticketPrice!) ? '' : formData.ticketPrice}
-                      onChange={(e) => setFormData({...formData, ticketPrice: parseFloat(e.target.value)})}
+                      value={formData.ticketPrice === 0 ? '' : formData.ticketPrice}
+                      onChange={(e) => setFormData({...formData, ticketPrice: parseFloat(e.target.value) || 0})}
                     />
                   </div>
 
@@ -311,23 +332,44 @@ export default function TripForm({ user }: { user: User }) {
                   </div>
                 </div>
 
-                <div className="mt-8 pt-8 border-t border-white/10 flex justify-end gap-4">
-                  {editingId && (
+                <div className="mt-8 pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="flex flex-col gap-2">
+                    {formError && (
+                      <div className="flex items-center gap-2 text-red-400 bg-red-400/10 px-4 py-2 rounded-lg border border-red-400/20">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm">{formError}</span>
+                      </div>
+                    )}
+                    {successMessage && (
+                      <div className="flex items-center gap-2 text-emerald-400 bg-emerald-400/10 px-4 py-2 rounded-lg border border-emerald-400/20">
+                        <Save className="w-4 h-4" />
+                        <span className="text-sm">{successMessage}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-4 ml-auto">
+                    {editingId && (
+                      <button 
+                        type="button"
+                        onClick={cancelEdit}
+                        className="px-8 py-3 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 transition-all"
+                      >
+                        إلغاء
+                      </button>
+                    )}
                     <button 
-                      type="button"
-                      onClick={cancelEdit}
-                      className="px-8 py-3 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 transition-all"
+                      type="submit"
+                      disabled={loading}
+                      className="btn-gold px-12 py-3 flex items-center gap-2 shadow-lg shadow-gold/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      إلغاء
+                      {loading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Save className="w-5 h-5" />
+                      )}
+                      {editingId ? 'تحديث الرحلة' : 'حفظ الرحلة'}
                     </button>
-                  )}
-                  <button 
-                    type="submit"
-                    className="btn-gold px-12 py-3 flex items-center gap-2 shadow-lg shadow-gold/20"
-                  >
-                    <Save className="w-5 h-5" /> 
-                    {editingId ? 'تحديث الرحلة' : 'حفظ الرحلة'}
-                  </button>
+                  </div>
                 </div>
               </form>
           </motion.div>

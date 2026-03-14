@@ -19,7 +19,7 @@ export function getRolePermissions(role: Role): RolePermissions {
   const defaults: Record<Role, RolePermissions> = {
     admin: {
       role: 'admin',
-      allowedScreens: ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings'],
+      allowedScreens: ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings', 'cards'],
       canEdit: true,
       canDelete: true,
       canExport: true,
@@ -36,7 +36,7 @@ export function getRolePermissions(role: Role): RolePermissions {
     },
     staff: {
       role: 'staff',
-      allowedScreens: ['dashboard', 'booking', 'rooming', 'tracking'],
+      allowedScreens: ['dashboard', 'booking', 'rooming', 'tracking', 'cards'],
       canEdit: true,
       canDelete: false,
       canExport: true,
@@ -70,7 +70,7 @@ export function getRolePermissions(role: Role): RolePermissions {
     },
     manager: {
       role: 'manager',
-      allowedScreens: ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips'],
+      allowedScreens: ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'cards'],
       canEdit: true,
       canDelete: true,
       canExport: true,

@@ -3,6 +3,8 @@ import { User } from '../types';
 import { motion } from 'motion/react';
 import { Lock, User as UserIcon, ChevronRight } from 'lucide-react';
 import Logo from './Logo';
+import { api } from '../services/api';
+import { supabase } from '../utils/supabase';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -20,20 +22,10 @@ export default function Login({ onLogin }: LoginProps) {
     setError('');
 
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        onLogin(data.user);
-      } else {
-        setError('Invalid username or password');
-      }
-    } catch (err) {
-      setError('Connection error. Please try again.');
+      const { user } = await api.login(username, password);
+      onLogin(user);
+    } catch (err: any) {
+      setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة');
     } finally {
       setLoading(false);
     }
@@ -55,6 +47,7 @@ export default function Login({ onLogin }: LoginProps) {
         className="glass-card w-full max-w-md p-10 space-y-10 relative z-10 border-gold/20 shadow-[0_0_50px_rgba(212,175,55,0.1)]"
       >
         <div className="flex flex-col items-center text-center space-y-8">
+          <div className="absolute top-2 right-2 text-[8px] text-gold/40 font-mono">v1.0.5-debug</div>
           <motion.div
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -76,6 +69,30 @@ export default function Login({ onLogin }: LoginProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="p-3 bg-gold/5 border border-gold/20 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-gold/60 uppercase tracking-wider">أداة تشخيص الاتصال</span>
+              <span className="text-[8px] text-white/20">{new Date().toLocaleTimeString()}</span>
+            </div>
+            <button 
+              type="button"
+              onClick={async () => {
+                try {
+                  const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
+                  alert(error ? `❌ خطأ في القاعدة: ${error.message}` : `✅ تم الاتصال بنجاح! عدد المستخدمين: ${count}`);
+                } catch (e: any) {
+                  alert(`⚠️ فشل الاتصال بالخادم: ${e.message}`);
+                }
+              }}
+              className="w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-xs font-bold transition-all active:scale-95"
+            >
+              اضغط هنا لاختبار الربط مع Supabase
+            </button>
+            <div className="text-[8px] text-white/30 font-mono break-all opacity-50">
+              URL: {import.meta.env.VITE_SUPABASE_URL || 'Default'}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label className="text-xs font-bold text-white/40 uppercase tracking-widest mr-1">اسم المستخدم</label>
             <div className="relative group">
@@ -117,10 +134,13 @@ export default function Login({ onLogin }: LoginProps) {
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex items-center gap-3 text-red-500 text-xs"
+              className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex flex-col gap-1 text-red-500 text-xs"
             >
-              <div className="w-1 h-1 rounded-full bg-red-500" />
-              {error === 'Invalid username or password' ? 'اسم المستخدم أو كلمة المرور غير صحيحة' : 'خطأ في الاتصال. يرجى المحاولة مرة أخرى.'}
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-1 rounded-full bg-red-500" />
+                <span className="font-bold">فشل الدخول:</span>
+              </div>
+              <p className="mr-4 opacity-80">{error}</p>
             </motion.div>
           )}
 

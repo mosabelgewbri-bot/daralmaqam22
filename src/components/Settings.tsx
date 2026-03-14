@@ -92,26 +92,12 @@ export default function Settings({ user }: { user: User }) {
 
     setPassLoading(true);
     try {
-      const res = await fetch('/api/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          currentPassword: passwords.current,
-          newPassword: passwords.new
-        }),
-      });
-
-      if (res.ok) {
-        setPassSuccess(true);
-        setPasswords({ current: '', new: '', confirm: '' });
-        setTimeout(() => setPassSuccess(false), 3000);
-      } else {
-        const data = await res.json();
-        setPassError(data.error || 'حدث خطأ أثناء تغيير كلمة المرور');
-      }
-    } catch (err) {
-      setPassError('خطأ في الاتصال الخادم');
+      await api.changePassword(user.id, passwords.current, passwords.new);
+      setPassSuccess(true);
+      setPasswords({ current: '', new: '', confirm: '' });
+      setTimeout(() => setPassSuccess(false), 3000);
+    } catch (err: any) {
+      setPassError(err.message || 'حدث خطأ أثناء تغيير كلمة المرور');
     } finally {
       setPassLoading(false);
     }
@@ -184,7 +170,19 @@ export default function Settings({ user }: { user: User }) {
     setRestoreStatus({ type: null, message: '' });
 
     try {
-      await api.restoreDb(pendingFile);
+      const formData = new FormData();
+      formData.append('file', pendingFile);
+      
+      const response = await fetch('/api/db-upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'فشل استعادة قاعدة البيانات');
+      }
+
       setRestoreStatus({ type: 'success', message: 'تم استعادة قاعدة البيانات بنجاح. سيتم إعادة تحميل الصفحة...' });
       setTimeout(() => {
         window.location.reload();
@@ -222,198 +220,202 @@ export default function Settings({ user }: { user: User }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <div className="glass-card p-8 space-y-6">
-            <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-              <ImageIcon className="text-gold w-6 h-6" />
-              <h3 className="text-xl font-bold">ملف الشركة</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">اسم الشركة</label>
-                <input 
-                  type="text"
-                  className="input-field w-full"
-                  value={companyInfo.name}
-                  onChange={e => setCompanyInfo({...companyInfo, name: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">رقم الهاتف</label>
-                <input 
-                  type="text"
-                  className="input-field w-full"
-                  value={companyInfo.phone}
-                  onChange={e => setCompanyInfo({...companyInfo, phone: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">البريد الإلكتروني</label>
-                <input 
-                  type="email"
-                  className="input-field w-full"
-                  value={companyInfo.email}
-                  onChange={e => setCompanyInfo({...companyInfo, email: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">الموقع الإلكتروني</label>
-                <input 
-                  type="text"
-                  className="input-field w-full"
-                  value={companyInfo.website}
-                  onChange={e => setCompanyInfo({...companyInfo, website: e.target.value})}
-                />
-              </div>
-              <div className="md:col-span-2 space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">العنوان</label>
-                <textarea 
-                  className="input-field w-full h-24 resize-none"
-                  value={companyInfo.address}
-                  onChange={e => setCompanyInfo({...companyInfo, address: e.target.value})}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="glass-card p-8 space-y-6">
-            <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-              <SettingsIcon className="text-gold w-6 h-6" />
-              <h3 className="text-xl font-bold">تفضيلات النظام</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">العملة الافتراضية</label>
-                <select 
-                  className="input-field w-full"
-                  value={preferences.currency}
-                  onChange={e => setPreferences({...preferences, currency: e.target.value})}
-                >
-                  <option value="LYD">دينار ليبي (LYD)</option>
-                  <option value="USD">دولار أمريكي (USD)</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">تنسيق التاريخ</label>
-                <select 
-                  className="input-field w-full"
-                  value={preferences.dateFormat}
-                  onChange={e => setPreferences({...preferences, dateFormat: e.target.value})}
-                >
-                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">لغة النظام</label>
-                <select 
-                  className="input-field w-full"
-                  value={preferences.language}
-                  onChange={e => setPreferences({...preferences, language: e.target.value})}
-                >
-                  <option value="ar">العربية</option>
-                  <option value="en">English</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs text-white/40 uppercase tracking-widest">سمة النظام (Theme)</label>
-                <select 
-                  className="input-field w-full"
-                  value={preferences.theme}
-                  onChange={e => setPreferences({...preferences, theme: e.target.value})}
-                >
-                  <option value="gold">الذهبي الملكي (Default)</option>
-                  <option value="emerald">الأخضر الزمردي</option>
-                  <option value="blue">الأزرق السماوي</option>
-                  <option value="purple">الأرجواني الفاخر</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="glass-card p-8 space-y-6">
-            <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-              <ImageIcon className="text-gold w-6 h-6" />
-              <h3 className="text-xl font-bold">تخصيص الشعار (Logo)</h3>
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
-              <div className="space-y-4 text-center md:text-right flex-1">
-                <p className="text-white/80 leading-relaxed">
-                  يمكنك هنا تحميل شعار شركتك الخاص ليظهر في جميع أنحاء النظام، بما في ذلك القائمة الجانبية، شاشة الدخول، والتقارير المطبوعة.
-                </p>
-                <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-                  <label className="btn-gold cursor-pointer flex items-center gap-2 py-2 px-6">
-                    <Upload className="w-4 h-4" />
-                    تحميل شعار جديد
+          {(user.role === 'admin' || user.role === 'manager') && (
+            <>
+              <div className="glass-card p-8 space-y-6">
+                <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                  <ImageIcon className="text-gold w-6 h-6" />
+                  <h3 className="text-xl font-bold">ملف الشركة</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">اسم الشركة</label>
                     <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*" 
-                      onChange={handleLogoUpload}
+                      type="text"
+                      className="input-field w-full"
+                      value={companyInfo.name}
+                      onChange={e => setCompanyInfo({...companyInfo, name: e.target.value})}
                     />
-                  </label>
-                  {logo && (
-                    <button 
-                      onClick={handleRemoveLogo}
-                      className="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-6 py-2 rounded-xl transition-all flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      حذف الشعار
-                    </button>
-                  )}
-                </div>
-                <p className="text-[10px] text-white/40">
-                  * يفضل استخدام صور بصيغة PNG بخلفية شفافة. الحد الأقصى للحجم 2 ميجابايت.
-                </p>
-              </div>
-
-              <div className="w-48 h-48 glass-card flex flex-col items-center justify-center p-4 border-dashed border-2 border-white/10 relative group">
-                {logo ? (
-                  <img 
-                    src={logo} 
-                    alt="Preview" 
-                    className="max-w-full max-h-full object-contain"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-white/20">
-                    <ImageIcon className="w-12 h-12" />
-                    <span className="text-xs">لا يوجد شعار مخصص</span>
                   </div>
-                )}
-                <div className="absolute -top-3 -right-3 bg-gold text-matte-black text-[10px] font-bold px-2 py-1 rounded shadow-lg">
-                  معاينة
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">رقم الهاتف</label>
+                    <input 
+                      type="text"
+                      className="input-field w-full"
+                      value={companyInfo.phone}
+                      onChange={e => setCompanyInfo({...companyInfo, phone: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">البريد الإلكتروني</label>
+                    <input 
+                      type="email"
+                      className="input-field w-full"
+                      value={companyInfo.email}
+                      onChange={e => setCompanyInfo({...companyInfo, email: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">الموقع الإلكتروني</label>
+                    <input 
+                      type="text"
+                      className="input-field w-full"
+                      value={companyInfo.website}
+                      onChange={e => setCompanyInfo({...companyInfo, website: e.target.value})}
+                    />
+                  </div>
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">العنوان</label>
+                    <textarea 
+                      className="input-field w-full h-24 resize-none"
+                      value={companyInfo.address}
+                      onChange={e => setCompanyInfo({...companyInfo, address: e.target.value})}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="pt-6 border-t border-white/10 flex justify-end">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className={clsx(
-                  "flex items-center gap-2 px-8 py-3 rounded-xl font-bold transition-all",
-                  success ? "bg-emerald-500 text-white" : "btn-gold"
-                )}
-              >
-                {saving ? (
-                  "جاري الحفظ..."
-                ) : success ? (
-                  <>
-                    <CheckCircle className="w-5 h-5" />
-                    تم الحفظ بنجاح
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5" />
-                    حفظ التغييرات
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+              <div className="glass-card p-8 space-y-6">
+                <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                  <SettingsIcon className="text-gold w-6 h-6" />
+                  <h3 className="text-xl font-bold">تفضيلات النظام</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">العملة الافتراضية</label>
+                    <select 
+                      className="input-field w-full"
+                      value={preferences.currency}
+                      onChange={e => setPreferences({...preferences, currency: e.target.value})}
+                    >
+                      <option value="LYD">دينار ليبي (LYD)</option>
+                      <option value="USD">دولار أمريكي (USD)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">تنسيق التاريخ</label>
+                    <select 
+                      className="input-field w-full"
+                      value={preferences.dateFormat}
+                      onChange={e => setPreferences({...preferences, dateFormat: e.target.value})}
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">لغة النظام</label>
+                    <select 
+                      className="input-field w-full"
+                      value={preferences.language}
+                      onChange={e => setPreferences({...preferences, language: e.target.value})}
+                    >
+                      <option value="ar">العربية</option>
+                      <option value="en">English</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">سمة النظام (Theme)</label>
+                    <select 
+                      className="input-field w-full"
+                      value={preferences.theme}
+                      onChange={e => setPreferences({...preferences, theme: e.target.value})}
+                    >
+                      <option value="gold">الذهبي الملكي (Default)</option>
+                      <option value="emerald">الأخضر الزمردي</option>
+                      <option value="blue">الأزرق السماوي</option>
+                      <option value="purple">الأرجواني الفاخر</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card p-8 space-y-6">
+                <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                  <ImageIcon className="text-gold w-6 h-6" />
+                  <h3 className="text-xl font-bold">تخصيص الشعار (Logo)</h3>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
+                  <div className="space-y-4 text-center md:text-right flex-1">
+                    <p className="text-white/80 leading-relaxed">
+                      يمكنك هنا تحميل شعار شركتك الخاص ليظهر في جميع أنحاء النظام، بما في ذلك القائمة الجانبية، شاشة الدخول، والتقارير المطبوعة.
+                    </p>
+                    <div className="flex flex-wrap gap-3 justify-center md:justify-start">
+                      <label className="btn-gold cursor-pointer flex items-center gap-2 py-2 px-6">
+                        <Upload className="w-4 h-4" />
+                        تحميل شعار جديد
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={handleLogoUpload}
+                        />
+                      </label>
+                      {logo && (
+                        <button 
+                          onClick={handleRemoveLogo}
+                          className="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-6 py-2 rounded-xl transition-all flex items-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          حذف الشعار
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-white/40">
+                      * يفضل استخدام صور بصيغة PNG بخلفية شفافة. الحد الأقصى للحجم 2 ميجابايت.
+                    </p>
+                  </div>
+
+                  <div className="w-48 h-48 glass-card flex flex-col items-center justify-center p-4 border-dashed border-2 border-white/10 relative group">
+                    {logo ? (
+                      <img 
+                        src={logo} 
+                        alt="Preview" 
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-white/20">
+                        <ImageIcon className="w-12 h-12" />
+                        <span className="text-xs">لا يوجد شعار مخصص</span>
+                      </div>
+                    )}
+                    <div className="absolute -top-3 -right-3 bg-gold text-matte-black text-[10px] font-bold px-2 py-1 rounded shadow-lg">
+                      معاينة
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-white/10 flex justify-end">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className={clsx(
+                      "flex items-center gap-2 px-8 py-3 rounded-xl font-bold transition-all",
+                      success ? "bg-emerald-500 text-white" : "btn-gold"
+                    )}
+                  >
+                    {saving ? (
+                      "جاري الحفظ..."
+                    ) : success ? (
+                      <>
+                        <CheckCircle className="w-5 h-5" />
+                        تم الحفظ بنجاح
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" />
+                        حفظ التغييرات
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="glass-card p-8 space-y-6">
             <div className="flex items-center gap-3 border-b border-white/10 pb-4">
@@ -481,130 +483,136 @@ export default function Settings({ user }: { user: User }) {
             </form>
           </div>
 
-          <div className="glass-card p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div className="flex items-center gap-3">
-                <DbIcon className="text-gold w-6 h-6" />
-                <h3 className="text-xl font-bold">إدارة قاعدة البيانات</h3>
+          {(user.role === 'admin' || user.role === 'manager') && (
+            <div className="glass-card p-8 space-y-6">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <DbIcon className="text-gold w-6 h-6" />
+                  <h3 className="text-xl font-bold">إدارة قاعدة البيانات</h3>
+                </div>
+                <button 
+                  onClick={loadDbStats}
+                  disabled={dbLoading}
+                  className="p-2 hover:bg-white/10 rounded-full text-gold transition-all"
+                >
+                  <RefreshCw className={clsx("w-5 h-5", dbLoading && "animate-spin")} />
+                </button>
               </div>
-              <button 
-                onClick={loadDbStats}
-                disabled={dbLoading}
-                className="p-2 hover:bg-white/10 rounded-full text-gold transition-all"
-              >
-                <RefreshCw className={clsx("w-5 h-5", dbLoading && "animate-spin")} />
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">الرحلات</p>
-                <p className="text-2xl font-bold text-white">{dbStats?.trips || 0}</p>
-              </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">الحجوزات</p>
-                <p className="text-2xl font-bold text-white">{dbStats?.bookings || 0}</p>
-              </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">المعتمرين</p>
-                <p className="text-2xl font-bold text-white">{dbStats?.pilgrims || 0}</p>
-              </div>
-              <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">السجلات</p>
-                <p className="text-2xl font-bold text-white">{dbStats?.logs || 0}</p>
-              </div>
-            </div>
-
-            <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-4">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-white/40">حجم ملف قاعدة البيانات:</span>
-                <span className="text-white font-mono">
-                  {dbStats?.dbSize ? (dbStats.dbSize / 1024).toFixed(2) + ' KB' : '---'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-white/40">آخر تحديث للبيانات:</span>
-                <span className="text-white">
-                  {dbStats?.lastBackup ? new Date(dbStats.lastBackup).toLocaleString('ar-LY') : '---'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-white/40">حالة الاتصال:</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-400 font-bold">نشط (SQLite)</span>
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">الرحلات</p>
+                  <p className="text-2xl font-bold text-white">{dbStats?.trips || 0}</p>
+                </div>
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">الحجوزات</p>
+                  <p className="text-2xl font-bold text-white">{dbStats?.bookings || 0}</p>
+                </div>
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">المعتمرين</p>
+                  <p className="text-2xl font-bold text-white">{dbStats?.pilgrims || 0}</p>
+                </div>
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">السجلات</p>
+                  <p className="text-2xl font-bold text-white">{dbStats?.logs || 0}</p>
                 </div>
               </div>
-              <div className="pt-4">
-                <a 
-                  href="/api/db-download" 
-                  download 
-                  className="btn-gold w-full py-3 flex items-center justify-center gap-2 text-sm"
-                >
-                  <Save className="w-4 h-4" />
-                  تحميل نسخة احتياطية من قاعدة البيانات
-                </a>
-              </div>
-              <div className="pt-2 space-y-3">
-                {showRestoreConfirm ? (
-                  <div className="bg-gold/10 border border-gold/30 p-4 rounded-xl space-y-4">
-                    <p className="text-sm text-white/90 text-center">
-                      هل أنت متأكد من استعادة قاعدة البيانات؟ سيتم استبدال جميع البيانات الحالية.
-                    </p>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={confirmRestore}
-                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-sm font-bold transition-all"
-                      >
-                        تأكيد الاستعادة
-                      </button>
-                      <button 
-                        onClick={cancelRestore}
-                        className="flex-1 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg text-sm transition-all"
-                      >
-                        إلغاء
-                      </button>
-                    </div>
+
+              <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/40">حجم ملف قاعدة البيانات:</span>
+                  <span className="text-white font-mono">
+                    {dbStats?.dbSize ? (dbStats.dbSize / 1024).toFixed(2) + ' KB' : '---'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/40">آخر تحديث للبيانات:</span>
+                  <span className="text-white">
+                    {dbStats?.lastBackup ? new Date(dbStats.lastBackup).toLocaleString('ar-LY') : '---'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white/40">حالة الاتصال:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 font-bold">{dbStats?.dbType || 'نشط (Supabase)'}</span>
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                   </div>
-                ) : (
+                </div>
+                {dbStats?.dbType === 'SQLite (Local)' && (
                   <>
-                    <label 
-                      htmlFor="db-restore-input"
-                      className={clsx(
-                        "bg-white/5 text-white border border-white/10 hover:bg-white/10 w-full py-3 flex items-center justify-center gap-2 text-sm rounded-xl cursor-pointer transition-all",
-                        restoring && "opacity-50 cursor-not-allowed"
+                    <div className="pt-4">
+                      <a 
+                        href="/api/db-download" 
+                        download 
+                        className="btn-gold w-full py-3 flex items-center justify-center gap-2 text-sm"
+                      >
+                        <Save className="w-4 h-4" />
+                        تحميل نسخة احتياطية من قاعدة البيانات
+                      </a>
+                    </div>
+                    <div className="pt-2 space-y-3">
+                      {showRestoreConfirm ? (
+                        <div className="bg-gold/10 border border-gold/30 p-4 rounded-xl space-y-4">
+                          <p className="text-sm text-white/90 text-center">
+                            هل أنت متأكد من استعادة قاعدة البيانات؟ سيتم استبدال جميع البيانات الحالية.
+                          </p>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={confirmRestore}
+                              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-sm font-bold transition-all"
+                            >
+                              تأكيد الاستعادة
+                            </button>
+                            <button 
+                              onClick={cancelRestore}
+                              className="flex-1 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg text-sm transition-all"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <label 
+                            htmlFor="db-restore-input"
+                            className={clsx(
+                              "bg-white/5 text-white border border-white/10 hover:bg-white/10 w-full py-3 flex items-center justify-center gap-2 text-sm rounded-xl cursor-pointer transition-all",
+                              restoring && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            <Upload className="w-4 h-4" />
+                            {restoring ? 'جاري الاستعادة...' : 'استعادة نسخة احتياطية (رفع ملف .sqlite أو .db)'}
+                          </label>
+                          <input 
+                            id="db-restore-input"
+                            type="file" 
+                            className="hidden" 
+                            accept=".sqlite,.db,.sqlite3" 
+                            onChange={handleFileSelect}
+                            disabled={restoring}
+                          />
+                        </>
                       )}
-                    >
-                      <Upload className="w-4 h-4" />
-                      {restoring ? 'جاري الاستعادة...' : 'استعادة نسخة احتياطية (رفع ملف .sqlite أو .db)'}
-                    </label>
-                    <input 
-                      id="db-restore-input"
-                      type="file" 
-                      className="hidden" 
-                      accept=".sqlite,.db,.sqlite3" 
-                      onChange={handleFileSelect}
-                      disabled={restoring}
-                    />
+
+                      {restoreStatus.type === 'error' && (
+                        <div className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                          <AlertCircle className="w-4 h-4" />
+                          {restoreStatus.message}
+                        </div>
+                      )}
+
+                      {restoreStatus.type === 'success' && (
+                        <div className="flex items-center gap-2 text-emerald-500 text-xs bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
+                          <CheckCircle className="w-4 h-4" />
+                          {restoreStatus.message}
+                        </div>
+                      )}
+                    </div>
                   </>
-                )}
-
-                {restoreStatus.type === 'error' && (
-                  <div className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-3 rounded-lg border border-red-500/20">
-                    <AlertCircle className="w-4 h-4" />
-                    {restoreStatus.message}
-                  </div>
-                )}
-
-                {restoreStatus.type === 'success' && (
-                  <div className="flex items-center gap-2 text-emerald-500 text-xs bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
-                    <CheckCircle className="w-4 h-4" />
-                    {restoreStatus.message}
-                  </div>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
           <div className="glass-card p-8 space-y-6 opacity-50 pointer-events-none">
             <div className="flex items-center gap-3 border-b border-white/10 pb-4">

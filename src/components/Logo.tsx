@@ -8,13 +8,19 @@ interface LogoProps {
   iconSize?: number;
   textSize?: string;
   showSubtitle?: boolean;
+  dark?: boolean;
+  transparent?: boolean;
+  hideText?: boolean;
 }
 
 export default function Logo({ 
   className, 
   iconSize = 64, 
   textSize = "text-xl", 
-  showSubtitle = true 
+  showSubtitle = true,
+  dark = false,
+  transparent = false,
+  hideText = false
 }: LogoProps) {
   const [imgError, setImgError] = React.useState(false);
   const [customLogo, setCustomLogo] = React.useState<string | null>(null);
@@ -61,9 +67,13 @@ export default function Logo({
   return (
     <div className={clsx("flex items-center gap-4", className)}>
       <div className="relative group">
-        <div className="absolute -inset-1 bg-gradient-to-r from-gold/50 to-gold/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+        {!transparent && <div className="absolute -inset-1 bg-gradient-to-r from-gold/50 to-gold/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>}
         <div 
-          className="relative p-2 rounded-2xl bg-matte-dark border-2 border-gold/40 flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.2)] overflow-hidden"
+          className={clsx(
+            "relative p-2 rounded-2xl flex items-center justify-center overflow-hidden transition-all duration-500",
+            transparent ? "bg-transparent border-none shadow-none" : 
+            dark ? "bg-white border-2 border-gold/60 shadow-md" : "bg-matte-dark border-2 border-gold/40 shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+          )}
           style={{ width: iconSize, height: iconSize }}
         >
           {!imgError ? (
@@ -80,20 +90,26 @@ export default function Logo({
           )}
         </div>
       </div>
-      <div className="flex flex-col">
-        <h1 className={clsx("font-serif font-bold gold-text-gradient leading-none tracking-tight", textSize)}>
-          {companyName}
-        </h1>
-        {showSubtitle && (
-          <div className="flex items-center gap-2 mt-1.5">
-            <div className="h-px w-4 bg-gold/30" />
-            <p className="text-[9px] text-white/50 uppercase tracking-[0.3em] font-bold">
-              لإدارة العمرة
-            </p>
-            <div className="h-px w-4 bg-gold/30" />
-          </div>
-        )}
-      </div>
+      {!hideText && (
+        <div className="flex flex-col">
+          <h1 className={clsx(
+            "font-serif font-bold leading-none tracking-tight", 
+            textSize,
+            dark ? "text-matte-black" : "gold-text-gradient"
+          )}>
+            {companyName}
+          </h1>
+          {showSubtitle && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <div className={clsx("h-px w-4", dark ? "bg-black/20" : "bg-gold/30")} />
+              <p className={clsx("text-[9px] uppercase tracking-[0.3em] font-bold", dark ? "text-black/40" : "text-white/50")}>
+                لإدارة العمرة
+              </p>
+              <div className={clsx("h-px w-4", dark ? "bg-black/20" : "bg-gold/30")} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

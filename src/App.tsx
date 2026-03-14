@@ -14,6 +14,7 @@ import UsersManagement from './components/UsersManagement';
 import TripForm from './components/TripForm';
 import Settings from './components/Settings';
 import FinanceModule from './components/FinanceModule';
+import PilgrimCardsModule from './components/PilgrimCardsModule';
 import Sidebar from './components/Sidebar';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu } from 'lucide-react';
@@ -60,6 +61,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
             <Route path="/tracking" element={<TrackingModule user={user} />} />
             <Route path="/users" element={<UsersManagement user={user} />} />
             <Route path="/trips" element={<TripForm user={user} />} />
+            <Route path="/cards" element={<PilgrimCardsModule user={user} />} />
             <Route path="/settings" element={<Settings user={user} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
@@ -92,49 +94,6 @@ export default function App() {
       }
     };
 
-    // Migrate data from localStorage to API (one-time)
-    const migrateData = async () => {
-      const isMigrated = localStorage.getItem('data_migrated_to_sqlite');
-      if (isMigrated === 'true') return;
-
-      console.log('Starting data migration to SQLite...');
-      try {
-        const savedTrips = localStorage.getItem('trips');
-        const savedBookings = localStorage.getItem('bookings');
-
-        if (savedTrips) {
-          const trips = JSON.parse(savedTrips) as Trip[];
-          for (const trip of trips) {
-            await api.saveTrip(trip);
-          }
-          console.log(`Migrated ${trips.length} trips.`);
-        }
-
-        if (savedBookings) {
-          const bookings = JSON.parse(savedBookings) as Booking[];
-          for (const booking of bookings) {
-            // Ensure tripId is captured even if named tripid or trip_id in old data
-            const normalizedBooking = {
-              ...booking,
-              tripId: booking.tripId || (booking as any).tripid || (booking as any).trip_id
-            };
-            await api.saveBooking(normalizedBooking);
-          }
-          console.log(`Migrated ${bookings.length} bookings.`);
-        }
-
-        localStorage.setItem('data_migrated_to_sqlite', 'true');
-        console.log('Data migration completed successfully.');
-        
-        // Refresh the page or trigger a reload of data in components
-        if (savedTrips || savedBookings) {
-          window.location.reload();
-        }
-      } catch (error) {
-        console.error('Error during data migration:', error);
-      }
-    };
-
     const applyTheme = async () => {
       try {
         const settings = await api.getSettings();
@@ -150,7 +109,6 @@ export default function App() {
 
     if (user) {
       syncPermissions();
-      migrateData();
       applyTheme();
     }
     

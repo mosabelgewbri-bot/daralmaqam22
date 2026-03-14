@@ -38,6 +38,11 @@ export default function ReportsModule({ user }: { user: User }) {
           api.getTrips(),
           api.getBookings()
         ]);
+        console.log('Reports: Loaded trips:', tripsData.length);
+        console.log('Reports: Loaded bookings:', bookingsData.length);
+        if (bookingsData.length > 0) {
+          console.log('Reports: Sample booking:', bookingsData[0]);
+        }
         setTrips(tripsData);
         setBookings(bookingsData);
       } catch (error) {
@@ -52,15 +57,23 @@ export default function ReportsModule({ user }: { user: User }) {
   const getTripName = (input: Booking | string) => {
     if (typeof input === 'object' && (input as any).tripName) return (input as any).tripName;
     const tripId = typeof input === 'string' ? input : (input.tripId || (input as any).tripid || (input as any).trip_id);
-    return trips.find(t => String(t.id).trim() === String(tripId).trim())?.name || 'Unknown Trip';
+    const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(tripId).trim().toLowerCase());
+    return trip ? trip.name : 'رحلة غير معروفة';
+  };
+
+  const getTripNumber = (input: Booking | string) => {
+    if (typeof input === 'object' && (input as any).tripNumber) return (input as any).tripNumber;
+    const tripId = typeof input === 'string' ? input : (input.tripId || (input as any).tripid || (input as any).trip_id);
+    const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(tripId).trim().toLowerCase());
+    return trip ? trip.tripNumber : '---';
   };
 
   const baseFilteredBookings = bookings.filter(b => {
-    const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || '').trim().toLowerCase();
-    const sTripId = String(selectedTripId).trim().toLowerCase();
-    const matchesTrip = !selectedTripId || bTripId === sTripId;
+    const bTripId = String(b.tripId || '').trim().toLowerCase();
+    const sTripId = String(selectedTripId || '').trim().toLowerCase();
+    const matchesTrip = !sTripId || bTripId === sTripId;
     
-    const trip = trips.find(t => String(t.id) === bTripId);
+    const trip = trips.find(t => String(t.id).trim().toLowerCase() === bTripId);
     const matchesAirline = !selectedAirline || trip?.airline === selectedAirline;
     const matchesStatus = !selectedStatus || b.status === selectedStatus;
     const matchesGroup = !selectedGroupNo || b.groupNo === selectedGroupNo;
@@ -79,8 +92,8 @@ export default function ReportsModule({ user }: { user: User }) {
     const matchesDateFrom = !dateFrom || (bookingDate && bookingDate >= parseISO(dateFrom));
     const matchesDateTo = !dateTo || (bookingDate && bookingDate <= parseISO(dateTo));
 
-    const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-    const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+    const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+    const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
     const hasRemaining = remainingLYD > 0 || remainingUSD > 0;
     const matchesRemainingFilter = !filterRemainingOnly || hasRemaining;
 
@@ -97,13 +110,13 @@ export default function ReportsModule({ user }: { user: User }) {
   const roomingFilteredBookings = filteredBookings
     .map(b => ({
       ...b,
-      pilgrims: b.pilgrims.filter(p => p.roomType !== 'VisaOnly')
+      pilgrims: (b.pilgrims || []).filter(p => p.roomType !== 'VisaOnly')
     }))
     .filter(b => b.pilgrims.length > 0);
 
   // Pilgrim Data Logic
   const filteredPilgrims = baseFilteredBookings.flatMap(b => 
-    b.pilgrims.map((p, idx) => ({ 
+    (b.pilgrims || []).map((p, idx) => ({ 
       ...p, 
       bookingId: b.id, 
       bookingHead: b.headName, 
@@ -207,10 +220,10 @@ export default function ReportsModule({ user }: { user: User }) {
     
     if (activeTab === 'master') {
       data = filteredBookings.map(b => {
-        const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-        const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+        const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+        const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
         const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
-        const roomSummary = b.pilgrims.map(p => {
+        const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
                         p.roomType === 'Triple' ? 'ثلاثية' : 
                         p.roomType === 'Quad' ? 'رباعية' : 
@@ -220,24 +233,25 @@ export default function ReportsModule({ user }: { user: User }) {
 
         return {
           'رقم الفاتورة': b.id,
-          'رقم القيد': b.regId,
+          'رقم القيد': b.regId || '---',
+          'رقم الرحلة': getTripNumber(b),
           'الرحلة': trip?.name || '---',
-          'رب الأسرة': b.headName,
-          'الأسماء': b.pilgrims.map(p => p.name).join(', '),
-          'عدد الأفراد': b.passengerCount,
-          'رقم الهاتف': b.phone,
-          'فندق مكة': b.makkahHotel,
+          'رب الأسرة': b.headName || '---',
+          'الأسماء': (b.pilgrims || []).map(p => p.name || '---').join(', '),
+          'عدد الأفراد': b.passengerCount || 0,
+          'رقم الهاتف': b.phone || '---',
+          'فندق مكة': b.makkahHotel || '---',
           'رقم حجز مكة': b.makkahBookingNo || '---',
-          'فندق المدينة': b.madinahHotel,
+          'فندق المدينة': b.madinahHotel || '---',
           'رقم حجز المدينة': b.madinahBookingNo || '---',
           'توزيع الغرف': roomSummary,
           'رقم المجموعة': b.groupNo || '---',
-          'الحالة': b.status,
-          'التاريخ': new Date(b.createdAt).toLocaleDateString('ar-LY'),
-          'إجمالي (دينار)': b.totals.totalLYD,
+          'الحالة': b.status || '---',
+          'التاريخ': b.createdAt ? new Date(b.createdAt).toLocaleDateString('ar-LY') : '---',
+          'إجمالي (دينار)': b.totals?.totalLYD || 0,
           'مدفوع (دينار)': b.paidLYD || 0,
           'متبقي (دينار)': remainingLYD,
-          'إجمالي (دولار)': b.totals.totalUSD,
+          'إجمالي (دولار)': b.totals?.totalUSD || 0,
           'مدفوع (دولار)': b.paidUSD || 0,
           'متبقي (دولار)': remainingUSD,
         };
@@ -246,7 +260,7 @@ export default function ReportsModule({ user }: { user: User }) {
     } else if (activeTab === 'rooming') {
       data = roomingFilteredBookings.map(b => {
         const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
-        const roomSummary = b.pilgrims.map(p => {
+        const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
                         p.roomType === 'Triple' ? 'ثلاثية' : 
                         p.roomType === 'Quad' ? 'رباعية' : 
@@ -255,16 +269,17 @@ export default function ReportsModule({ user }: { user: User }) {
         }).join(', ');
 
         return {
-          'رقم القيد': b.regId,
+          'رقم القيد': b.regId || '---',
+          'رقم الرحلة': getTripNumber(b),
           'الرحلة': trip?.name || '---',
-          'رب الأسرة': b.headName,
-          'الأسماء': b.pilgrims.map(p => p.name).join(', '),
+          'رب الأسرة': b.headName || '---',
+          'الأسماء': (b.pilgrims || []).map(p => p.name || '---').join(', '),
           'توزيع الغرف': roomSummary,
-          'فندق مكة': b.makkahHotel,
+          'فندق مكة': b.makkahHotel || '---',
           'رقم حجز مكة': b.makkahBookingNo || '',
           'دخول مكة': b.makkahCheckIn || '',
           'خروج مكة': calculateCheckOut(b.makkahCheckIn, b.makkahNights),
-          'فندق المدينة': b.madinahHotel,
+          'فندق المدينة': b.madinahHotel || '---',
           'رقم حجز المدينة': b.madinahBookingNo || '',
           'دخول المدينة': b.madinahCheckIn || '',
           'خروج المدينة': calculateCheckOut(b.madinahCheckIn, b.madinahNights),
@@ -275,21 +290,22 @@ export default function ReportsModule({ user }: { user: User }) {
       data = filteredPilgrims.map(p => {
         const trip = trips.find(t => String(t.id).trim() === String(p.tripId || (p as any).tripid || (p as any).trip_id).trim());
         return {
-          'اسم المعتمر': p.name,
-          'رقم الجواز': p.passportNo,
-          'رقم القيد': p.regId,
+          'اسم المعتمر': p.name || '---',
+          'رقم الجواز': p.passportNo || '---',
+          'رقم القيد': p.regId || '---',
+          'رقم الرحلة': getTripNumber(p.bookingId),
           'الرحلة': trip?.name || '---',
           'رقم المجموعة': p.groupNo || '---',
-          'الحالة': p.visaStatus
+          'الحالة': p.visaStatus || 'Pending'
         };
       });
       filename = `Dara_Visa_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     } else if (activeTab === 'finance') {
       data = filteredBookings.map(b => {
-        const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-        const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+        const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+        const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
         const trip = trips.find(t => String(t.id) === String(b.tripId || (b as any).tripid || (b as any).trip_id));
-        const roomSummary = b.pilgrims.map(p => {
+        const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
                         p.roomType === 'Triple' ? 'ثلاثية' : 
                         p.roomType === 'Quad' ? 'رباعية' : 
@@ -298,14 +314,16 @@ export default function ReportsModule({ user }: { user: User }) {
         }).join(', ');
 
         return {
-          'رقم القيد': b.regId,
+          'رقم القيد': b.regId || '---',
+          'رقم الرحلة': getTripNumber(b),
           'الرحلة': trip?.name || '---',
-          'رب الأسرة': b.headName,
+          'رب الأسرة': b.headName || '---',
+          'رقم الهاتف': b.phone || '---',
           'توزيع الغرف': roomSummary,
-          'إجمالي د.ل': b.totals.totalLYD,
+          'إجمالي د.ل': b.totals?.totalLYD || 0,
           'مدفوع د.ل': b.paidLYD || 0,
           'متبقي د.ل': remainingLYD,
-          'إجمالي $': b.totals.totalUSD,
+          'إجمالي $': b.totals?.totalUSD || 0,
           'مدفوع $': b.paidUSD || 0,
           'متبقي $': remainingUSD,
         };
@@ -314,16 +332,17 @@ export default function ReportsModule({ user }: { user: User }) {
     } else {
       data = filteredPilgrims.map(p => {
         return {
-          'Name': p.name,
-          'Passport': p.passportNo,
-          'Relationship': p.relationship,
-          'Room Type': p.roomType,
-          'Booking Head': p.bookingHead,
-          'Trip': p.tripName,
-          'Visa Status': p.visaStatus
+          'اسم المعتمر': p.name || '---',
+          'رقم الجواز': p.passportNo || '---',
+          'الصلة': p.relationship || '---',
+          'نوع الغرفة': p.roomType || '---',
+          'رب الأسرة': p.bookingHead || '---',
+          'رقم الرحلة': getTripNumber(p.bookingId),
+          'الرحلة': p.tripName || '---',
+          'حالة التأشيرة': p.visaStatus || 'Pending'
         };
       });
-      filename = "Dara_AlMaqam_Pilgrims_Report.xlsx";
+      filename = `Dara_Pilgrims_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     }
     
     const ws = XLSX.utils.json_to_sheet(data);
@@ -397,6 +416,7 @@ export default function ReportsModule({ user }: { user: User }) {
           <tr style="background-color: #1a1a1a; color: #ffffff;">
             ${activeTab === 'master' ? `
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الأسماء</th>
@@ -412,6 +432,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">متبقي $</th>
             ` : activeTab === 'rooming' ? `
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الهاتف</th>
@@ -429,11 +450,13 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">اسم المعتمر</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الجواز</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">المجموعة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">الحالة</th>
             ` : activeTab === 'finance' ? `
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الهاتف</th>
@@ -449,6 +472,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 12px; text-align: center;">الصلة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: center;">نوع الغرفة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: right;">رب الأسرة</th>
+              <th style="border: 1px solid #333; padding: 12px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: center;">حالة التأشيرة</th>
             `}
@@ -456,10 +480,10 @@ export default function ReportsModule({ user }: { user: User }) {
         </thead>
         <tbody>
           ${activeTab === 'master' ? filteredBookings.map((b, idx) => {
-            const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-            const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+            const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+            const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
             const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
-            const roomSummary = b.pilgrims.map(p => {
+            const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
                             p.roomType === 'Triple' ? 'ثلاثية' : 
                             p.roomType === 'Quad' ? 'رباعية' : 
@@ -468,24 +492,25 @@ export default function ReportsModule({ user }: { user: User }) {
             }).join(' - ');
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-size: 11px;">${b.pilgrims.map(p => `<div style="margin-bottom: 2px; white-space: nowrap;">${p.name}</div>`).join('')}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-size: 11px;">${(b.pilgrims || []).map(p => `<div style="margin-bottom: 2px; white-space: nowrap;">${p.name || '---'}</div>`).join('')}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 11px;">${roomSummary}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.passengerCount}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.passengerCount || 0}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.phone || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.makkahHotel} (${b.makkahBookingNo || '---'})</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.madinahHotel} (${b.madinahBookingNo || '---'})</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.makkahHotel || '---'} (${b.makkahBookingNo || '---'})</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.madinahHotel || '---'} (${b.madinahBookingNo || '---'})</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">${b.groupNo || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalLYD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalLYD || 0).toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingLYD.toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalUSD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalUSD || 0).toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingUSD.toLocaleString()}</td>
             </tr>
           `}).join('') : activeTab === 'rooming' ? roomingFilteredBookings.map((b, idx) => {
             const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
-            const roomSummary = b.pilgrims.map(p => {
+            const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
                             p.roomType === 'Triple' ? 'ثلاثية' : 
                             p.roomType === 'Quad' ? 'رباعية' : 
@@ -494,17 +519,18 @@ export default function ReportsModule({ user }: { user: User }) {
             }).join(' - ');
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; white-space: nowrap;">${b.phone || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-size: 10px;">${b.pilgrims.map(p => `<div style="margin-bottom: 2px; white-space: nowrap;">${p.name}</div>`).join('')}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-size: 10px;">${(b.pilgrims || []).map(p => `<div style="margin-bottom: 2px; white-space: nowrap;">${p.name || '---'}</div>`).join('')}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 10px;">${roomSummary}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.makkahHotel}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.makkahHotel || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.makkahBookingNo || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.makkahCheckIn || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; color: #2b8a3e;">${calculateCheckOut(b.makkahCheckIn, b.makkahNights)}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.madinahHotel}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px;">${b.madinahHotel || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.madinahBookingNo || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${b.madinahCheckIn || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; color: #2b8a3e;">${calculateCheckOut(b.madinahCheckIn, b.madinahNights)}</td>
@@ -513,18 +539,19 @@ export default function ReportsModule({ user }: { user: User }) {
             const trip = trips.find(t => String(t.id).trim() === String(p.tripId || (p as any).tripid || (p as any).trip_id).trim());
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold;">${p.name}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.passportNo}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; color: #d4af37;">${p.regId}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold;">${p.name || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.passportNo || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; color: #d4af37;">${p.regId || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(p.bookingId)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">${p.groupNo || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus || 'Pending'}</td>
             </tr>
           `; }).join('') : activeTab === 'finance' ? filteredBookings.map((b, idx) => {
-            const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-            const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+            const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+            const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
             const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
-            const roomSummary = b.pilgrims.map(p => {
+            const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
                             p.roomType === 'Triple' ? 'ثلاثية' : 
                             p.roomType === 'Quad' ? 'رباعية' : 
@@ -533,28 +560,29 @@ export default function ReportsModule({ user }: { user: User }) {
             }).join(' - ');
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; white-space: nowrap;">${b.phone || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 11px;">${roomSummary}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalLYD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 10px;">${roomSummary}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalLYD || 0).toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingLYD.toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalUSD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalUSD || 0).toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingUSD.toLocaleString()}</td>
             </tr>
           `; }).join('') : filteredPilgrims.map((p, idx) => {
-            const trip = trips.find(t => String(t.id).trim() === String(p.tripId || (p as any).tripid || (p as any).trip_id).trim());
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${p.name}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-mono: true;">${p.passportNo}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${p.name || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${p.passportNo || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${bookings.find(b => b.id === p.bookingId)?.phone || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.relationship}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.roomType}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${p.bookingHead}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; color: #d4af37;">${p.tripName}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.relationship || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.roomType || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px;">${p.bookingHead || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(p.bookingId)}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; color: #d4af37;">${p.tripName || '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus || 'Pending'}</td>
             </tr>
           `; }).join('')}
         </tbody>
@@ -901,6 +929,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <thead className="bg-white/5 uppercase text-white/40">
                 <tr>
                   <th className="px-4 py-4">رقم القيد</th>
+                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">رب الأسرة</th>
                   <th className="px-4 py-4">الأسماء</th>
@@ -919,8 +948,8 @@ export default function ReportsModule({ user }: { user: User }) {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filteredBookings.map((b, idx) => {
-                  const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-                  const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+                  const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+                  const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
                   return (
                     <tr key={idx} className="hover:bg-white/5 transition-colors">
                       <td className="px-4 py-4 font-mono text-gold font-bold">
@@ -928,22 +957,25 @@ export default function ReportsModule({ user }: { user: User }) {
                           onClick={() => navigate(`/booking/${b.id}`)}
                           className="hover:underline"
                         >
-                          {b.regId}
+                          {b.regId || '---'}
                         </button>
+                      </td>
+                      <td className="px-4 py-4 text-white/40 font-mono">
+                        {getTripNumber(b)}
                       </td>
                       <td className="px-4 py-4 text-white/60">
                         {getTripName(b)}
                       </td>
-                      <td className="px-4 py-4 font-medium whitespace-nowrap">{b.headName}</td>
+                      <td className="px-4 py-4 font-medium whitespace-nowrap">{b.headName || '---'}</td>
                       <td className="px-4 py-4 text-[10px] text-white/60 max-w-[200px]">
                         <div className="flex flex-col gap-1">
-                          {b.pilgrims.map((p, pIdx) => (
-                            <div key={pIdx} className="whitespace-nowrap">{p.name}</div>
+                          {(b.pilgrims || []).map((p, pIdx) => (
+                            <div key={pIdx} className="whitespace-nowrap">{p.name || '---'}</div>
                           ))}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-[10px] text-gold/60">
-                        {b.pilgrims.map(p => {
+                        {(b.pilgrims || []).map(p => {
                           const label = p.roomType === 'Double' ? 'ثنائية' : 
                                         p.roomType === 'Triple' ? 'ثلاثية' : 
                                         p.roomType === 'Quad' ? 'رباعية' : 
@@ -951,7 +983,7 @@ export default function ReportsModule({ user }: { user: User }) {
                           return label;
                         }).join(' - ')}
                       </td>
-                      <td className="px-4 py-4">{b.passengerCount}</td>
+                      <td className="px-4 py-4">{b.passengerCount || 0}</td>
                       <td className="px-4 py-4 font-mono text-white/60">{b.phone || '---'}</td>
                       <td className="px-4 py-4 text-xs">
                         {b.makkahHotel}
@@ -962,14 +994,14 @@ export default function ReportsModule({ user }: { user: User }) {
                         <div className="text-[10px] text-white/40">{b.madinahBookingNo || '---'}</div>
                       </td>
                       <td className="px-4 py-4 font-bold text-gold">{b.groupNo || '---'}</td>
-                      <td className="px-4 py-4 font-bold">{b.totals.totalLYD.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-bold">{(b.totals?.totalLYD || 0).toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
                         remainingLYD > 0 ? "text-red-400" : "text-emerald-400"
                       )}>
                         {remainingLYD.toLocaleString()}
                       </td>
-                      <td className="px-4 py-4 font-bold">{b.totals.totalUSD.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-bold">{(b.totals?.totalUSD || 0).toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
                         remainingUSD > 0 ? "text-red-400" : "text-emerald-400"
@@ -1023,6 +1055,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <thead className="bg-white/5 uppercase text-white/40">
                 <tr>
                   <th className="px-2 py-3">رقم القيد</th>
+                  <th className="px-2 py-3">رقم الرحلة</th>
                   <th className="px-2 py-3">الرحلة</th>
                   <th className="px-2 py-3">رب الأسرة</th>
                   <th className="px-2 py-3">رقم الهاتف</th>
@@ -1041,22 +1074,25 @@ export default function ReportsModule({ user }: { user: User }) {
               <tbody className="divide-y divide-white/5">
                 {roomingFilteredBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-2 py-3 font-mono text-gold">{b.regId}</td>
-                    <td className="px-2 py-3 text-white/40">
+                    <td className="px-2 py-3 font-mono text-gold">{b.regId || '---'}</td>
+                    <td className="px-2 py-3 text-white/40 font-mono">
+                      {getTripNumber(b)}
+                    </td>
+                    <td className="px-2 py-3 text-white/60">
                       {getTripName(b)}
                     </td>
-                    <td className="px-2 py-3 font-medium whitespace-nowrap">{b.headName}</td>
+                    <td className="px-2 py-3 font-medium whitespace-nowrap">{b.headName || '---'}</td>
                     <td className="px-2 py-3 font-mono text-white/60">{b.phone || '---'}</td>
                     <td className="px-2 py-3 text-white/60 max-w-[150px]">
                       <div className="flex flex-col gap-1">
-                        {b.pilgrims.map((p, idx) => (
-                          <div key={idx} className="whitespace-nowrap" title={p.name}>{p.name}</div>
+                        {(b.pilgrims || []).map((p, idx) => (
+                          <div key={idx} className="whitespace-nowrap" title={p.name}>{p.name || '---'}</div>
                         ))}
                       </div>
                     </td>
                     <td className="px-2 py-3 text-[9px] text-gold/60">
                       <div className="flex flex-col gap-1">
-                        {b.pilgrims.map((p, idx) => {
+                        {(b.pilgrims || []).map((p, idx) => {
                           const label = p.roomType === 'Double' ? 'ثنائية' : 
                                         p.roomType === 'Triple' ? 'ثلاثية' : 
                                         p.roomType === 'Quad' ? 'رباعية' : 
@@ -1065,13 +1101,13 @@ export default function ReportsModule({ user }: { user: User }) {
                         })}
                       </div>
                     </td>
-                    <td className="px-2 py-3 bg-gold/5">{b.makkahHotel}</td>
+                    <td className="px-2 py-3 bg-gold/5">{b.makkahHotel || '---'}</td>
                     <td className="px-2 py-3 bg-gold/5">{b.makkahBookingNo || '---'}</td>
                     <td className="px-2 py-3 bg-gold/5">{b.makkahCheckIn || '---'}</td>
                     <td className="px-2 py-3 bg-gold/5 font-mono text-emerald-400">
                       {calculateCheckOut(b.makkahCheckIn, b.makkahNights)}
                     </td>
-                    <td className="px-2 py-3 bg-blue-500/5">{b.madinahHotel}</td>
+                    <td className="px-2 py-3 bg-blue-500/5">{b.madinahHotel || '---'}</td>
                     <td className="px-2 py-3 bg-blue-500/5">{b.madinahBookingNo || '---'}</td>
                     <td className="px-2 py-3 bg-blue-500/5">{b.madinahCheckIn || '---'}</td>
                     <td className="px-2 py-3 bg-blue-500/5 font-mono text-emerald-400">
@@ -1088,6 +1124,7 @@ export default function ReportsModule({ user }: { user: User }) {
                   <th className="px-4 py-4">اسم المعتمر</th>
                   <th className="px-4 py-4">رقم الجواز</th>
                   <th className="px-4 py-4">رقم القيد</th>
+                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">رقم المجموعة</th>
                   <th className="px-4 py-4">الحالة</th>
@@ -1096,11 +1133,14 @@ export default function ReportsModule({ user }: { user: User }) {
               <tbody className="divide-y divide-white/5">
                 {filteredPilgrims.map((p, idx) => (
                   <tr key={idx} className="hover:bg-white/5 transition-colors">
-                    <td className="px-4 py-4 font-medium">{p.name}</td>
-                    <td className="px-4 py-4 font-mono text-white/60">{p.passportNo}</td>
-                    <td className="px-4 py-4 text-xs text-gold">{p.regId}</td>
+                    <td className="px-4 py-4 font-medium">{p.name || '---'}</td>
+                    <td className="px-4 py-4 font-mono text-white/60">{p.passportNo || '---'}</td>
+                    <td className="px-4 py-4 text-xs text-gold">{p.regId || '---'}</td>
+                    <td className="px-4 py-4 text-white/40 font-mono">
+                      {getTripNumber(p.bookingId)}
+                    </td>
                     <td className="px-4 py-4 text-white/40">
-                      {p.tripName}
+                      {p.tripName || '---'}
                     </td>
                     <td className="px-4 py-4 font-bold text-gold">{p.groupNo || '---'}</td>
                     <td className="px-4 py-4">
@@ -1110,7 +1150,7 @@ export default function ReportsModule({ user }: { user: User }) {
                         p.visaStatus === 'Processed' && "text-blue-500 border-blue-500/20",
                         p.visaStatus === 'Visa Issued' && "text-emerald-500 border-emerald-500/20"
                       )}>
-                        {p.visaStatus}
+                        {p.visaStatus || 'Pending'}
                       </span>
                     </td>
                   </tr>
@@ -1122,6 +1162,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <thead className="bg-white/5 uppercase text-white/40">
                 <tr>
                   <th className="px-4 py-4">رقم القيد</th>
+                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">رب الأسرة</th>
                   <th className="px-4 py-4">رقم الهاتف</th>
@@ -1136,18 +1177,21 @@ export default function ReportsModule({ user }: { user: User }) {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filteredBookings.map((b, idx) => {
-                  const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-                  const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+                  const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+                  const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
                   return (
                     <tr key={idx} className="hover:bg-white/5 transition-colors">
-                      <td className="px-4 py-4 font-mono text-gold font-bold">{b.regId}</td>
-                      <td className="px-4 py-4 text-white/40">
+                      <td className="px-4 py-4 font-mono text-gold font-bold">{b.regId || '---'}</td>
+                      <td className="px-4 py-4 text-white/40 font-mono">
+                        {getTripNumber(b)}
+                      </td>
+                      <td className="px-4 py-4 text-white/60">
                         {getTripName(b)}
                       </td>
-                      <td className="px-4 py-4 font-medium whitespace-nowrap">{b.headName}</td>
+                      <td className="px-4 py-4 font-medium whitespace-nowrap">{b.headName || '---'}</td>
                       <td className="px-4 py-4 font-mono text-white/60">{b.phone || '---'}</td>
                       <td className="px-4 py-4 text-[10px] text-gold/60">
-                        {b.pilgrims.map(p => {
+                        {(b.pilgrims || []).map(p => {
                           const label = p.roomType === 'Double' ? 'ثنائية' : 
                                         p.roomType === 'Triple' ? 'ثلاثية' : 
                                         p.roomType === 'Quad' ? 'رباعية' : 
@@ -1155,7 +1199,7 @@ export default function ReportsModule({ user }: { user: User }) {
                           return label;
                         }).join(' - ')}
                       </td>
-                      <td className="px-4 py-4">{b.totals.totalLYD.toLocaleString()}</td>
+                      <td className="px-4 py-4">{(b.totals?.totalLYD || 0).toLocaleString()}</td>
                       <td className="px-4 py-4">{(b.paidLYD || 0).toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
@@ -1163,7 +1207,7 @@ export default function ReportsModule({ user }: { user: User }) {
                       )}>
                         {remainingLYD.toLocaleString()}
                       </td>
-                      <td className="px-4 py-4">{b.totals.totalUSD.toLocaleString()}</td>
+                      <td className="px-4 py-4">{(b.totals?.totalUSD || 0).toLocaleString()}</td>
                       <td className="px-4 py-4">{(b.paidUSD || 0).toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
@@ -1186,6 +1230,7 @@ export default function ReportsModule({ user }: { user: User }) {
                   <th className="px-4 py-4">الصلة</th>
                   <th className="px-4 py-4">نوع الغرفة</th>
                   <th className="px-4 py-4">رب الأسرة</th>
+                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">حالة التأشيرة</th>
                   <th className="px-4 py-4">إجراءات</th>
@@ -1203,7 +1248,7 @@ export default function ReportsModule({ user }: { user: User }) {
                           onChange={(e) => setEditingPilgrim({...editingPilgrim, data: {...editingPilgrim.data, name: e.target.value}})}
                         />
                       ) : (
-                        <span className="font-medium">{p.name}</span>
+                        <span className="font-medium">{p.name || '---'}</span>
                       )}
                     </td>
                     <td className="px-4 py-4 font-mono">
@@ -1215,24 +1260,27 @@ export default function ReportsModule({ user }: { user: User }) {
                           onChange={(e) => setEditingPilgrim({...editingPilgrim, data: {...editingPilgrim.data, passportNo: e.target.value}})}
                         />
                       ) : (
-                        p.passportNo
+                        p.passportNo || '---'
                       )}
                     </td>
                     <td className="px-4 py-4 font-mono text-white/60">
                       {bookings.find(b => b.id === p.bookingId)?.phone || '---'}
                     </td>
-                    <td className="px-4 py-4">{p.relationship}</td>
+                    <td className="px-4 py-4">{p.relationship || '---'}</td>
                     <td className="px-4 py-4">
                       {p.roomType === 'Double' ? 'ثنائية' : 
                        p.roomType === 'Triple' ? 'ثلاثية' : 
                        p.roomType === 'Quad' ? 'رباعية' : 
                        p.roomType === 'Quint' ? 'خماسية' : 'تأشيرة فقط'}
                     </td>
-                    <td className="px-4 py-4 text-white/60">{p.bookingHead}</td>
-                    <td className="px-4 py-4 text-gold">{p.tripName}</td>
+                    <td className="px-4 py-4 text-white/60">{p.bookingHead || '---'}</td>
+                    <td className="px-4 py-4 text-white/40 font-mono">
+                      {getTripNumber(p.bookingId)}
+                    </td>
+                    <td className="px-4 py-4 text-gold">{p.tripName || '---'}</td>
                     <td className="px-4 py-4">
                       <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                        {p.visaStatus}
+                        {p.visaStatus || 'Pending'}
                       </span>
                     </td>
                     <td className="px-4 py-4">

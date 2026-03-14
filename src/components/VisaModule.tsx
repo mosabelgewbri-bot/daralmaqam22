@@ -58,7 +58,7 @@ export default function VisaModule({ user }: { user: User }) {
               regId: booking.regId,
               visaStatus: p.visaStatus || 'Pending'
             } as any);
-          } else if (!searchTerm || booking.id.toLowerCase().includes(lowerSearch) || (booking.regId || '').toLowerCase().includes(lowerSearch)) {
+          } else if (!searchTerm || (booking.id || '').toLowerCase().includes(lowerSearch) || (booking.regId || '').toLowerCase().includes(lowerSearch)) {
             results.push({
               ...p,
               bookingId: booking.id,

@@ -129,16 +129,24 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
   ];
 
   const filteredModules = modules.filter(m => {
-    const savedPermissions = localStorage.getItem('role_permissions');
-    if (savedPermissions) {
-      const permissions = JSON.parse(savedPermissions) as any[];
-      const rolePerms = permissions.find(p => p.role === user.role);
-      return rolePerms?.allowedScreens.includes(m.id);
+    try {
+      const savedPermissions = localStorage.getItem('role_permissions');
+      if (savedPermissions) {
+        const permissions = JSON.parse(savedPermissions) as any[];
+        const rolePerms = permissions.find(p => p.role === user.role);
+        if (rolePerms && Array.isArray(rolePerms.allowedScreens) && rolePerms.allowedScreens.length > 0) {
+          return rolePerms.allowedScreens.includes(m.id);
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing permissions:', e);
     }
+    
     // Fallback
     if (user.role === 'admin') return true;
     if (user.role === 'staff') return ['booking', 'rooming', 'tracking', 'finance'].includes(m.id);
     if (user.role === 'accountant') return ['reports', 'finance'].includes(m.id);
+    if (user.role === 'manager') return true;
     return false;
   });
 
@@ -389,7 +397,7 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
                   >
                     <div className="flex items-center gap-4 mb-3 sm:mb-0">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gold/20 to-gold/5 flex items-center justify-center text-gold font-serif text-xl border border-gold/10">
-                        {booking.headName.charAt(0)}
+                        {booking.headName?.charAt(0) || '?'}
                       </div>
                       <div>
                         <p className="font-bold text-white group-hover:text-gold transition-colors whitespace-nowrap">{booking.headName}</p>
