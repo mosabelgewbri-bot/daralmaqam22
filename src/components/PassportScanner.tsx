@@ -42,7 +42,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
             }
           } else {
             console.warn("PassportScanner: aistudio API not available");
-            setError('مفتاح API الخاص بـ Gemini غير متوفر. يرجى ضبط GEMINI_API_KEY في إعدادات البيئة.');
+            setError('مفتاح API غير موجود. إذا كنت تستخدم Vercel، يرجى إضافة GEMINI_API_KEY في إعدادات Environment Variables ثم إعادة النشر.');
             setCapturedImage(null);
             setLoading(false);
             return;
