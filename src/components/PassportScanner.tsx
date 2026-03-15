@@ -72,7 +72,11 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
         }
       } catch (err: any) {
         console.error('PassportScanner: Scan error:', err);
-        setError(`حدث خطأ أثناء معالجة الصورة: ${err.message || 'خطأ غير معروف'}`);
+        if (err.message && err.message.includes("API key is not configured")) {
+          setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
+        } else {
+          setError(`حدث خطأ أثناء معالجة الصورة: ${err.message || 'خطأ غير معروف'}`);
+        }
         setCapturedImage(null);
       } finally {
         setLoading(false);
@@ -209,7 +213,11 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                               setCapturedImage(null);
                             }
                           } catch (err: any) {
-                            setError(`خطأ: ${err.message}`);
+                            if (err.message && err.message.includes("API key is not configured")) {
+                              setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
+                            } else {
+                              setError(`خطأ: ${err.message}`);
+                            }
                             setCapturedImage(null);
                           } finally {
                             setLoading(false);

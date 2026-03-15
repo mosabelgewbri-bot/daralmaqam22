@@ -304,10 +304,10 @@ async function startServer() {
       const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
       const base64Data = image.includes(",") ? image.split(",")[1] : image;
 
-      console.log("Server OCR: Sending request to Gemini (3-flash)...");
+      console.log("Server OCR: Sending request to Gemini (1.5-flash)...");
       
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: {
           parts: [
             {
