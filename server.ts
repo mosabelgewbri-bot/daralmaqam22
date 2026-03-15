@@ -275,8 +275,14 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 // Helper to clean API Key
 function cleanGeminiKey(key: string | undefined): string {
   if (!key) return '';
+  // Remove common prefixes if user accidentally pasted them
+  let cleaned = key.trim();
+  if (cleaned.includes('=')) {
+    cleaned = cleaned.split('=').pop() || cleaned;
+  }
+  
   // Remove all whitespace, quotes, and non-printable characters
-  return key
+  return cleaned
     .replace(/\s/g, '')
     .replace(/^["']|["']$/g, '')
     .replace(/[\u200B-\u200D\uFEFF\u0000-\u001F\u007F-\u009F]/g, '')
@@ -298,8 +304,8 @@ app.get("/api/test", (req, res) => {
 });
 
 app.get("/api/ocr/debug", async (req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY || "";
-  const cleanedKey = cleanGeminiKey(apiKey);
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const cleanedKey = cleanGeminiKey(rawKey);
   
   if (!cleanedKey) {
     return res.json({ status: "missing", message: "GEMINI_API_KEY is not set" });
@@ -326,8 +332,8 @@ app.get("/api/ocr/debug", async (req, res) => {
     suffix: cleanedKey.substring(cleanedKey.length - 4),
     length: cleanedKey.length,
     startsWithAIza: cleanedKey.startsWith("AIza"),
-    hasQuotes: apiKey.startsWith('"') || apiKey.startsWith("'") || apiKey.endsWith('"') || apiKey.endsWith("'"),
-    hasWhitespace: /\s/.test(apiKey),
+    hasQuotes: rawKey ? (rawKey.startsWith('"') || rawKey.startsWith("'") || rawKey.endsWith('"') || rawKey.endsWith("'")) : false,
+    hasWhitespace: rawKey ? /\s/.test(rawKey) : false,
     testCall: {
       result: testResult,
       error: testError
@@ -345,7 +351,12 @@ async function startServer() {
         return res.status(400).json({ error: "Image is required" });
       }
 
-      const apiKey = cleanGeminiKey(process.env.GEMINI_API_KEY);
+      const apiKey = cleanGeminiKey(
+        process.env.GEMINI_API_KEY || 
+        process.env.GOOGLE_API_KEY || 
+        process.env.API_KEY || 
+        process.env.VITE_GEMINI_API_KEY
+      );
 
       if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey === "null") {
         console.error("Server OCR: GEMINI_API_KEY is missing or invalid after cleaning");

@@ -162,10 +162,12 @@ export default function BookingForm({ user }: { user: User }) {
         // Provide more specific error message if available
         let errorMessage = "فشل استخراج البيانات من الصورة. يرجى إدخال البيانات يدوياً.";
         if (e.message) {
-          if (e.message.includes("API key not valid") || e.message.includes("غير صالح")) {
-            errorMessage = "مفتاح API غير صالح. يرجى التحقق من إعدادات النظام.";
+          if (e.message.includes("API key not valid") || e.message.includes("غير صالح") || e.message.includes("API_KEY_INVALID")) {
+            errorMessage = "مفتاح API غير صالح. يرجى التأكد من نسخ المفتاح كاملاً من Google AI Studio وتفعيل Generative Language API.";
           } else if (e.message.includes("Quota exceeded") || e.message.includes("تجاوز حصة")) {
-            errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API.";
+            errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.";
+          } else if (e.message.includes("API key is not configured") || e.message.includes("غير مكوّن")) {
+            errorMessage = "مفتاح API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel.";
           }
         }
         
