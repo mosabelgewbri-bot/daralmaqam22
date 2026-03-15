@@ -72,8 +72,23 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
         }
       } catch (err: any) {
         console.error('PassportScanner: Scan error:', err);
-        if (err.message && err.message.includes("API key is not configured")) {
+        if (err.message && (err.message.includes("API key is not configured") || err.message.includes("غير مكوّن"))) {
           setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
+        } else if (err.message && (err.message.includes("API key not valid") || err.message.includes("غير صالح"))) {
+          setError(
+            <span>
+              مفتاح API المستخدم غير صالح. يرجى التأكد من:
+              <ul className="list-disc list-inside mt-2 text-right">
+                <li>نسخ المفتاح الصحيح من Google AI Studio.</li>
+                <li>المفتاح يجب أن يبدأ بـ <code className="bg-white/20 px-1 rounded">AIza</code>.</li>
+                <li>عدم وجود مسافات أو علامات تنصيص زائدة في Vercel.</li>
+              </ul>
+              <div className="mt-3 text-xs opacity-70">
+                يمكنك فحص حالة الإعدادات عبر الرابط: 
+                <a href="/api/ocr/debug" target="_blank" className="underline ml-1">اضغط هنا للفحص</a>
+              </div>
+            </span>
+          );
         } else {
           setError(`حدث خطأ أثناء معالجة الصورة: ${err.message || 'خطأ غير معروف'}`);
         }
@@ -213,8 +228,10 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                               setCapturedImage(null);
                             }
                           } catch (err: any) {
-                            if (err.message && err.message.includes("API key is not configured")) {
+                            if (err.message && (err.message.includes("API key is not configured") || err.message.includes("غير مكوّن"))) {
                               setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
+                            } else if (err.message && (err.message.includes("API key not valid") || err.message.includes("غير صالح"))) {
+                              setError('مفتاح API المستخدم غير صالح. يرجى التأكد من نسخ المفتاح الصحيح من Google AI Studio وإعادة وضعه في Vercel.');
                             } else {
                               setError(`خطأ: ${err.message}`);
                             }

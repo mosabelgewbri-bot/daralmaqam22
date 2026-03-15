@@ -16,8 +16,12 @@ console.log(`Server root directory: ${__dirname}`);
 const DB_PATH = path.resolve(__dirname, "database.sqlite");
 let db: Database.Database;
 try {
-  console.log(`Initializing database at ${DB_PATH}...`);
-  db = new Database(DB_PATH);
+  // On Vercel, we might not have write access to the root, so use /tmp or memory
+  const isVercel = process.env.VERCEL === "1";
+  const actualDbPath = isVercel ? ":memory:" : DB_PATH;
+  
+  console.log(`Initializing database at ${actualDbPath}...`);
+  db = new Database(actualDbPath);
   db.pragma('foreign_keys = ON');
   console.log("Database initialized successfully.");
 } catch (error) {
@@ -262,9 +266,10 @@ try {
   console.error("Failed to migrate permissions for settings screen:", e);
 }
 
+const app = express();
+const PORT = 3000;
+
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
 
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
@@ -283,6 +288,22 @@ async function startServer() {
     res.send("Server is running correctly");
   });
 
+  app.get("/api/ocr/debug", (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({ status: "missing", message: "GEMINI_API_KEY is not set" });
+    }
+    const cleanedKey = apiKey.trim().replace(/^["']|["']$/g, '');
+    res.json({ 
+      status: "configured", 
+      prefix: cleanedKey.substring(0, 4),
+      suffix: cleanedKey.substring(cleanedKey.length - 4),
+      length: cleanedKey.length,
+      startsWithAIza: cleanedKey.startsWith("AIza"),
+      hasQuotes: apiKey.startsWith('"') || apiKey.startsWith("'")
+    });
+  });
+
   // Passport OCR Endpoint
   app.post("/api/ocr/passport", async (req, res) => {
     try {
@@ -291,11 +312,25 @@ async function startServer() {
         return res.status(400).json({ error: "Image is required" });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        console.error("Server OCR: GEMINI_API_KEY is missing");
-        return res.status(500).json({ error: "API key is not configured on the server" });
+      let apiKey = process.env.GEMINI_API_KEY;
+      if (apiKey) {
+        // Clean the key from potential quotes or whitespace added during copy-paste in Vercel
+        apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
       }
+
+      if (!apiKey || apiKey === "undefined" || apiKey === "") {
+        console.error("Server OCR: GEMINI_API_KEY is missing or empty after cleaning");
+        return res.status(500).json({ 
+          error: "مفتاح API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات البيئة (Environment Variables)." 
+        });
+      }
+
+      if (!apiKey.startsWith("AIza")) {
+        console.warn("Server OCR: API Key does not start with AIza. This might be an invalid key type.");
+      }
+
+      // Log first/last chars for debugging (safe)
+      console.log(`Server OCR: Using API Key starting with ${apiKey.substring(0, 4)}... and ending with ...${apiKey.substring(apiKey.length - 4)}`);
 
       const ai = new GoogleGenAI({ apiKey });
       
@@ -352,7 +387,15 @@ async function startServer() {
       res.json(data);
     } catch (error: any) {
       console.error("Server OCR Error:", error);
-      res.status(500).json({ error: error.message || "Failed to process passport image" });
+      
+      let errorMessage = "فشل في معالجة صورة الجواز";
+      if (error.message && error.message.includes("API key not valid")) {
+        errorMessage = "مفتاح API الذي تم إدخاله غير صالح. يرجى التأكد من نسخ المفتاح بشكل صحيح من Google AI Studio.";
+      } else if (error.message && error.message.includes("Quota exceeded")) {
+        errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.";
+      }
+      
+      res.status(500).json({ error: errorMessage, details: error.message });
     }
   });
 
@@ -826,7 +869,7 @@ async function startServer() {
   // Vite middleware for development
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`);
   
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     console.log("Initializing Vite middleware...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -865,9 +908,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+// Start the server setup
+const serverPromise = startServer();
+
+export { app, serverPromise };
+export default app;
