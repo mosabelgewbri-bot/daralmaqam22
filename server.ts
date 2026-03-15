@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 console.log(`Server root directory: ${__dirname}`);
 
 // Initialize SQLite Database
-const DB_PATH = path.resolve(__dirname, "database.sqlite");
+const DB_PATH = path.resolve(process.cwd(), "database.sqlite");
 let db: Database.Database;
 try {
   // On Vercel, we might not have write access to the root, so use /tmp or memory
@@ -269,40 +269,73 @@ try {
 const app = express();
 const PORT = 3000;
 
-async function startServer() {
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-  app.use(express.json({ limit: '100mb' }));
-  app.use(express.urlencoded({ limit: '100mb', extended: true }));
+// Helper to clean API Key
+function cleanGeminiKey(key: string | undefined): string {
+  if (!key) return '';
+  // Remove all whitespace, quotes, and non-printable characters
+  return key
+    .replace(/\s/g, '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/[\u200B-\u200D\uFEFF\u0000-\u001F\u007F-\u009F]/g, '')
+    .trim();
+}
 
-  // API routes
-  app.get("/api/health", (req, res) => {
-    try {
-      const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
-      res.json({ status: "ok", db: "connected", users: userCount.count });
-    } catch (error: any) {
-      res.status(500).json({ status: "error", db: "error", message: error.message });
-    }
-  });
+// API routes
+app.get("/api/health", (req, res) => {
+  try {
+    const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
+    res.json({ status: "ok", db: "connected", users: userCount.count });
+  } catch (error: any) {
+    res.status(500).json({ status: "error", db: "error", message: error.message });
+  }
+});
 
-  app.get("/api/test", (req, res) => {
-    res.send("Server is running correctly");
-  });
+app.get("/api/test", (req, res) => {
+  res.send("Server is running correctly");
+});
 
-  app.get("/api/ocr/debug", (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.json({ status: "missing", message: "GEMINI_API_KEY is not set" });
-    }
-    const cleanedKey = apiKey.trim().replace(/^["']|["']$/g, '');
-    res.json({ 
-      status: "configured", 
-      prefix: cleanedKey.substring(0, 4),
-      suffix: cleanedKey.substring(cleanedKey.length - 4),
-      length: cleanedKey.length,
-      startsWithAIza: cleanedKey.startsWith("AIza"),
-      hasQuotes: apiKey.startsWith('"') || apiKey.startsWith("'")
+app.get("/api/ocr/debug", async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY || "";
+  const cleanedKey = cleanGeminiKey(apiKey);
+  
+  if (!cleanedKey) {
+    return res.json({ status: "missing", message: "GEMINI_API_KEY is not set" });
+  }
+  
+  let testResult = "Not tested";
+  let testError = null;
+  
+  try {
+    const ai = new GoogleGenAI({ apiKey: cleanedKey });
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: "Say 'Key is valid'",
     });
+    testResult = response.text || "No response text";
+  } catch (e: any) {
+    testResult = "Failed";
+    testError = e.message;
+  }
+
+  res.json({ 
+    status: "configured", 
+    prefix: cleanedKey.substring(0, 4),
+    suffix: cleanedKey.substring(cleanedKey.length - 4),
+    length: cleanedKey.length,
+    startsWithAIza: cleanedKey.startsWith("AIza"),
+    hasQuotes: apiKey.startsWith('"') || apiKey.startsWith("'") || apiKey.endsWith('"') || apiKey.endsWith("'"),
+    hasWhitespace: /\s/.test(apiKey),
+    testCall: {
+      result: testResult,
+      error: testError
+    }
   });
+});
+
+async function startServer() {
 
   // Passport OCR Endpoint
   app.post("/api/ocr/passport", async (req, res) => {
@@ -312,37 +345,28 @@ async function startServer() {
         return res.status(400).json({ error: "Image is required" });
       }
 
-      let apiKey = process.env.GEMINI_API_KEY;
-      if (apiKey) {
-        // Clean the key from potential quotes or whitespace added during copy-paste in Vercel
-        apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
-      }
+      const apiKey = cleanGeminiKey(process.env.GEMINI_API_KEY);
 
-      if (!apiKey || apiKey === "undefined" || apiKey === "") {
-        console.error("Server OCR: GEMINI_API_KEY is missing or empty after cleaning");
+      if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey === "null") {
+        console.error("Server OCR: GEMINI_API_KEY is missing or invalid after cleaning");
         return res.status(500).json({ 
-          error: "مفتاح API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات البيئة (Environment Variables)." 
+          error: "مفتاح API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables)." 
         });
       }
 
-      if (!apiKey.startsWith("AIza")) {
-        console.warn("Server OCR: API Key does not start with AIza. This might be an invalid key type.");
-      }
-
-      // Log first/last chars for debugging (safe)
-      console.log(`Server OCR: Using API Key starting with ${apiKey.substring(0, 4)}... and ending with ...${apiKey.substring(apiKey.length - 4)}`);
+      // Log safe debug info
+      console.log(`Server OCR: Using API Key (Length: ${apiKey.length}, StartsWithAIza: ${apiKey.startsWith("AIza")})`);
 
       const ai = new GoogleGenAI({ apiKey });
       
-      // Detect mime type from base64
       const mimeMatch = image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
       const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
       const base64Data = image.includes(",") ? image.split(",")[1] : image;
 
-      console.log("Server OCR: Sending request to Gemini (1.5-flash)...");
+      console.log("Server OCR: Sending request to Gemini (2.0-flash)...");
       
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         contents: {
           parts: [
             {
@@ -378,19 +402,26 @@ async function startServer() {
       });
 
       const text = response.text;
+      console.log("Server OCR: Raw response text:", text);
+      
       if (!text) {
         throw new Error("No text returned from Gemini");
       }
 
-      const data = JSON.parse(text);
-      console.log("Server OCR: Success", { passportNumber: data.passportNumber });
-      res.json(data);
+      try {
+        const data = JSON.parse(text);
+        console.log("Server OCR: Success", { passportNumber: data.passportNumber });
+        res.json(data);
+      } catch (parseError) {
+        console.error("Server OCR: Failed to parse JSON:", text);
+        throw new Error("فشل في تحليل بيانات الجواز المستخرجة. يرجى التأكد من وضوح الصورة.");
+      }
     } catch (error: any) {
       console.error("Server OCR Error:", error);
       
       let errorMessage = "فشل في معالجة صورة الجواز";
-      if (error.message && error.message.includes("API key not valid")) {
-        errorMessage = "مفتاح API الذي تم إدخاله غير صالح. يرجى التأكد من نسخ المفتاح بشكل صحيح من Google AI Studio.";
+      if (error.message && (error.message.includes("API key not valid") || error.message.includes("API_KEY_INVALID"))) {
+        errorMessage = "مفتاح API الذي تم إدخاله غير صالح. يرجى التأكد من:\n1. نسخ المفتاح كاملاً من Google AI Studio.\n2. أن المفتاح يبدأ بـ AIza.\n3. تفعيل Generative Language API في مشروعك.";
       } else if (error.message && error.message.includes("Quota exceeded")) {
         errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.";
       }
@@ -794,7 +825,7 @@ async function startServer() {
 
   app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     let tempDb: Database.Database | null = null;
-    const tempPath = path.resolve(__dirname, "temp_restore.sqlite");
+    const tempPath = path.resolve(process.cwd(), "temp_restore.sqlite");
 
     try {
       if (!req.file) {
@@ -866,52 +897,78 @@ async function startServer() {
     }
   });
 
+  // Global error handler for Express
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Unhandled Express Error:", err);
+    res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message,
+      path: req.path
+    });
+  });
+
   // Vite middleware for development
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`);
   
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    console.log("Initializing Vite middleware...");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    
-    // Explicitly serve public directory
-    app.use(express.static(path.join(__dirname, "public")));
-    
-    app.use(vite.middlewares);
-    console.log("Vite middleware initialized.");
-
-    // Add a catch-all for SPA in dev mode
-    app.get("*", async (req, res, next) => {
-      const url = req.originalUrl;
-      if (url.startsWith('/api')) return next();
+  try {
+    if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+      console.log("Initializing Vite middleware...");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
       
-      try {
-        const indexPath = path.resolve(__dirname, "index.html");
-        console.log(`Serving index.html from: ${indexPath} for URL: ${url}`);
-        let template = await fs.promises.readFile(indexPath, "utf-8");
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ "Content-Type": "text/html" }).end(template);
-      } catch (e) {
-        console.error(`Error serving index.html for ${url}:`, e);
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
-    });
-  } else {
-    const distPath = path.join(__dirname, "dist");
-    console.log(`Serving static files from: ${distPath}`);
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+      // Explicitly serve public directory
+      app.use(express.static(path.join(process.cwd(), "public")));
+      
+      app.use(vite.middlewares);
+      console.log("Vite middleware initialized.");
 
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+      // Add a catch-all for SPA in dev mode
+      app.get("*", async (req, res, next) => {
+        const url = req.originalUrl;
+        if (url.startsWith('/api')) return next();
+        
+        try {
+          const indexPath = path.resolve(process.cwd(), "index.html");
+          if (!fs.existsSync(indexPath)) {
+            return res.status(404).send("index.html not found. Please ensure it exists in the root.");
+          }
+          let template = await fs.promises.readFile(indexPath, "utf-8");
+          template = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ "Content-Type": "text/html" }).end(template);
+        } catch (e) {
+          console.error(`Error serving index.html for ${url}:`, e);
+          next(e);
+        }
+      });
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      console.log(`Serving static files from: ${distPath}`);
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+        app.get("*", (req, res) => {
+          const indexPath = path.join(distPath, "index.html");
+          if (fs.existsSync(indexPath)) {
+            res.sendFile(indexPath);
+          } else {
+            res.status(404).send("index.html not found in dist. Check build output.");
+          }
+        });
+      } else {
+        console.warn("dist directory not found. API only mode.");
+        app.get("/", (req, res) => res.send("API is running. Frontend build missing."));
+      }
+    }
+
+    if (!process.env.VERCEL) {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }
+  } catch (error) {
+    console.error("Failed to initialize server middleware:", error);
+    throw error;
   }
 }
 

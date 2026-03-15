@@ -636,6 +636,23 @@ export default function Settings({ user }: { user: User }) {
           </div>
           
           <div className="glass-card p-6">
+            <h4 className="font-bold text-white mb-4">أدوات التشخيص</h4>
+            <div className="space-y-4">
+              <p className="text-[10px] text-white/60 leading-relaxed">
+                إذا كنت تواجه مشاكل في مسح الجوازات، يمكنك استخدام أداة التشخيص للتحقق من صحة مفتاح الـ API والاتصال بخوادم جوجل.
+              </p>
+              <a 
+                href="/api/ocr/debug" 
+                target="_blank" 
+                className="btn-gold w-full py-2 flex items-center justify-center gap-2 text-xs"
+              >
+                <RefreshCw className="w-3 h-3" />
+                تشغيل فحص الـ API
+              </a>
+            </div>
+          </div>
+
+          <div className="glass-card p-6">
             <h4 className="font-bold text-white mb-4">معلومات النظام</h4>
             <div className="space-y-3 text-xs">
               <div className="flex justify-between">

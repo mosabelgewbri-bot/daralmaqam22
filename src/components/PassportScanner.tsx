@@ -3,6 +3,7 @@ import Webcam from 'react-webcam';
 import { Camera, X, Scan, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { extractPassportData } from '../services/geminiService';
+import { resizeImage } from '../utils/imageUtils';
 
 interface PassportScannerProps {
   onScan: (data: any, image: string) => void;
@@ -14,38 +15,6 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-
-  const resizeImage = (base64: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      };
-      img.src = base64;
-    });
-  };
 
   const capture = useCallback(async () => {
     console.log("PassportScanner: Capture triggered");
@@ -76,18 +45,25 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
           setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
         } else if (err.message && (err.message.includes("API key not valid") || err.message.includes("غير صالح"))) {
           setError(
-            <span>
-              مفتاح API المستخدم غير صالح. يرجى التأكد من:
-              <ul className="list-disc list-inside mt-2 text-right">
-                <li>نسخ المفتاح الصحيح من Google AI Studio.</li>
+            <div className="space-y-3">
+              <p className="font-bold text-red-400">مفتاح API المستخدم غير صالح.</p>
+              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 text-right">
+                <li>تأكد من نسخ المفتاح كاملاً من Google AI Studio.</li>
                 <li>المفتاح يجب أن يبدأ بـ <code className="bg-white/20 px-1 rounded">AIza</code>.</li>
-                <li>عدم وجود مسافات أو علامات تنصيص زائدة في Vercel.</li>
+                <li>تأكد من تفعيل <span className="text-gold">Generative Language API</span> في مشروعك.</li>
+                <li>تأكد من عمل <span className="text-gold font-bold">Redeploy</span> في Vercel بعد إضافة المفتاح.</li>
               </ul>
-              <div className="mt-3 text-xs opacity-70">
-                يمكنك فحص حالة الإعدادات عبر الرابط: 
-                <a href="/api/ocr/debug" target="_blank" className="underline ml-1">اضغط هنا للفحص</a>
+              <div className="pt-2 border-t border-white/10">
+                <p className="text-[10px] mb-2 opacity-60">يمكنك فحص حالة المفتاح والاتصال عبر أداة التشخيص:</p>
+                <a 
+                  href="/api/ocr/debug" 
+                  target="_blank" 
+                  className="block w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-center text-xs font-bold transition-all"
+                >
+                  فتح أداة تشخيص الـ API
+                </a>
               </div>
-            </span>
+            </div>
           );
         } else {
           setError(`حدث خطأ أثناء معالجة الصورة: ${err.message || 'خطأ غير معروف'}`);

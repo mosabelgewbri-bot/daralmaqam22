@@ -1,318 +1,139 @@
 import { Trip, Booking, RolePermissions, User } from '../types';
-import { supabase } from '../utils/supabase';
+
+const API_URL = '/api';
+
+async function handleResponse(response: Response) {
+  if (!response.ok) {
+    let errorMessage = `HTTP error! status: ${response.status}`;
+    try {
+      const error = await response.json();
+      errorMessage = error.error || errorMessage;
+    } catch (e) {
+      try {
+        const text = await response.text();
+        if (text && text.length < 100) errorMessage = text;
+      } catch (e2) {}
+    }
+    throw new Error(errorMessage);
+  }
+  return response.json();
+}
 
 export const api = {
   // Auth
   async login(username: string, password: string): Promise<any> {
-    const cleanUsername = username.trim();
-    const cleanPassword = password.trim();
-    
-    // البحث عن المستخدم (تجاهل حالة الأحرف في اسم المستخدم)
-    console.log('Attempting login for:', cleanUsername);
-    
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .ilike('username', cleanUsername)
-      .eq('password', cleanPassword)
-      .single();
-
-    if (error) {
-      console.error('Supabase Login Error Details:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      
-      if (error.code === 'PGRST116') {
-        throw new Error(`اسم المستخدم أو كلمة المرور غير صحيحة. (Code: ${error.code})`);
-      }
-      if (error.message?.includes('relation "users" does not exist')) {
-        throw new Error(`جدول المستخدمين غير موجود. (Code: ${error.code})`);
-      }
-      throw new Error(`خطأ: ${error.message} (Code: ${error.code})`);
-    }
-
-    if (!data) {
-      throw new Error('بيانات الدخول غير صحيحة');
-    }
-
-    const { password: _, ...userWithoutPassword } = data;
-    return { user: userWithoutPassword };
+    const response = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    return handleResponse(response);
   },
 
   // Trips
   async getTrips(): Promise<Trip[]> {
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*');
-    
-    if (error) {
-      console.error('Get trips error:', error);
-      throw new Error('فشل تحميل الرحلات: ' + error.message);
-    }
-    
-    return (data || []).map((t: any) => ({
-      id: t.id,
-      tripNumber: t.trip_number || t.tripNumber || '',
-      name: t.name,
-      airline: t.airline,
-      totalSeats: t.total_seats || t.totalSeats || 0,
-      availableSeats: t.available_seats || t.availableSeats || 0,
-      ticketPrice: t.ticket_price || t.ticketPrice || 0,
-      currency: t.currency,
-      status: t.status
-    }));
+    const response = await fetch(`${API_URL}/trips`);
+    return handleResponse(response);
   },
   async saveTrip(trip: Trip): Promise<void> {
-    console.log('Attempting to save trip:', trip);
-    
-    const payload = {
-      id: trip.id,
-      name: trip.name,
-      airline: trip.airline,
-      currency: trip.currency,
-      status: trip.status,
-      trip_number: trip.tripNumber || '',
-      total_seats: trip.totalSeats,
-      available_seats: trip.availableSeats,
-      ticket_price: trip.ticketPrice
-    };
-
-    const { error } = await supabase
-      .from('trips')
-      .upsert(payload);
-    
-    if (error) {
-      console.error('Save trip error:', error.message);
-      throw new Error('فشل حفظ الرحلة: ' + error.message);
-    }
-    console.log('Trip saved successfully');
+    const response = await fetch(`${API_URL}/trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trip),
+    });
+    return handleResponse(response);
   },
   async deleteTrip(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('trips')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw new Error('فشل حذف الرحلة');
+    const response = await fetch(`${API_URL}/trips/${id}`, {
+      method: 'DELETE',
+    });
+    return handleResponse(response);
   },
 
   // Bookings
   async getBookings(): Promise<Booking[]> {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
-        *,
-        trips (
-          name,
-          trip_number
-        )
-      `);
-    
-    if (error) {
-      console.error('Get bookings error:', error);
-      throw new Error('فشل تحميل الحجوزات: ' + error.message);
-    }
-    
-    return (data || []).map((b: any) => ({
-      id: b.id,
-      tripId: b.tripId || b.trip_id || b.tripid,
-      headName: b.headName || b.head_name || b.headname,
-      regId: b.regId || b.reg_id || b.regid,
-      phone: b.phone,
-      passengerCount: b.passengerCount || b.passenger_count || b.passengercount,
-      status: b.status,
-      makkahHotel: b.makkahHotel || b.makkah_hotel || b.makkahhotel,
-      makkahNights: b.makkahNights || b.makkah_nights || b.makkahnights,
-      madinahHotel: b.madinahHotel || b.madinah_hotel || b.madinahhotel,
-      madinahNights: b.madinahNights || b.madinah_nights || b.madinahnights,
-      isVisaOnly: b.isVisaOnly || b.is_visa_only || b.isvisaonly,
-      createdAt: b.createdAt || b.created_at || b.createdat,
-      createdBy: b.createdBy || b.created_by || b.createdby,
-      tripName: b.trips?.name,
-      tripNumber: b.trips?.trip_number || b.trips?.tripNumber || b.trips?.trip_number,
-      totals: (typeof b.totals === 'string' ? JSON.parse(b.totals) : b.totals) || { ticketsLYD: 0, ticketsUSD: 0, packageLYD: 0, packageUSD: 0, totalLYD: 0, totalUSD: 0 },
-      pilgrims: (typeof b.pilgrims === 'string' ? JSON.parse(b.pilgrims) : b.pilgrims) || [],
-    }));
+    const response = await fetch(`${API_URL}/bookings`);
+    return handleResponse(response);
   },
-
   async saveBooking(booking: Booking): Promise<void> {
-    const payload = {
-      id: booking.id,
-      phone: booking.phone,
-      status: booking.status,
-      totals: booking.totals,
-      pilgrims: booking.pilgrims,
-      trip_id: booking.tripId,
-      head_name: booking.headName,
-      reg_id: booking.regId,
-      passenger_count: booking.passengerCount,
-      makkah_hotel: booking.makkahHotel,
-      makkah_nights: booking.makkahNights,
-      madinah_hotel: booking.madinahHotel,
-      madinah_nights: booking.madinahNights,
-      is_visa_only: booking.isVisaOnly,
-      created_by: booking.createdBy
-    };
-
-    const { error } = await supabase
-      .from('bookings')
-      .upsert(payload);
-    
-    if (error) {
-      console.error('Save booking error:', error.message);
-      throw new Error('فشل حفظ الحجز: ' + error.message);
-    }
+    const response = await fetch(`${API_URL}/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(booking),
+    });
+    return handleResponse(response);
   },
   async deleteBooking(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('bookings')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw new Error('فشل حذف الحجز');
+    const response = await fetch(`${API_URL}/bookings/${id}`, {
+      method: 'DELETE',
+    });
+    return handleResponse(response);
   },
 
   // Permissions
   async getPermissions(): Promise<RolePermissions[]> {
-    const { data, error } = await supabase
-      .from('permissions')
-      .select('*');
-    
-    if (error) throw new Error('فشل تحميل الصلاحيات');
-    
-    return (data || []).map((p: any) => ({
-      role: p.role,
-      allowedScreens: typeof p.allowed_screens === 'string' ? JSON.parse(p.allowed_screens) : p.allowed_screens,
-      canEdit: p.can_edit,
-      canDelete: p.can_delete,
-      canExport: p.can_export,
-      canViewFinance: p.can_view_finance,
-      canApproveBookings: p.can_approve_bookings,
-      canManageUsers: p.can_manage_users,
-      canEditTrips: p.can_edit_trips,
-      canViewReports: p.can_view_reports,
-      canManageSettings: p.can_manage_settings,
-      canManageFinance: p.can_manage_finance,
-      canChangeVisaStatus: p.can_change_visa_status,
-      canManageRooms: p.can_manage_rooms,
-      dataScope: p.data_scope
-    }));
+    const response = await fetch(`${API_URL}/permissions`);
+    return handleResponse(response);
   },
   async savePermission(permission: RolePermissions): Promise<void> {
-    const { error } = await supabase
-      .from('permissions')
-      .upsert({
-        role: permission.role,
-        allowed_screens: permission.allowedScreens,
-        can_edit: permission.canEdit,
-        can_delete: permission.canDelete,
-        can_export: permission.canExport,
-        can_view_finance: permission.canViewFinance,
-        can_approve_bookings: permission.canApproveBookings,
-        can_manage_users: permission.canManageUsers,
-        can_edit_trips: permission.canEditTrips,
-        can_view_reports: permission.canViewReports,
-        can_manage_settings: permission.canManageSettings,
-        can_manage_finance: permission.canManageFinance,
-        can_change_visa_status: permission.canChangeVisaStatus,
-        can_manage_rooms: permission.canManageRooms,
-        data_scope: permission.dataScope
-      });
-    
-    if (error) {
-      console.error('Save permission error:', error);
-      throw new Error('فشل حفظ الصلاحيات: ' + error.message);
-    }
+    const response = await fetch(`${API_URL}/permissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(permission),
+    });
+    return handleResponse(response);
   },
 
   // Users
   async getUsers(): Promise<User[]> {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*');
-    
-    if (error) throw new Error('فشل تحميل المستخدمين');
-    
-    return (data || []).map((u: any) => {
-      const { password: _, ...userWithoutPassword } = u;
-      return userWithoutPassword;
-    });
+    const response = await fetch(`${API_URL}/users`);
+    return handleResponse(response);
   },
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
-    const { error } = await supabase
-      .from('users')
-      .upsert(user);
-    
-    if (error) throw new Error('فشل حفظ المستخدم');
+    const response = await fetch(`${API_URL}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    });
+    return handleResponse(response);
   },
   async deleteUser(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw new Error('فشل حذف المستخدم');
+    const response = await fetch(`${API_URL}/users/${id}`, {
+      method: 'DELETE',
+    });
+    return handleResponse(response);
   },
 
   // Settings
   async getSettings(): Promise<Record<string, string>> {
-    const { data, error } = await supabase
-      .from('settings')
-      .select('*');
-    
-    if (error) throw new Error('فشل تحميل الإعدادات');
-    
-    return (data || []).reduce((acc: any, s: any) => {
-      acc[s.key] = s.value;
-      return acc;
-    }, {});
+    const response = await fetch(`${API_URL}/settings`);
+    return handleResponse(response);
   },
   async saveSettings(settings: Record<string, string>): Promise<void> {
-    const entries = Object.entries(settings).map(([key, value]) => ({ key, value }));
-    const { error } = await supabase
-      .from('settings')
-      .upsert(entries);
-    
-    if (error) throw new Error('فشل حفظ الإعدادات');
+    const response = await fetch(`${API_URL}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    return handleResponse(response);
   },
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
-    const { data, error: fetchError } = await supabase
-      .from('users')
-      .select('password')
-      .eq('id', userId)
-      .single();
-
-    if (fetchError || !data || data.password !== currentPassword) {
-      throw new Error('كلمة المرور الحالية غير صحيحة');
-    }
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ password: newPassword })
-      .eq('id', userId);
-
-    if (updateError) throw new Error('فشل تغيير كلمة المرور');
+    const response = await fetch(`${API_URL}/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, currentPassword, newPassword }),
+    });
+    return handleResponse(response);
   },
 
   async getDbStats(): Promise<any> {
-    return {
-      users: 0,
-      trips: 0,
-      bookings: 0,
-      pilgrims: 0,
-      logs: 0,
-      dbType: 'Supabase (Cloud)',
-      lastSync: new Date().toISOString()
-    };
+    const response = await fetch(`${API_URL}/db-stats`);
+    return handleResponse(response);
   },
 
   async logAction(userId: string, action: string, details?: string): Promise<void> {
-    await supabase
-      .from('logs')
-      .insert({ userId, action, details });
+    // Optional: implement server-side logging if needed
+    console.log('Action logged:', { userId, action, details });
   }
 };

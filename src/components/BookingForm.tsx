@@ -8,6 +8,7 @@ import { differenceInMonths, parseISO } from 'date-fns';
 import { clsx } from 'clsx';
 import { useNavigate, useParams } from 'react-router-dom';
 import { extractPassportData } from '../services/geminiService';
+import { resizeImage } from '../utils/imageUtils';
 import { deduplicateBookings, getRolePermissions } from '../utils/dataUtils';
 import { api } from '../services/api';
 import jsPDF from 'jspdf';
@@ -140,20 +141,36 @@ export default function BookingForm({ user }: { user: User }) {
       const base64 = reader.result as string;
       try {
         console.log(`Starting OCR extraction for pilgrim ${index} on client side...`);
-        const data = await extractPassportData(base64);
+        
+        // Resize image before sending to OCR to reduce payload size and improve reliability
+        const resizedImage = await resizeImage(base64);
+        const data = await extractPassportData(resizedImage);
+        
         console.log("OCR Data received:", data);
         
         if (data) {
-          handleScanResult(index, data, base64);
+          handleScanResult(index, data, resizedImage);
         } else {
           console.warn("OCR returned empty or invalid data");
           const updated = [...pilgrims];
-          updated[index] = { ...updated[index], passportImage: base64 };
+          updated[index] = { ...updated[index], passportImage: resizedImage };
           setPilgrims(updated);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("OCR Failed", e);
-        alert("Failed to extract data from image. Please enter manually.");
+        
+        // Provide more specific error message if available
+        let errorMessage = "فشل استخراج البيانات من الصورة. يرجى إدخال البيانات يدوياً.";
+        if (e.message) {
+          if (e.message.includes("API key not valid") || e.message.includes("غير صالح")) {
+            errorMessage = "مفتاح API غير صالح. يرجى التحقق من إعدادات النظام.";
+          } else if (e.message.includes("Quota exceeded") || e.message.includes("تجاوز حصة")) {
+            errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API.";
+          }
+        }
+        
+        alert(errorMessage);
+        
         const updated = [...pilgrims];
         updated[index] = { ...updated[index], passportImage: base64 };
         setPilgrims(updated);
