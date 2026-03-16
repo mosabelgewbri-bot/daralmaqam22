@@ -47,7 +47,7 @@ export default function Login({ onLogin }: LoginProps) {
         className="glass-card w-full max-w-md p-10 space-y-10 relative z-10 border-gold/20 shadow-[0_0_50px_rgba(212,175,55,0.1)]"
       >
         <div className="flex flex-col items-center text-center space-y-8">
-          <div className="absolute top-2 right-2 text-[8px] text-gold/40 font-mono">v1.0.5-debug</div>
+          <div className="absolute top-2 right-2 text-[8px] text-gold/40 font-mono">v1.0.6-debug</div>
           <motion.div
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -71,23 +71,40 @@ export default function Login({ onLogin }: LoginProps) {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="p-3 bg-gold/5 border border-gold/20 rounded-xl space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gold/60 uppercase tracking-wider">أداة تشخيص الاتصال</span>
+              <span className="text-[10px] font-bold text-gold/60 uppercase tracking-wider">أدوات التشخيص</span>
               <span className="text-[8px] text-white/20">{new Date().toLocaleTimeString()}</span>
             </div>
-            <button 
-              type="button"
-              onClick={async () => {
-                try {
-                  const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
-                  alert(error ? `❌ خطأ في القاعدة: ${error.message}` : `✅ تم الاتصال بنجاح! عدد المستخدمين: ${count}`);
-                } catch (e: any) {
-                  alert(`⚠️ فشل الاتصال بالخادم: ${e.message}`);
-                }
-              }}
-              className="w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-xs font-bold transition-all active:scale-95"
-            >
-              اضغط هنا لاختبار الربط مع Supabase
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                type="button"
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/health');
+                    const data = await response.json();
+                    alert(`✅ حالة الخادم: ${JSON.stringify(data, null, 2)}`);
+                  } catch (e: any) {
+                    alert(`❌ فشل الاتصال بالخادم: ${e.message}`);
+                  }
+                }}
+                className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
+              >
+                اختبار الخادم (Health)
+              </button>
+              <button 
+                type="button"
+                onClick={async () => {
+                  try {
+                    const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
+                    alert(error ? `❌ خطأ في Supabase: ${error.message}` : `✅ تم الاتصال بـ Supabase بنجاح! عدد المستخدمين: ${count}`);
+                  } catch (e: any) {
+                    alert(`⚠️ فشل الاتصال بـ Supabase: ${e.message}`);
+                  }
+                }}
+                className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
+              >
+                اختبار Supabase
+              </button>
+            </div>
             <div className="text-[8px] text-white/30 font-mono break-all opacity-50">
               URL: {import.meta.env.VITE_SUPABASE_URL || 'Default'}
             </div>

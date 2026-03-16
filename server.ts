@@ -3,10 +3,18 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-// import Database from "better-sqlite3"; // Removed static import to prevent Vercel crashes
 import multer from "multer";
-import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
+
+console.log("server.ts module loading...");
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,23 +22,42 @@ console.log(`Server root directory: ${__dirname}`);
 
 // Mock database for environments where better-sqlite3 fails (like some serverless setups)
 class MockDatabase {
-  data: any = { users: [], trips: [], bookings: [], pilgrims: [], logs: [], permissions: [], settings: [] };
+  data: any = { 
+    users: [
+      { id: '1', username: 'admin', password: 'admin123', name: 'المدير العام', role: 'admin', status: 'active' },
+      { id: '2', username: 'staff', password: 'staff123', name: 'موظف عمليات', role: 'staff', status: 'active' }
+    ], 
+    trips: [], 
+    bookings: [], 
+    pilgrims: [], 
+    logs: [], 
+    permissions: [
+      { 
+        role: 'admin', 
+        allowedScreens: JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']), 
+        canEdit: 1, canDelete: 1, canExport: 1, canViewFinance: 1, canApproveBookings: 1, canManageUsers: 1, canEditTrips: 1, canViewReports: 1, canManageSettings: 1, canManageFinance: 1, canChangeVisaStatus: 1, canManageRooms: 1, dataScope: 'all' 
+      }
+    ], 
+    settings: [{ key: 'app_logo', value: '' }] 
+  };
   
   constructor() {
     console.warn("Using MockDatabase fallback.");
-    // Seed initial data in mock
-    this.data.users = [
-      { id: '1', username: 'admin', password: 'admin123', name: 'المدير العام', role: 'admin' },
-      { id: '2', username: 'staff', password: 'staff123', name: 'موظف عمليات', role: 'staff' }
-    ];
-    this.data.settings = [{ key: 'app_logo', value: '' }];
   }
 
-  exec(sql: string) { return this; }
-  pragma(sql: string) { return this; }
+  exec(sql: string) { 
+    console.log(`MockDB exec: ${sql.substring(0, 50)}...`);
+    return this; 
+  }
+  pragma(sql: string) { 
+    console.log(`MockDB pragma: ${sql}`);
+    return this; 
+  }
   prepare(sql: string) {
     const self = this;
     const normalizedSql = sql.toLowerCase();
+    console.log(`MockDB prepare: ${sql}`);
+    
     return {
       all: () => {
         if (normalizedSql.includes("from users")) return self.data.users;
@@ -39,20 +66,38 @@ class MockDatabase {
         if (normalizedSql.includes("from settings")) return self.data.settings;
         if (normalizedSql.includes("from bookings")) return self.data.bookings;
         if (normalizedSql.includes("from pilgrims")) return self.data.pilgrims;
+        if (normalizedSql.includes("pragma table_info")) return [];
         return [];
       },
       get: (...args: any[]) => {
         if (normalizedSql.includes("from users where username = ? and password = ?")) {
           return self.data.users.find((u: any) => u.username === args[0] && u.password === args[1]);
         }
-        if (normalizedSql.includes("select count(*)")) return { count: self.data.users.length };
+        if (normalizedSql.includes("from users where id = ? and password = ?")) {
+          return self.data.users.find((u: any) => u.id === args[0] && u.password === args[1]);
+        }
+        if (normalizedSql.includes("select count(*)")) {
+          if (normalizedSql.includes("from users")) return { count: self.data.users.length };
+          if (normalizedSql.includes("from trips")) return { count: self.data.trips.length };
+          if (normalizedSql.includes("from bookings")) return { count: self.data.bookings.length };
+          if (normalizedSql.includes("from settings")) return { count: self.data.settings.length };
+          return { count: 0 };
+        }
         return null;
       },
-      run: (...args: any[]) => ({ changes: 1, lastInsertRowid: 1 }),
+      run: (...args: any[]) => {
+        console.log(`MockDB run: ${sql} with args:`, args);
+        return { changes: 1, lastInsertRowid: Date.now() };
+      },
       close: () => {}
     };
   }
-  close() {}
+  close() {
+    console.log("MockDB closed.");
+  }
+  transaction(fn: Function) {
+    return (...args: any[]) => fn(...args);
+  }
 }
 
 // Initialize SQLite Database
@@ -344,532 +389,558 @@ function cleanGeminiKey(key: string | undefined): string {
 
 const app = express();
 
+// Apply middlewares immediately for Vercel
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+// API routes defined at top level
+app.get("/api/health", (req, res) => {
+  console.log("Health check requested");
+  try {
+    if (!db) {
+      return res.status(500).json({ status: "error", message: "Database not initialized" });
+    }
+    const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
+    res.json({ 
+      status: "ok", 
+      db: db instanceof MockDatabase ? "mock" : "sqlite", 
+      users: userCount ? userCount.count : 0,
+      env: process.env.NODE_ENV,
+      isVercel: !!process.env.VERCEL
+    });
+  } catch (error: any) {
+    console.error("Health check error:", error);
+    res.status(500).json({ status: "error", db: "error", message: error.message, stack: error.stack });
+  }
+});
+
+app.get("/api/test", (req, res) => {
+  res.send("Server is running correctly");
+});
+
+app.get("/api/ping", (req, res) => {
+  res.json({ pong: true, time: new Date().toISOString(), env: process.env.NODE_ENV, isVercel: !!process.env.VERCEL });
+});
+
+// Auth
+app.post("/api/login", (req, res) => {
+  try {
+    const { username, password } = req.body;
+    console.log(`Login attempt for user: ${username}`);
+    
+    if (!db) {
+      console.error("Login failed: Database not initialized");
+      return res.status(500).json({ error: "Database not initialized" });
+    }
+
+    const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
+    console.log(`Database query result: ${user ? 'User found' : 'User not found'}`);
+
+    if (user) {
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ user: userWithoutPassword });
+    } else {
+      res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
+    }
+  } catch (error: any) {
+    console.error("Login error details:", error);
+    res.status(500).json({ 
+      error: "خطأ في الخادم أثناء تسجيل الدخول", 
+      details: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// Trips
+app.get("/api/trips", (req, res) => {
+  const trips = db.prepare("SELECT * FROM trips").all();
+  res.json(trips);
+});
+
+app.post("/api/trips", (req, res) => {
+  try {
+    const trip = req.body;
+    console.log("Saving trip:", JSON.stringify(trip, null, 2));
+    
+    if (!trip.id || !trip.name || !trip.airline) {
+      console.error("Missing required trip fields:", trip);
+      return res.status(400).json({ error: "بيانات الرحلة غير مكتملة" });
+    }
+
+    const stmt = db.prepare("INSERT OR REPLACE INTO trips (id, tripNumber, name, airline, totalSeats, availableSeats, ticketPrice, currency, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const result = stmt.run(
+      trip.id, 
+      trip.tripNumber || null, 
+      trip.name, 
+      trip.airline, 
+      trip.totalSeats, 
+      trip.availableSeats, 
+      trip.ticketPrice, 
+      trip.currency, 
+      trip.status
+    );
+    
+    console.log("Trip saved successfully, result:", result);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error saving trip:", error);
+    res.status(500).json({ error: `فشل حفظ الرحلة: ${error.message}` });
+  }
+});
+
+app.delete("/api/trips/:id", (req, res) => {
+  const id = req.params.id;
+  console.log(`DELETE /api/trips/${id}`);
+  try {
+    const result = db.prepare("DELETE FROM trips WHERE id = ?").run(id);
+    console.log(`Delete trip result:`, result);
+    if (result.changes > 0) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'الرحلة غير موجودة أو تم حذفها بالفعل' });
+    }
+  } catch (error: any) {
+    console.error(`Error deleting trip:`, error);
+    if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      res.status(400).json({ error: 'لا يمكن حذف هذه الرحلة لوجود حجوزات مرتبطة بها. يرجى حذف الحجوزات أولاً.' });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+// Bookings
+
+app.get("/api/bookings", (req, res) => {
+  try {
+    // Join with trips to get trip name and ensure tripId is consistent
+    const bookings = db.prepare(`
+      SELECT b.*, t.name as tripName, t.tripNumber 
+      FROM bookings b
+      LEFT JOIN trips t ON b.tripId = t.id
+    `).all();
+    
+    console.log(`Fetching ${bookings.length} bookings from database`);
+    
+    const parsedBookings = bookings.map((b: any) => {
+      try {
+        return {
+          ...b,
+          // Ensure tripId is present even if it's tripid in DB (though it should be tripId)
+          tripId: b.tripId || b.tripid || b.trip_id,
+          totals: b.totals ? JSON.parse(b.totals) : {},
+          pilgrims: b.pilgrims ? JSON.parse(b.pilgrims) : [],
+          isVisaOnly: !!b.isVisaOnly
+        };
+      } catch (e) {
+        console.error(`Error parsing booking ${b.id}:`, e);
+        return {
+          ...b,
+          tripId: b.tripId || b.tripid || b.trip_id,
+          totals: {},
+          pilgrims: []
+        };
+      }
+    });
+    res.json(parsedBookings);
+  } catch (error: any) {
+    console.error("Error fetching bookings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/bookings", (req, res) => {
+  const b = req.body;
+  console.log(`Saving booking: ${b.id} for trip: ${b.tripId}`);
+  const tripId = b.tripId || b.tripid || b.trip_id;
+  
+  const runTransaction = () => {
+    // 0. Get old booking to calculate seat difference
+    const oldBooking = db.prepare("SELECT passengerCount, tripId FROM bookings WHERE id = ?").get(b.id) as any;
+
+    // 1. Save Booking
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO bookings 
+      (id, tripId, headName, regId, phone, passengerCount, status, totals, pilgrims, makkahHotel, makkahNights, madinahHotel, madinahNights, makkahBookingNo, makkahCheckIn, madinahBookingNo, madinahCheckIn, paidLYD, paidUSD, paidCashLYD, paidTransferLYD, paidCashUSD, paidTransferUSD, createdAt, updatedAt, createdBy, groupNo, isVisaOnly) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      b.id, tripId, b.headName, b.regId, b.phone, b.passengerCount, b.status, 
+      JSON.stringify(b.totals), JSON.stringify(b.pilgrims), 
+      b.makkahHotel, b.makkahNights, b.madinahHotel, b.madinahNights,
+      b.makkahBookingNo || null, b.makkahCheckIn || null,
+      b.madinahBookingNo || null, b.madinahCheckIn || null,
+      b.paidLYD || 0, b.paidUSD || 0, 
+      b.paidCashLYD || 0, b.paidTransferLYD || 0, 
+      b.paidCashUSD || 0, b.paidTransferUSD || 0,
+      b.createdAt, b.updatedAt || null, b.createdBy, b.groupNo || null,
+      b.isVisaOnly ? 1 : 0
+    );
+
+    // 2. Update Trip Seats
+    if (tripId) {
+      if (oldBooking && oldBooking.tripId === tripId) {
+        // Same trip, update difference
+        const diff = b.passengerCount - oldBooking.passengerCount;
+        db.prepare("UPDATE trips SET availableSeats = availableSeats - ? WHERE id = ?").run(diff, tripId);
+      } else {
+        // New booking or trip changed
+        if (oldBooking && oldBooking.tripId) {
+          // Restore seats to old trip
+          db.prepare("UPDATE trips SET availableSeats = availableSeats + ? WHERE id = ?").run(oldBooking.passengerCount, oldBooking.tripId);
+        }
+        // Deduct seats from new trip
+        db.prepare("UPDATE trips SET availableSeats = availableSeats - ? WHERE id = ?").run(b.passengerCount, tripId);
+      }
+    }
+
+    // 3. Save Pilgrims (Delete existing first for this booking to avoid duplicates on update)
+    db.prepare("DELETE FROM pilgrims WHERE bookingId = ?").run(b.id);
+    
+    if (Array.isArray(b.pilgrims)) {
+      const insertPilgrim = db.prepare(`
+        INSERT INTO pilgrims (id, bookingId, name, passportNo, passportImage, birthDate, gender, nationality, relation, roomType)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      for (const p of b.pilgrims) {
+        const pId = p.id || Math.random().toString(36).substr(2, 9).toUpperCase();
+        insertPilgrim.run(
+          pId, b.id, p.name || '', p.passportNo || '', p.passportImage || null,
+          p.birthDate || null, p.gender || null, p.nationality || null,
+          p.relation || null, p.roomType || null
+        );
+      }
+    }
+
+    // 4. Log Action
+    db.prepare("INSERT INTO logs (userId, action, details) VALUES (?, ?, ?)").run(
+      b.createdBy || 'system',
+      'SAVE_BOOKING',
+      `Saved booking ${b.id} for trip ${tripId}`
+    );
+  };
+
+  try {
+    if (typeof db.transaction === 'function') {
+      db.transaction(runTransaction)();
+    } else {
+      runTransaction();
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error saving booking transaction:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/bookings/:id", (req, res) => {
+  const id = req.params.id;
+  console.log(`DELETE /api/bookings/${id}`);
+  
+  const runDelete = () => {
+    // 1. Get booking info to restore seats
+    const booking = db.prepare("SELECT tripId, passengerCount FROM bookings WHERE id = ?").get(id) as any;
+    
+    if (booking) {
+      // 2. Restore seats to trip
+      if (booking.tripId) {
+        db.prepare("UPDATE trips SET availableSeats = availableSeats + ? WHERE id = ?").run(booking.passengerCount, booking.tripId);
+      }
+      
+      // 3. Delete booking (pilgrims will be deleted by ON DELETE CASCADE)
+      db.prepare("DELETE FROM bookings WHERE id = ?").run(id);
+      
+      return true;
+    }
+    return false;
+  };
+
+  try {
+    let success = false;
+    if (typeof db.transaction === 'function') {
+      success = db.transaction(runDelete)();
+    } else {
+      success = runDelete();
+    }
+    
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'الحجز غير موجود أو تم حذفه بالفعل' });
+    }
+  } catch (error: any) {
+    console.error(`Error deleting booking:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Permissions
+app.get("/api/permissions", (req, res) => {
+  const perms = db.prepare("SELECT * FROM permissions").all();
+  const parsed = perms.map((p: any) => {
+    try {
+      return {
+        ...p,
+        allowedScreens: p.allowedScreens ? JSON.parse(p.allowedScreens) : [],
+        canEdit: !!p.canEdit,
+        canDelete: !!p.canDelete,
+        canExport: !!p.canExport,
+        canViewFinance: !!p.canViewFinance,
+        canApproveBookings: !!p.canApproveBookings,
+        canManageUsers: !!p.canManageUsers,
+        canEditTrips: !!p.canEditTrips,
+        canViewReports: !!p.canViewReports,
+        canManageSettings: !!p.canManageSettings,
+        canManageFinance: !!p.canManageFinance,
+        canChangeVisaStatus: !!p.canChangeVisaStatus,
+        canManageRooms: !!p.canManageRooms
+      };
+    } catch (e) {
+      console.error(`Error parsing permissions for role ${p.role}:`, e);
+      return {
+        ...p,
+        allowedScreens: [],
+        canEdit: !!p.canEdit,
+        canDelete: !!p.canDelete,
+        canExport: !!p.canExport,
+        canViewFinance: !!p.canViewFinance,
+        canApproveBookings: !!p.canApproveBookings,
+        canManageUsers: !!p.canManageUsers,
+        canEditTrips: !!p.canEditTrips,
+        canViewReports: !!p.canViewReports,
+        canManageSettings: !!p.canManageSettings,
+        canManageFinance: !!p.canManageFinance,
+        canChangeVisaStatus: !!p.canChangeVisaStatus,
+        canManageRooms: !!p.canManageRooms
+      };
+    }
+  });
+  res.json(parsed);
+});
+
+app.post("/api/permissions", (req, res) => {
+  const p = req.body;
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO permissions 
+    (role, allowedScreens, canEdit, canDelete, canExport, canViewFinance, canApproveBookings, canManageUsers, canEditTrips, canViewReports, canManageSettings, canManageFinance, canChangeVisaStatus, canManageRooms, dataScope) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    p.role, 
+    JSON.stringify(p.allowedScreens), 
+    p.canEdit ? 1 : 0, 
+    p.canDelete ? 1 : 0, 
+    p.canExport ? 1 : 0, 
+    p.canViewFinance ? 1 : 0,
+    p.canApproveBookings ? 1 : 0,
+    p.canManageUsers ? 1 : 0,
+    p.canEditTrips ? 1 : 0,
+    p.canViewReports ? 1 : 0,
+    p.canManageSettings ? 1 : 0,
+    p.canManageFinance ? 1 : 0,
+    p.canChangeVisaStatus ? 1 : 0,
+    p.canManageRooms ? 1 : 0,
+    p.dataScope
+  );
+  res.json({ success: true });
+});
+
+// Users
+app.get("/api/users", (req, res) => {
+  const users = db.prepare("SELECT * FROM users").all();
+  const parsed = users.map((u: any) => {
+    const { password: _, ...userWithoutPassword } = u;
+    return userWithoutPassword;
+  });
+  res.json(parsed);
+});
+
+app.post("/api/users", (req, res) => {
+  const u = req.body;
+  const stmt = db.prepare("INSERT OR REPLACE INTO users (id, username, password, name, role, status) VALUES (?, ?, ?, ?, ?, ?)");
+  stmt.run(u.id, u.username, u.password || '123456', u.name, u.role, u.status || 'active');
+  res.json({ success: true });
+});
+
+app.delete("/api/users/:id", (req, res) => {
+  const id = req.params.id;
+  console.log(`DELETE /api/users/${id}`);
+  try {
+    const result = db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    console.log(`Delete user result:`, result);
+    if (result.changes > 0) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'المستخدم غير موجود أو تم حذفه بالفعل' });
+    }
+  } catch (error: any) {
+    console.error(`Error deleting user:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Settings
+app.post("/api/change-password", (req, res) => {
+  const { userId, currentPassword, newPassword } = req.body;
+  const user = db.prepare("SELECT * FROM users WHERE id = ? AND password = ?").get(userId, currentPassword) as any;
+
+  if (user) {
+    db.prepare("UPDATE users SET password = ? WHERE id = ?").run(newPassword, userId);
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+  }
+});
+
+app.get("/api/settings", (req, res) => {
+  const settings = db.prepare("SELECT * FROM settings").all();
+  const result = settings.reduce((acc: any, s: any) => {
+    acc[s.key] = s.value;
+    return acc;
+  }, {});
+  res.json(result);
+});
+
+app.post("/api/settings", (req, res) => {
+  const settings = req.body;
+  const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+  for (const [key, value] of Object.entries(settings)) {
+    stmt.run(key, value);
+  }
+  res.json({ success: true });
+});
+
+app.get("/api/db-stats", (req, res) => {
+  try {
+    const stats = {
+      users: (db.prepare("SELECT count(*) as count FROM users").get() as any).count,
+      trips: (db.prepare("SELECT count(*) as count FROM trips").get() as any).count,
+      bookings: (db.prepare("SELECT count(*) as count FROM bookings").get() as any).count,
+      pilgrims: (db.prepare("SELECT count(*) as count FROM pilgrims").get() as any).count,
+      logs: (db.prepare("SELECT count(*) as count FROM logs").get() as any).count,
+      dbSize: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
+      lastBackup: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).mtime : new Date()
+    };
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/db-download", (req, res) => {
+  if (fs.existsSync(DB_PATH)) {
+    res.download(DB_PATH, `backup_${new Date().toISOString().split('T')[0]}.sqlite`);
+  } else {
+    res.status(404).json({ error: "Database file not found" });
+  }
+});
+
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
+
+app.post("/api/db-upload", upload.single('file'), async (req, res) => {
+  let tempDb: any = null;
+  const tempPath = path.resolve(process.cwd(), "temp_restore.sqlite");
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "لم يتم رفع أي ملف" });
+    }
+
+    console.log(`Restoring database from uploaded file: ${req.file.originalname} (${req.file.size} bytes)`);
+    
+    // Basic SQLite validation
+    const buffer = req.file.buffer;
+    if (buffer.length < 16 || buffer.toString('utf8', 0, 15) !== 'SQLite format 3') {
+      return res.status(400).json({ error: "الملف المرفوع ليس قاعدة بيانات SQLite صالحة" });
+    }
+
+    // Write to temporary file first to validate
+    fs.writeFileSync(tempPath, buffer);
+    
+    try {
+      const { default: Database } = await import("better-sqlite3");
+      tempDb = new Database(tempPath);
+      // Verify it's a valid DB by running a simple query
+      tempDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+      tempDb.close();
+      tempDb = null;
+    } catch (e: any) {
+      if (tempDb) {
+        try { tempDb.close(); } catch(err) {}
+      }
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      return res.status(400).json({ error: "قاعدة البيانات المرفوعة تالفة أو غير صالحة: " + e.message });
+    }
+
+    // Close current database connection
+    try {
+      db.close();
+    } catch (e) {
+      console.warn("Error closing database before restore:", e);
+    }
+    
+    // Replace the database file using rename (more atomic)
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        fs.unlinkSync(DB_PATH);
+      }
+      fs.renameSync(tempPath, DB_PATH);
+    } catch (e: any) {
+      console.error("Error replacing database file:", e);
+      // Fallback to writeFileSync if rename fails (e.g. cross-device)
+      fs.writeFileSync(DB_PATH, buffer);
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    }
+    
+    // Re-open database connection
+    try {
+      const { default: Database } = await import("better-sqlite3");
+      db = new Database(DB_PATH);
+      db.pragma('foreign_keys = ON');
+    } catch (e) {
+      console.error("Failed to re-open database after restore:", e);
+      db = new MockDatabase();
+    }
+    
+    res.json({ success: true, message: "تم استعادة قاعدة البيانات بنجاح" });
+  } catch (error: any) {
+    console.error("Error restoring database:", error);
+    // Clean up temp file
+    if (fs.existsSync(tempPath)) {
+      try { fs.unlinkSync(tempPath); } catch(e) {}
+    }
+    // Try to re-open if it was closed
+    try {
+      const { default: Database } = await import("better-sqlite3");
+      db = new Database(DB_PATH);
+      db.pragma('foreign_keys = ON');
+    } catch (e) {
+      db = new MockDatabase();
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Global error handler for Express
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Unhandled Express Error:", err);
+  res.status(500).json({ 
+    error: "Internal Server Error", 
+    message: err.message,
+    path: req.path
+  });
+});
+
 async function startServer() {
   const PORT = 3000;
 
   // Initialize database before starting server
   await initializeDatabase();
-
-  app.use(express.json({ limit: "100mb" }));
-  app.use(express.urlencoded({ limit: "100mb", extended: true }));
-
-  // API routes
-  app.get("/api/health", (req, res) => {
-    try {
-      const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
-      res.json({ status: "ok", db: "connected", users: userCount.count });
-    } catch (error: any) {
-      res.status(500).json({ status: "error", db: "error", message: error.message });
-    }
-  });
-
-  app.get("/api/test", (req, res) => {
-    res.send("Server is running correctly");
-  });
-
-  // Auth
-  app.post("/api/login", (req, res) => {
-    try {
-      const { username, password } = req.body;
-      console.log(`Login attempt for user: ${username}`);
-      
-      if (!db) {
-        console.error("Login failed: Database not initialized");
-        return res.status(500).json({ error: "Database not initialized" });
-      }
-
-      const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
-      console.log(`Database query result: ${user ? 'User found' : 'User not found'}`);
-
-      if (user) {
-        const { password: _, ...userWithoutPassword } = user;
-        res.json({ user: userWithoutPassword });
-      } else {
-        res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
-      }
-    } catch (error: any) {
-      console.error("Login error details:", error);
-      res.status(500).json({ 
-        error: "خطأ في الخادم أثناء تسجيل الدخول", 
-        details: error.message,
-        stack: error.stack
-      });
-    }
-  });
-
-  // Trips
-  app.get("/api/trips", (req, res) => {
-    const trips = db.prepare("SELECT * FROM trips").all();
-    res.json(trips);
-  });
-
-  app.post("/api/trips", (req, res) => {
-    try {
-      const trip = req.body;
-      console.log("Saving trip:", JSON.stringify(trip, null, 2));
-      
-      if (!trip.id || !trip.name || !trip.airline) {
-        console.error("Missing required trip fields:", trip);
-        return res.status(400).json({ error: "بيانات الرحلة غير مكتملة" });
-      }
-
-      const stmt = db.prepare("INSERT OR REPLACE INTO trips (id, tripNumber, name, airline, totalSeats, availableSeats, ticketPrice, currency, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-      const result = stmt.run(
-        trip.id, 
-        trip.tripNumber || null, 
-        trip.name, 
-        trip.airline, 
-        trip.totalSeats, 
-        trip.availableSeats, 
-        trip.ticketPrice, 
-        trip.currency, 
-        trip.status
-      );
-      
-      console.log("Trip saved successfully, result:", result);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Error saving trip:", error);
-      res.status(500).json({ error: `فشل حفظ الرحلة: ${error.message}` });
-    }
-  });
-
-  app.delete("/api/trips/:id", (req, res) => {
-    const id = req.params.id;
-    console.log(`DELETE /api/trips/${id}`);
-    try {
-      const result = db.prepare("DELETE FROM trips WHERE id = ?").run(id);
-      console.log(`Delete trip result:`, result);
-      if (result.changes > 0) {
-        res.json({ success: true });
-      } else {
-        res.status(404).json({ error: 'الرحلة غير موجودة أو تم حذفها بالفعل' });
-      }
-    } catch (error: any) {
-      console.error(`Error deleting trip:`, error);
-      if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
-        res.status(400).json({ error: 'لا يمكن حذف هذه الرحلة لوجود حجوزات مرتبطة بها. يرجى حذف الحجوزات أولاً.' });
-      } else {
-        res.status(500).json({ error: error.message });
-      }
-    }
-  });
-
-  // Bookings
-
-  app.get("/api/bookings", (req, res) => {
-    try {
-      // Join with trips to get trip name and ensure tripId is consistent
-      const bookings = db.prepare(`
-        SELECT b.*, t.name as tripName, t.tripNumber 
-        FROM bookings b
-        LEFT JOIN trips t ON b.tripId = t.id
-      `).all();
-      
-      console.log(`Fetching ${bookings.length} bookings from database`);
-      
-      const parsedBookings = bookings.map((b: any) => {
-        try {
-          return {
-            ...b,
-            // Ensure tripId is present even if it's tripid in DB (though it should be tripId)
-            tripId: b.tripId || b.tripid || b.trip_id,
-            totals: b.totals ? JSON.parse(b.totals) : {},
-            pilgrims: b.pilgrims ? JSON.parse(b.pilgrims) : [],
-            isVisaOnly: !!b.isVisaOnly
-          };
-        } catch (e) {
-          console.error(`Error parsing booking ${b.id}:`, e);
-          return {
-            ...b,
-            tripId: b.tripId || b.tripid || b.trip_id,
-            totals: {},
-            pilgrims: []
-          };
-        }
-      });
-      res.json(parsedBookings);
-    } catch (error: any) {
-      console.error("Error fetching bookings:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/bookings", (req, res) => {
-    const b = req.body;
-    console.log(`Saving booking: ${b.id} for trip: ${b.tripId}`);
-    const tripId = b.tripId || b.tripid || b.trip_id;
-    
-    const transaction = db.transaction(() => {
-      // 0. Get old booking to calculate seat difference
-      const oldBooking = db.prepare("SELECT passengerCount, tripId FROM bookings WHERE id = ?").get(b.id) as any;
-
-      // 1. Save Booking
-      const stmt = db.prepare(`
-        INSERT OR REPLACE INTO bookings 
-        (id, tripId, headName, regId, phone, passengerCount, status, totals, pilgrims, makkahHotel, makkahNights, madinahHotel, madinahNights, makkahBookingNo, makkahCheckIn, madinahBookingNo, madinahCheckIn, paidLYD, paidUSD, paidCashLYD, paidTransferLYD, paidCashUSD, paidTransferUSD, createdAt, updatedAt, createdBy, groupNo, isVisaOnly) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(
-        b.id, tripId, b.headName, b.regId, b.phone, b.passengerCount, b.status, 
-        JSON.stringify(b.totals), JSON.stringify(b.pilgrims), 
-        b.makkahHotel, b.makkahNights, b.madinahHotel, b.madinahNights,
-        b.makkahBookingNo || null, b.makkahCheckIn || null,
-        b.madinahBookingNo || null, b.madinahCheckIn || null,
-        b.paidLYD || 0, b.paidUSD || 0, 
-        b.paidCashLYD || 0, b.paidTransferLYD || 0, 
-        b.paidCashUSD || 0, b.paidTransferUSD || 0,
-        b.createdAt, b.updatedAt || null, b.createdBy, b.groupNo || null,
-        b.isVisaOnly ? 1 : 0
-      );
-
-      // 2. Update Trip Seats
-      if (tripId) {
-        if (oldBooking && oldBooking.tripId === tripId) {
-          // Same trip, update difference
-          const diff = b.passengerCount - oldBooking.passengerCount;
-          db.prepare("UPDATE trips SET availableSeats = availableSeats - ? WHERE id = ?").run(diff, tripId);
-        } else {
-          // New booking or trip changed
-          if (oldBooking && oldBooking.tripId) {
-            // Restore seats to old trip
-            db.prepare("UPDATE trips SET availableSeats = availableSeats + ? WHERE id = ?").run(oldBooking.passengerCount, oldBooking.tripId);
-          }
-          // Deduct seats from new trip
-          db.prepare("UPDATE trips SET availableSeats = availableSeats - ? WHERE id = ?").run(b.passengerCount, tripId);
-        }
-      }
-
-      // 3. Save Pilgrims (Delete existing first for this booking to avoid duplicates on update)
-      db.prepare("DELETE FROM pilgrims WHERE bookingId = ?").run(b.id);
-      
-      if (Array.isArray(b.pilgrims)) {
-        const insertPilgrim = db.prepare(`
-          INSERT INTO pilgrims (id, bookingId, name, passportNo, passportImage, birthDate, gender, nationality, relation, roomType)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        
-        for (const p of b.pilgrims) {
-          const pId = p.id || Math.random().toString(36).substr(2, 9).toUpperCase();
-          insertPilgrim.run(
-            pId, b.id, p.name || '', p.passportNo || '', p.passportImage || null,
-            p.birthDate || null, p.gender || null, p.nationality || null,
-            p.relation || null, p.roomType || null
-          );
-        }
-      }
-
-      // 4. Log Action
-      db.prepare("INSERT INTO logs (userId, action, details) VALUES (?, ?, ?)").run(
-        b.createdBy || 'system',
-        'SAVE_BOOKING',
-        `Saved booking ${b.id} for trip ${tripId}`
-      );
-    });
-
-    try {
-      transaction();
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Error saving booking transaction:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.delete("/api/bookings/:id", (req, res) => {
-    const id = req.params.id;
-    console.log(`DELETE /api/bookings/${id}`);
-    
-    const transaction = db.transaction(() => {
-      // 1. Get booking info to restore seats
-      const booking = db.prepare("SELECT tripId, passengerCount FROM bookings WHERE id = ?").get(id) as any;
-      
-      if (booking) {
-        // 2. Restore seats to trip
-        if (booking.tripId) {
-          db.prepare("UPDATE trips SET availableSeats = availableSeats + ? WHERE id = ?").run(booking.passengerCount, booking.tripId);
-        }
-        
-        // 3. Delete booking (pilgrims will be deleted by ON DELETE CASCADE)
-        db.prepare("DELETE FROM bookings WHERE id = ?").run(id);
-        
-        return true;
-      }
-      return false;
-    });
-
-    try {
-      const success = transaction();
-      if (success) {
-        res.json({ success: true });
-      } else {
-        res.status(404).json({ error: 'الحجز غير موجود أو تم حذفه بالفعل' });
-      }
-    } catch (error: any) {
-      console.error(`Error deleting booking:`, error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Permissions
-  app.get("/api/permissions", (req, res) => {
-    const perms = db.prepare("SELECT * FROM permissions").all();
-    const parsed = perms.map((p: any) => {
-      try {
-        return {
-          ...p,
-          allowedScreens: p.allowedScreens ? JSON.parse(p.allowedScreens) : [],
-          canEdit: !!p.canEdit,
-          canDelete: !!p.canDelete,
-          canExport: !!p.canExport,
-          canViewFinance: !!p.canViewFinance,
-          canApproveBookings: !!p.canApproveBookings,
-          canManageUsers: !!p.canManageUsers,
-          canEditTrips: !!p.canEditTrips,
-          canViewReports: !!p.canViewReports,
-          canManageSettings: !!p.canManageSettings,
-          canManageFinance: !!p.canManageFinance,
-          canChangeVisaStatus: !!p.canChangeVisaStatus,
-          canManageRooms: !!p.canManageRooms
-        };
-      } catch (e) {
-        console.error(`Error parsing permissions for role ${p.role}:`, e);
-        return {
-          ...p,
-          allowedScreens: [],
-          canEdit: !!p.canEdit,
-          canDelete: !!p.canDelete,
-          canExport: !!p.canExport,
-          canViewFinance: !!p.canViewFinance,
-          canApproveBookings: !!p.canApproveBookings,
-          canManageUsers: !!p.canManageUsers,
-          canEditTrips: !!p.canEditTrips,
-          canViewReports: !!p.canViewReports,
-          canManageSettings: !!p.canManageSettings,
-          canManageFinance: !!p.canManageFinance,
-          canChangeVisaStatus: !!p.canChangeVisaStatus,
-          canManageRooms: !!p.canManageRooms
-        };
-      }
-    });
-    res.json(parsed);
-  });
-
-  app.post("/api/permissions", (req, res) => {
-    const p = req.body;
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO permissions 
-      (role, allowedScreens, canEdit, canDelete, canExport, canViewFinance, canApproveBookings, canManageUsers, canEditTrips, canViewReports, canManageSettings, canManageFinance, canChangeVisaStatus, canManageRooms, dataScope) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-      p.role, 
-      JSON.stringify(p.allowedScreens), 
-      p.canEdit ? 1 : 0, 
-      p.canDelete ? 1 : 0, 
-      p.canExport ? 1 : 0, 
-      p.canViewFinance ? 1 : 0,
-      p.canApproveBookings ? 1 : 0,
-      p.canManageUsers ? 1 : 0,
-      p.canEditTrips ? 1 : 0,
-      p.canViewReports ? 1 : 0,
-      p.canManageSettings ? 1 : 0,
-      p.canManageFinance ? 1 : 0,
-      p.canChangeVisaStatus ? 1 : 0,
-      p.canManageRooms ? 1 : 0,
-      p.dataScope
-    );
-    res.json({ success: true });
-  });
-
-  // Users
-  app.get("/api/users", (req, res) => {
-    const users = db.prepare("SELECT * FROM users").all();
-    const parsed = users.map((u: any) => {
-      const { password: _, ...userWithoutPassword } = u;
-      return userWithoutPassword;
-    });
-    res.json(parsed);
-  });
-
-  app.post("/api/users", (req, res) => {
-    const u = req.body;
-    const stmt = db.prepare("INSERT OR REPLACE INTO users (id, username, password, name, role, status) VALUES (?, ?, ?, ?, ?, ?)");
-    stmt.run(u.id, u.username, u.password || '123456', u.name, u.role, u.status || 'active');
-    res.json({ success: true });
-  });
-
-  app.delete("/api/users/:id", (req, res) => {
-    const id = req.params.id;
-    console.log(`DELETE /api/users/${id}`);
-    try {
-      const result = db.prepare("DELETE FROM users WHERE id = ?").run(id);
-      console.log(`Delete user result:`, result);
-      if (result.changes > 0) {
-        res.json({ success: true });
-      } else {
-        res.status(404).json({ error: 'المستخدم غير موجود أو تم حذفه بالفعل' });
-      }
-    } catch (error: any) {
-      console.error(`Error deleting user:`, error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Settings
-  app.post("/api/change-password", (req, res) => {
-    const { userId, currentPassword, newPassword } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE id = ? AND password = ?").get(userId, currentPassword) as any;
-
-    if (user) {
-      db.prepare("UPDATE users SET password = ? WHERE id = ?").run(newPassword, userId);
-      res.json({ success: true });
-    } else {
-      res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة' });
-    }
-  });
-
-  app.get("/api/settings", (req, res) => {
-    const settings = db.prepare("SELECT * FROM settings").all();
-    const result = settings.reduce((acc: any, s: any) => {
-      acc[s.key] = s.value;
-      return acc;
-    }, {});
-    res.json(result);
-  });
-
-  app.post("/api/settings", (req, res) => {
-    const settings = req.body;
-    const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-    for (const [key, value] of Object.entries(settings)) {
-      stmt.run(key, value);
-    }
-    res.json({ success: true });
-  });
-
-  app.get("/api/db-stats", (req, res) => {
-    try {
-      const stats = {
-        users: (db.prepare("SELECT count(*) as count FROM users").get() as any).count,
-        trips: (db.prepare("SELECT count(*) as count FROM trips").get() as any).count,
-        bookings: (db.prepare("SELECT count(*) as count FROM bookings").get() as any).count,
-        pilgrims: (db.prepare("SELECT count(*) as count FROM pilgrims").get() as any).count,
-        logs: (db.prepare("SELECT count(*) as count FROM logs").get() as any).count,
-        dbSize: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
-        lastBackup: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).mtime : new Date()
-      };
-      res.json(stats);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/db-download", (req, res) => {
-    if (fs.existsSync(DB_PATH)) {
-      res.download(DB_PATH, `backup_${new Date().toISOString().split('T')[0]}.sqlite`);
-    } else {
-      res.status(404).json({ error: "Database file not found" });
-    }
-  });
-
-  const upload = multer({ 
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
-  });
-
-  app.post("/api/db-upload", upload.single('file'), async (req, res) => {
-    let tempDb: any = null;
-    const tempPath = path.resolve(process.cwd(), "temp_restore.sqlite");
-
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "لم يتم رفع أي ملف" });
-      }
-
-      console.log(`Restoring database from uploaded file: ${req.file.originalname} (${req.file.size} bytes)`);
-      
-      // Basic SQLite validation
-      const buffer = req.file.buffer;
-      if (buffer.length < 16 || buffer.toString('utf8', 0, 15) !== 'SQLite format 3') {
-        return res.status(400).json({ error: "الملف المرفوع ليس قاعدة بيانات SQLite صالحة" });
-      }
-
-      // Write to temporary file first to validate
-      fs.writeFileSync(tempPath, buffer);
-      
-      try {
-        const { default: Database } = await import("better-sqlite3");
-        tempDb = new Database(tempPath);
-        // Verify it's a valid DB by running a simple query
-        tempDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-        tempDb.close();
-        tempDb = null;
-      } catch (e: any) {
-        if (tempDb) {
-          try { tempDb.close(); } catch(err) {}
-        }
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-        return res.status(400).json({ error: "قاعدة البيانات المرفوعة تالفة أو غير صالحة: " + e.message });
-      }
-
-      // Close current database connection
-      try {
-        db.close();
-      } catch (e) {
-        console.warn("Error closing database before restore:", e);
-      }
-      
-      // Replace the database file using rename (more atomic)
-      try {
-        if (fs.existsSync(DB_PATH)) {
-          fs.unlinkSync(DB_PATH);
-        }
-        fs.renameSync(tempPath, DB_PATH);
-      } catch (e: any) {
-        console.error("Error replacing database file:", e);
-        // Fallback to writeFileSync if rename fails (e.g. cross-device)
-        fs.writeFileSync(DB_PATH, buffer);
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      }
-      
-      // Re-open database connection
-      try {
-        const { default: Database } = await import("better-sqlite3");
-        db = new Database(DB_PATH);
-        db.pragma('foreign_keys = ON');
-      } catch (e) {
-        console.error("Failed to re-open database after restore:", e);
-        db = new MockDatabase();
-      }
-      
-      res.json({ success: true, message: "تم استعادة قاعدة البيانات بنجاح" });
-    } catch (error: any) {
-      console.error("Error restoring database:", error);
-      // Clean up temp file
-      if (fs.existsSync(tempPath)) {
-        try { fs.unlinkSync(tempPath); } catch(e) {}
-      }
-      // Try to re-open if it was closed
-      try {
-        const { default: Database } = await import("better-sqlite3");
-        db = new Database(DB_PATH);
-        db.pragma('foreign_keys = ON');
-      } catch (e) {
-        db = new MockDatabase();
-      }
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Global error handler for Express
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error("Unhandled Express Error:", err);
-    res.status(500).json({ 
-      error: "Internal Server Error", 
-      message: err.message,
-      path: req.path
-    });
-  });
 
   // Vite middleware for development
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`);
