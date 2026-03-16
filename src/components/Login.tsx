@@ -78,26 +78,17 @@ export default function Login({ onLogin }: LoginProps) {
               <button 
                 type="button"
                 onClick={async () => {
-                  console.log("Starting health check...");
                   try {
-                    const response = await fetch('/api/health');
-                    console.log(`Response status: ${response.status}`);
-                    const text = await response.text();
-                    console.log(`Response text: ${text.substring(0, 200)}`);
-                    try {
-                      const data = JSON.parse(text);
-                      alert(`✅ حالة الخادم:\nStatus: ${response.status}\nData: ${JSON.stringify(data, null, 2)}`);
-                    } catch (parseError) {
-                      alert(`⚠️ استجابة غير JSON (Status: ${response.status}):\n${text.substring(0, 300)}`);
-                    }
+                    const response = await fetch('/api/ping-simple');
+                    const data = await response.json();
+                    alert(`✅ Simple Ping: ${JSON.stringify(data)}`);
                   } catch (e: any) {
-                    console.error("Health check failed:", e);
-                    alert(`❌ فشل الاتصال بالخادم:\nName: ${e.name}\nMessage: ${e.message}`);
+                    alert(`❌ Simple Ping failed: ${e.message}`);
                   }
                 }}
                 className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
               >
-                اختبار الخادم (Health)
+                اختبار بسيط (Simple)
               </button>
               <button 
                 type="button"
@@ -115,6 +106,30 @@ export default function Login({ onLogin }: LoginProps) {
                 اختبار الاتصال (Ping)
               </button>
             </div>
+            <button 
+              type="button"
+              onClick={async () => {
+                console.log("Starting health check...");
+                try {
+                  const response = await fetch('/api/health');
+                  console.log(`Response status: ${response.status}`);
+                  const text = await response.text();
+                  console.log(`Response text: ${text.substring(0, 200)}`);
+                  try {
+                    const data = JSON.parse(text);
+                    alert(`✅ حالة الخادم:\nStatus: ${response.status}\nData: ${JSON.stringify(data, null, 2)}`);
+                  } catch (parseError) {
+                    alert(`⚠️ استجابة غير JSON (Status: ${response.status}):\n${text.substring(0, 300)}`);
+                  }
+                } catch (e: any) {
+                  console.error("Health check failed:", e);
+                  alert(`❌ فشل الاتصال بالخادم:\nName: ${e.name}\nMessage: ${e.message}`);
+                }
+              }}
+              className="w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95 mt-2"
+            >
+              اختبار الخادم (Health)
+            </button>
             <button 
               type="button"
               onClick={async () => {

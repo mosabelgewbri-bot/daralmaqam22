@@ -2,6 +2,7 @@ import { app, serverPromise } from "../server";
 
 export default async (req: any, res: any) => {
   console.log(`Vercel request received: ${req.method} ${req.url}`);
+  console.log(`Headers: ${JSON.stringify(req.headers)}`);
   try {
     console.log("Awaiting serverPromise...");
     await serverPromise;

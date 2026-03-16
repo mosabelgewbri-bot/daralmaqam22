@@ -8,16 +8,22 @@ import "dotenv/config";
 
 console.log("server.ts module loading...");
 
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
+// Remove global process listeners that might interfere with Vercel
+// process.on('uncaughtException', ...)
+// process.on('unhandledRejection', ...)
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+const getDirname = () => {
+  try {
+    if (typeof import.meta.url === 'string' && import.meta.url.startsWith('file:')) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch (e) {
+    console.warn("Could not determine __dirname from import.meta.url, falling back to process.cwd()");
+  }
+  return process.cwd();
+};
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = getDirname();
 console.log(`Server root directory: ${__dirname}`);
 
 // Mock database for environments where better-sqlite3 fails (like some serverless setups)
@@ -118,8 +124,9 @@ async function initializeDatabase() {
     console.log(`Initializing database at ${actualDbPath}...`);
     
     try {
-      // Dynamic import to prevent crash if module is missing/incompatible
-      const { default: Database } = await import("better-sqlite3");
+      // Use a more hidden way to import better-sqlite3 to avoid Vercel tracer issues
+      const dbModule = "better-sqlite3";
+      const { default: Database } = await import(dbModule);
       db = new Database(actualDbPath);
       db.pragma('foreign_keys = ON');
       console.log("Database initialized successfully with better-sqlite3.");
@@ -388,6 +395,11 @@ function cleanGeminiKey(key: string | undefined): string {
 }
 
 const app = express();
+
+// VERY SIMPLE ROUTE AT THE TOP
+app.get("/api/ping-simple", (req, res) => {
+  res.json({ status: "alive", timestamp: new Date().toISOString() });
+});
 
 // Apply middlewares immediately for Vercel
 app.use(express.json({ limit: "100mb" }));
@@ -899,7 +911,8 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     
     // Re-open database connection
     try {
-      const { default: Database } = await import("better-sqlite3");
+      const dbModule = "better-sqlite3";
+      const { default: Database } = await import(dbModule);
       db = new Database(DB_PATH);
       db.pragma('foreign_keys = ON');
     } catch (e) {
@@ -916,7 +929,8 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     }
     // Try to re-open if it was closed
     try {
-      const { default: Database } = await import("better-sqlite3");
+      const dbModule = "better-sqlite3";
+      const { default: Database } = await import(dbModule);
       db = new Database(DB_PATH);
       db.pragma('foreign_keys = ON');
     } catch (e) {
