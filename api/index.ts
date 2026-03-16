@@ -9,7 +9,8 @@ export default async (req: any, res: any) => {
     res.status(500).json({ 
       error: "Internal Server Error", 
       message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: "حدث خطأ في تهيئة الخادم. يرجى التحقق من السجلات.",
+      stack: error.stack
     });
   }
 };
