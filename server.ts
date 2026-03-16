@@ -15,255 +15,265 @@ console.log(`Server root directory: ${__dirname}`);
 // Initialize SQLite Database
 const DB_PATH = path.resolve(process.cwd(), "database.sqlite");
 let db: Database.Database;
-try {
-  // On Vercel, we might not have write access to the root, so use /tmp or memory
-  const isVercel = process.env.VERCEL === "1";
-  const actualDbPath = isVercel ? ":memory:" : DB_PATH;
-  
-  console.log(`Initializing database at ${actualDbPath}...`);
-  db = new Database(actualDbPath);
-  db.pragma('foreign_keys = ON');
-  console.log("Database initialized successfully.");
-} catch (error) {
-  console.error("Failed to initialize database:", error);
-  // Fallback to in-memory if file fails, to at least let the server start
-  db = new Database(":memory:");
-  console.warn("Falling back to in-memory database.");
-}
 
-// Create tables if they don't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE,
-    password TEXT,
-    name TEXT,
-    role TEXT,
-    status TEXT DEFAULT 'active'
-  );
-
-  CREATE TABLE IF NOT EXISTS trips (
-    id TEXT PRIMARY KEY,
-    tripNumber TEXT,
-    name TEXT,
-    airline TEXT,
-    totalSeats INTEGER,
-    availableSeats INTEGER,
-    ticketPrice REAL,
-    currency TEXT,
-    status TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS bookings (
-    id TEXT PRIMARY KEY,
-    tripId TEXT,
-    headName TEXT,
-    regId TEXT,
-    phone TEXT,
-    passengerCount INTEGER,
-    status TEXT,
-    totals TEXT, -- JSON string
-    pilgrims TEXT, -- JSON string (kept for compatibility)
-    makkahHotel TEXT,
-    makkahNights INTEGER,
-    madinahHotel TEXT,
-    madinahNights INTEGER,
-    makkahBookingNo TEXT,
-    makkahCheckIn TEXT,
-    madinahBookingNo TEXT,
-    madinahCheckIn TEXT,
-    paidLYD REAL DEFAULT 0,
-    paidUSD REAL DEFAULT 0,
-    paidCashLYD REAL DEFAULT 0,
-    paidTransferLYD REAL DEFAULT 0,
-    paidCashUSD REAL DEFAULT 0,
-    paidTransferUSD REAL DEFAULT 0,
-    createdAt TEXT,
-    updatedAt TEXT,
-    createdBy TEXT,
-    groupNo TEXT,
-    isVisaOnly INTEGER DEFAULT 0,
-    FOREIGN KEY (tripId) REFERENCES trips(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS pilgrims (
-    id TEXT PRIMARY KEY,
-    bookingId TEXT,
-    name TEXT,
-    passportNo TEXT,
-    passportImage TEXT,
-    birthDate TEXT,
-    gender TEXT,
-    nationality TEXT,
-    relation TEXT,
-    roomType TEXT,
-    status TEXT DEFAULT 'pending',
-    visaStatus TEXT DEFAULT 'none',
-    FOREIGN KEY (bookingId) REFERENCES bookings(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId TEXT,
-    action TEXT,
-    details TEXT,
-    timestamp TEXT DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS permissions (
-    role TEXT PRIMARY KEY,
-    allowedScreens TEXT, -- JSON string
-    canEdit INTEGER,
-    canDelete INTEGER,
-    canExport INTEGER DEFAULT 1,
-    canViewFinance INTEGER DEFAULT 1,
-    canApproveBookings INTEGER DEFAULT 0,
-    canManageUsers INTEGER DEFAULT 0,
-    canEditTrips INTEGER DEFAULT 0,
-    canViewReports INTEGER DEFAULT 0,
-    canManageSettings INTEGER DEFAULT 0,
-    canManageFinance INTEGER DEFAULT 0,
-    canChangeVisaStatus INTEGER DEFAULT 0,
-    canManageRooms INTEGER DEFAULT 0,
-    dataScope TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-`);
-
-// Migration: Add missing columns to bookings table if they don't exist
-const tableInfo = db.prepare("PRAGMA table_info(bookings)").all() as any[];
-const columnNames = tableInfo.map(c => c.name);
-
-// Migration for trips table
-const tripTableInfo = db.prepare("PRAGMA table_info(trips)").all() as any[];
-const tripColumnNames = tripTableInfo.map(c => c.name);
-if (!tripColumnNames.includes('tripNumber')) {
-  console.log("Migrating: Adding column tripNumber to trips table");
+function initializeDatabase() {
   try {
-    db.exec("ALTER TABLE trips ADD COLUMN tripNumber TEXT");
-  } catch (e) {
-    console.error("Failed to add column tripNumber to trips table:", e);
-  }
-}
-
-const requiredColumns = [
-  { name: 'paidLYD', type: 'REAL DEFAULT 0' },
-  { name: 'paidUSD', type: 'REAL DEFAULT 0' },
-  { name: 'paidCashLYD', type: 'REAL DEFAULT 0' },
-  { name: 'paidTransferLYD', type: 'REAL DEFAULT 0' },
-  { name: 'paidCashUSD', type: 'REAL DEFAULT 0' },
-  { name: 'paidTransferUSD', type: 'REAL DEFAULT 0' },
-  { name: 'groupNo', type: 'TEXT' },
-  { name: 'isVisaOnly', type: 'INTEGER DEFAULT 0' },
-  { name: 'makkahBookingNo', type: 'TEXT' },
-  { name: 'makkahCheckIn', type: 'TEXT' },
-  { name: 'madinahBookingNo', type: 'TEXT' },
-  { name: 'madinahCheckIn', type: 'TEXT' }
-];
-
-for (const col of requiredColumns) {
-  if (!columnNames.includes(col.name)) {
-    console.log(`Migrating: Adding column ${col.name} to bookings table`);
+    // On Vercel, we might not have write access to the root, so use /tmp or memory
+    const isVercel = !!process.env.VERCEL;
+    const actualDbPath = isVercel ? ":memory:" : DB_PATH;
+    
+    console.log(`Initializing database at ${actualDbPath}... (isVercel: ${isVercel})`);
+    db = new Database(actualDbPath);
+    db.pragma('foreign_keys = ON');
+    console.log("Database initialized successfully.");
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+    // Fallback to in-memory if file fails, to at least let the server start
     try {
-      db.exec(`ALTER TABLE bookings ADD COLUMN ${col.name} ${col.type}`);
-    } catch (e) {
-      console.error(`Failed to add column ${col.name}:`, e);
+      db = new Database(":memory:");
+      db.pragma('foreign_keys = ON');
+      console.warn("Falling back to in-memory database.");
+    } catch (fallbackError) {
+      console.error("Critical: Failed to initialize even in-memory database:", fallbackError);
+      // We can't really continue without a database
+      throw fallbackError;
     }
   }
-}
 
-// Migration: Add missing columns to pilgrims table if they don't exist
-const pilgrimTableInfo = db.prepare("PRAGMA table_info(pilgrims)").all() as any[];
-const pilgrimColumnNames = pilgrimTableInfo.map(c => c.name);
+  // Create tables if they don't exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE,
+      password TEXT,
+      name TEXT,
+      role TEXT,
+      status TEXT DEFAULT 'active'
+    );
 
-const requiredPilgrimColumns = [
-  { name: 'roomType', type: 'TEXT' },
-  { name: 'status', type: "TEXT DEFAULT 'pending'" },
-  { name: 'visaStatus', type: "TEXT DEFAULT 'none'" }
-];
+    CREATE TABLE IF NOT EXISTS trips (
+      id TEXT PRIMARY KEY,
+      tripNumber TEXT,
+      name TEXT,
+      airline TEXT,
+      totalSeats INTEGER,
+      availableSeats INTEGER,
+      ticketPrice REAL,
+      currency TEXT,
+      status TEXT
+    );
 
-for (const col of requiredPilgrimColumns) {
-  if (!pilgrimColumnNames.includes(col.name)) {
-    console.log(`Migrating: Adding column ${col.name} to pilgrims table`);
-    try {
-      db.exec(`ALTER TABLE pilgrims ADD COLUMN ${col.name} ${col.type}`);
-    } catch (e) {
-      console.error(`Failed to add column ${col.name}:`, e);
-    }
-  }
-}
+    CREATE TABLE IF NOT EXISTS bookings (
+      id TEXT PRIMARY KEY,
+      tripId TEXT,
+      headName TEXT,
+      regId TEXT,
+      phone TEXT,
+      passengerCount INTEGER,
+      status TEXT,
+      totals TEXT, -- JSON string
+      pilgrims TEXT, -- JSON string (kept for compatibility)
+      makkahHotel TEXT,
+      makkahNights INTEGER,
+      madinahHotel TEXT,
+      madinahNights INTEGER,
+      makkahBookingNo TEXT,
+      makkahCheckIn TEXT,
+      madinahBookingNo TEXT,
+      madinahCheckIn TEXT,
+      paidLYD REAL DEFAULT 0,
+      paidUSD REAL DEFAULT 0,
+      paidCashLYD REAL DEFAULT 0,
+      paidTransferLYD REAL DEFAULT 0,
+      paidCashUSD REAL DEFAULT 0,
+      paidTransferUSD REAL DEFAULT 0,
+      createdAt TEXT,
+      updatedAt TEXT,
+      createdBy TEXT,
+      groupNo TEXT,
+      isVisaOnly INTEGER DEFAULT 0,
+      FOREIGN KEY (tripId) REFERENCES trips(id)
+    );
 
-// Migration for permissions table
-const permsTableInfo = db.prepare("PRAGMA table_info(permissions)").all() as any[];
-const permsColumnNames = permsTableInfo.map(c => c.name);
-const newPermsColumns = [
-  'canApproveBookings', 'canManageUsers', 'canEditTrips', 'canViewReports',
-  'canManageSettings', 'canManageFinance', 'canChangeVisaStatus', 'canManageRooms'
-];
-for (const col of newPermsColumns) {
-  if (!permsColumnNames.includes(col)) {
-    console.log(`Migrating: Adding column ${col} to permissions table`);
-    try {
-      db.exec(`ALTER TABLE permissions ADD COLUMN ${col} INTEGER DEFAULT 0`);
-    } catch (e) {
-      console.error(`Failed to add column ${col} to permissions table:`, e);
-    }
-  }
-}
+    CREATE TABLE IF NOT EXISTS pilgrims (
+      id TEXT PRIMARY KEY,
+      bookingId TEXT,
+      name TEXT,
+      passportNo TEXT,
+      passportImage TEXT,
+      birthDate TEXT,
+      gender TEXT,
+      nationality TEXT,
+      relation TEXT,
+      roomType TEXT,
+      status TEXT DEFAULT 'pending',
+      visaStatus TEXT DEFAULT 'none',
+      FOREIGN KEY (bookingId) REFERENCES bookings(id) ON DELETE CASCADE
+    );
 
-// Seed initial data if empty
-const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
-if (userCount.count === 0) {
-  const insertUser = db.prepare("INSERT INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)");
-  insertUser.run('1', 'admin', 'admin123', 'المدير العام', 'admin');
-  insertUser.run('2', 'staff', 'staff123', 'موظف عمليات', 'staff');
-  insertUser.run('3', 'accountant', 'acc123', 'المحاسب المالي', 'accountant');
-  insertUser.run('4', 'manager', 'manager123', 'مدير فرع', 'manager');
-  insertUser.run('5', 'visa', 'visa123', 'مسؤول تأشيرات', 'visa_specialist');
-  insertUser.run('6', 'reception', 'rec123', 'موظف استقبال', 'receptionist');
-}
+    CREATE TABLE IF NOT EXISTS logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId TEXT,
+      action TEXT,
+      details TEXT,
+      timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+    );
 
-// Seed default settings if empty
-const settingsCount = db.prepare("SELECT count(*) as count FROM settings").get() as { count: number };
-if (settingsCount.count === 0) {
-  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('app_logo', "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E");
-}
+    CREATE TABLE IF NOT EXISTS permissions (
+      role TEXT PRIMARY KEY,
+      allowedScreens TEXT, -- JSON string
+      canEdit INTEGER,
+      canDelete INTEGER,
+      canExport INTEGER DEFAULT 1,
+      canViewFinance INTEGER DEFAULT 1,
+      canApproveBookings INTEGER DEFAULT 0,
+      canManageUsers INTEGER DEFAULT 0,
+      canEditTrips INTEGER DEFAULT 0,
+      canViewReports INTEGER DEFAULT 0,
+      canManageSettings INTEGER DEFAULT 0,
+      canManageFinance INTEGER DEFAULT 0,
+      canChangeVisaStatus INTEGER DEFAULT 0,
+      canManageRooms INTEGER DEFAULT 0,
+      dataScope TEXT
+    );
 
-// Seed default permissions if empty
-const permsCount = db.prepare("SELECT count(*) as count FROM permissions").get() as { count: number };
-if (permsCount.count === 0) {
-  const insertPerm = db.prepare(`
-    INSERT INTO permissions 
-    (role, allowedScreens, canEdit, canDelete, canExport, canViewFinance, canApproveBookings, canManageUsers, canEditTrips, canViewReports, canManageSettings, canManageFinance, canChangeVisaStatus, canManageRooms, dataScope) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
-  
-  insertPerm.run('admin', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 'all');
-  insertPerm.run('staff', JSON.stringify(['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'settings']), 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'own');
-  insertPerm.run('accountant', JSON.stringify(['dashboard', 'reports', 'finance', 'settings']), 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 'all');
-  insertPerm.run('manager', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'settings']), 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 'all');
-  insertPerm.run('visa_specialist', JSON.stringify(['dashboard', 'tracking', 'reports', 'settings']), 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 'all');
-  insertPerm.run('receptionist', JSON.stringify(['dashboard', 'booking', 'settings']), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'own');
-}
 
-// Migration for permissions: ensure settings is in allowedScreens for all roles
-try {
-  const allPerms = db.prepare("SELECT role, allowedScreens FROM permissions").all() as any[];
-  const updatePerm = db.prepare("UPDATE permissions SET allowedScreens = ? WHERE role = ?");
-  for (const p of allPerms) {
-    const screens = JSON.parse(p.allowedScreens) as string[];
-    if (!screens.includes('settings')) {
-      screens.push('settings');
-      updatePerm.run(JSON.stringify(screens), p.role);
-      console.log(`Migrated: Added settings to allowedScreens for role ${p.role}`);
+  // Migration: Add missing columns to bookings table if they don't exist
+  const tableInfo = db.prepare("PRAGMA table_info(bookings)").all() as any[];
+  const columnNames = tableInfo.map(c => c.name);
+
+  // Migration for trips table
+  const tripTableInfo = db.prepare("PRAGMA table_info(trips)").all() as any[];
+  const tripColumnNames = tripTableInfo.map(c => c.name);
+  if (!tripColumnNames.includes('tripNumber')) {
+    console.log("Migrating: Adding column tripNumber to trips table");
+    try {
+      db.exec("ALTER TABLE trips ADD COLUMN tripNumber TEXT");
+    } catch (e) {
+      console.error("Failed to add column tripNumber to trips table:", e);
     }
   }
-} catch (e) {
-  console.error("Failed to migrate permissions for settings screen:", e);
+
+  const requiredColumns = [
+    { name: 'paidLYD', type: 'REAL DEFAULT 0' },
+    { name: 'paidUSD', type: 'REAL DEFAULT 0' },
+    { name: 'paidCashLYD', type: 'REAL DEFAULT 0' },
+    { name: 'paidTransferLYD', type: 'REAL DEFAULT 0' },
+    { name: 'paidCashUSD', type: 'REAL DEFAULT 0' },
+    { name: 'paidTransferUSD', type: 'REAL DEFAULT 0' },
+    { name: 'groupNo', type: 'TEXT' },
+    { name: 'isVisaOnly', type: 'INTEGER DEFAULT 0' },
+    { name: 'makkahBookingNo', type: 'TEXT' },
+    { name: 'makkahCheckIn', type: 'TEXT' },
+    { name: 'madinahBookingNo', type: 'TEXT' },
+    { name: 'madinahCheckIn', type: 'TEXT' }
+  ];
+
+  for (const col of requiredColumns) {
+    if (!columnNames.includes(col.name)) {
+      console.log(`Migrating: Adding column ${col.name} to bookings table`);
+      try {
+        db.exec(`ALTER TABLE bookings ADD COLUMN ${col.name} ${col.type}`);
+      } catch (e) {
+        console.error(`Failed to add column ${col.name}:`, e);
+      }
+    }
+  }
+
+  // Migration: Add missing columns to pilgrims table if they don't exist
+  const pilgrimTableInfo = db.prepare("PRAGMA table_info(pilgrims)").all() as any[];
+  const pilgrimColumnNames = pilgrimTableInfo.map(c => c.name);
+
+  const requiredPilgrimColumns = [
+    { name: 'roomType', type: 'TEXT' },
+    { name: 'status', type: "TEXT DEFAULT 'pending'" },
+    { name: 'visaStatus', type: "TEXT DEFAULT 'none'" }
+  ];
+
+  for (const col of requiredPilgrimColumns) {
+    if (!pilgrimColumnNames.includes(col.name)) {
+      console.log(`Migrating: Adding column ${col.name} to pilgrims table`);
+      try {
+        db.exec(`ALTER TABLE pilgrims ADD COLUMN ${col.name} ${col.type}`);
+      } catch (e) {
+        console.error(`Failed to add column ${col.name}:`, e);
+      }
+    }
+  }
+
+  // Migration for permissions table
+  const permsTableInfo = db.prepare("PRAGMA table_info(permissions)").all() as any[];
+  const permsColumnNames = permsTableInfo.map(c => c.name);
+  const newPermsColumns = [
+    'canApproveBookings', 'canManageUsers', 'canEditTrips', 'canViewReports',
+    'canManageSettings', 'canManageFinance', 'canChangeVisaStatus', 'canManageRooms'
+  ];
+  for (const col of newPermsColumns) {
+    if (!permsColumnNames.includes(col)) {
+      console.log(`Migrating: Adding column ${col} to permissions table`);
+      try {
+        db.exec(`ALTER TABLE permissions ADD COLUMN ${col} INTEGER DEFAULT 0`);
+      } catch (e) {
+        console.error(`Failed to add column ${col} to permissions table:`, e);
+      }
+    }
+  }
+
+  // Seed initial data if empty
+  const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
+  if (userCount.count === 0) {
+    const insertUser = db.prepare("INSERT INTO users (id, username, password, name, role) VALUES (?, ?, ?, ?, ?)");
+    insertUser.run('1', 'admin', 'admin123', 'المدير العام', 'admin');
+    insertUser.run('2', 'staff', 'staff123', 'موظف عمليات', 'staff');
+    insertUser.run('3', 'accountant', 'acc123', 'المحاسب المالي', 'accountant');
+    insertUser.run('4', 'manager', 'manager123', 'مدير فرع', 'manager');
+    insertUser.run('5', 'visa', 'visa123', 'مسؤول تأشيرات', 'visa_specialist');
+    insertUser.run('6', 'reception', 'rec123', 'موظف استقبال', 'receptionist');
+  }
+
+  // Seed default settings if empty
+  const settingsCount = db.prepare("SELECT count(*) as count FROM settings").get() as { count: number };
+  if (settingsCount.count === 0) {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('app_logo', "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E");
+  }
+
+  // Seed default permissions if empty
+  const permsCount = db.prepare("SELECT count(*) as count FROM permissions").get() as { count: number };
+  if (permsCount.count === 0) {
+    const insertPerm = db.prepare(`
+      INSERT INTO permissions 
+      (role, allowedScreens, canEdit, canDelete, canExport, canViewFinance, canApproveBookings, canManageUsers, canEditTrips, canViewReports, canManageSettings, canManageFinance, canChangeVisaStatus, canManageRooms, dataScope) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    insertPerm.run('admin', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 'all');
+    insertPerm.run('staff', JSON.stringify(['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'settings']), 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'own');
+    insertPerm.run('accountant', JSON.stringify(['dashboard', 'reports', 'finance', 'settings']), 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 'all');
+    insertPerm.run('manager', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'settings']), 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 'all');
+    insertPerm.run('visa_specialist', JSON.stringify(['dashboard', 'tracking', 'reports', 'settings']), 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 'all');
+    insertPerm.run('receptionist', JSON.stringify(['dashboard', 'booking', 'settings']), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'own');
+  }
+
+  // Migration for permissions: ensure settings is in allowedScreens for all roles
+  try {
+    const allPerms = db.prepare("SELECT role, allowedScreens FROM permissions").all() as any[];
+    const updatePerm = db.prepare("UPDATE permissions SET allowedScreens = ? WHERE role = ?");
+    for (const p of allPerms) {
+      const screens = JSON.parse(p.allowedScreens) as string[];
+      if (!screens.includes('settings')) {
+        screens.push('settings');
+        updatePerm.run(JSON.stringify(screens), p.role);
+        console.log(`Migrated: Added settings to allowedScreens for role ${p.role}`);
+      }
+    }
+  } catch (e) {
+    console.error("Failed to migrate permissions for settings screen:", e);
+  }
 }
 
 // Helper to clean API Key
@@ -288,6 +298,9 @@ const app = express();
 async function startServer() {
   const PORT = 3000;
 
+  // Initialize database before starting server
+  initializeDatabase();
+
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ limit: "100mb", extended: true }));
 
@@ -307,14 +320,22 @@ async function startServer() {
 
   // Auth
   app.post("/api/login", (req, res) => {
-    const { username, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
+    try {
+      const { username, password } = req.body;
+      if (!db) {
+        return res.status(500).json({ error: "Database not initialized" });
+      }
+      const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
 
-    if (user) {
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
-    } else {
-      res.status(401).json({ error: 'Invalid credentials' });
+      if (user) {
+        const { password: _, ...userWithoutPassword } = user;
+        res.json({ user: userWithoutPassword });
+      } else {
+        res.status(401).json({ error: 'Invalid credentials' });
+      }
+    } catch (error: any) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "خطأ في الخادم أثناء تسجيل الدخول", details: error.message });
     }
   });
 
