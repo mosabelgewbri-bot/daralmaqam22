@@ -3,7 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import Database from "better-sqlite3";
+// import Database from "better-sqlite3"; // Removed static import to prevent Vercel crashes
 import multer from "multer";
 import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
@@ -11,10 +11,6 @@ import "dotenv/config";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 console.log(`Server root directory: ${__dirname}`);
-
-// Initialize SQLite Database
-const DB_PATH = path.resolve(process.cwd(), "database.sqlite");
-let db: any;
 
 // Mock database for environments where better-sqlite3 fails (like some serverless setups)
 class MockDatabase {
@@ -54,7 +50,11 @@ class MockDatabase {
   }
 }
 
-function initializeDatabase() {
+// Initialize SQLite Database
+const DB_PATH = path.resolve(process.cwd(), "database.sqlite");
+let db: any = new MockDatabase(); // Default to mock, will be replaced if sqlite works
+
+async function initializeDatabase() {
   try {
     // On Vercel, we might not have write access to the root, so use /tmp or memory
     const isVercel = !!process.env.VERCEL;
@@ -63,11 +63,13 @@ function initializeDatabase() {
     console.log(`Initializing database at ${actualDbPath}... (isVercel: ${isVercel})`);
     
     try {
+      // Dynamic import to prevent crash if module is missing/incompatible
+      const { default: Database } = await import("better-sqlite3");
       db = new Database(actualDbPath);
       db.pragma('foreign_keys = ON');
-      console.log("Database initialized successfully.");
+      console.log("Database initialized successfully with better-sqlite3.");
     } catch (dbError: any) {
-      console.error("better-sqlite3 initialization failed, using mock:", dbError.message);
+      console.error("better-sqlite3 initialization failed (expected on Vercel), using mock:", dbError.message);
       db = new MockDatabase();
       return; // Skip migrations for mock
     }
@@ -336,7 +338,7 @@ async function startServer() {
   const PORT = 3000;
 
   // Initialize database before starting server
-  initializeDatabase();
+  await initializeDatabase();
 
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ limit: "100mb", extended: true }));
@@ -757,7 +759,7 @@ async function startServer() {
   });
 
   app.post("/api/db-upload", upload.single('file'), async (req, res) => {
-    let tempDb: Database.Database | null = null;
+    let tempDb: any = null;
     const tempPath = path.resolve(process.cwd(), "temp_restore.sqlite");
 
     try {
@@ -777,6 +779,7 @@ async function startServer() {
       fs.writeFileSync(tempPath, buffer);
       
       try {
+        const { default: Database } = await import("better-sqlite3");
         tempDb = new Database(tempPath);
         // Verify it's a valid DB by running a simple query
         tempDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
@@ -811,8 +814,14 @@ async function startServer() {
       }
       
       // Re-open database connection
-      db = new Database(DB_PATH);
-      db.pragma('foreign_keys = ON');
+      try {
+        const { default: Database } = await import("better-sqlite3");
+        db = new Database(DB_PATH);
+        db.pragma('foreign_keys = ON');
+      } catch (e) {
+        console.error("Failed to re-open database after restore:", e);
+        db = new MockDatabase();
+      }
       
       res.json({ success: true, message: "تم استعادة قاعدة البيانات بنجاح" });
     } catch (error: any) {
@@ -823,9 +832,12 @@ async function startServer() {
       }
       // Try to re-open if it was closed
       try {
+        const { default: Database } = await import("better-sqlite3");
         db = new Database(DB_PATH);
         db.pragma('foreign_keys = ON');
-      } catch (e) {}
+      } catch (e) {
+        db = new MockDatabase();
+      }
       res.status(500).json({ error: error.message });
     }
   });
