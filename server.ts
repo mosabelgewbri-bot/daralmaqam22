@@ -1,5 +1,5 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
+// import { createServer as createViteServer } from "vite"; // Moved to dynamic import
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -30,24 +30,29 @@ class MockDatabase {
   pragma(sql: string) { return this; }
   prepare(sql: string) {
     const self = this;
+    const normalizedSql = sql.toLowerCase();
     return {
       all: () => {
-        if (sql.includes("FROM users")) return self.data.users;
-        if (sql.includes("FROM trips")) return self.data.trips;
-        if (sql.includes("FROM permissions")) return self.data.permissions;
-        if (sql.includes("FROM settings")) return self.data.settings;
+        if (normalizedSql.includes("from users")) return self.data.users;
+        if (normalizedSql.includes("from trips")) return self.data.trips;
+        if (normalizedSql.includes("from permissions")) return self.data.permissions;
+        if (normalizedSql.includes("from settings")) return self.data.settings;
+        if (normalizedSql.includes("from bookings")) return self.data.bookings;
+        if (normalizedSql.includes("from pilgrims")) return self.data.pilgrims;
         return [];
       },
       get: (...args: any[]) => {
-        if (sql.includes("FROM users WHERE username = ? AND password = ?")) {
+        if (normalizedSql.includes("from users where username = ? and password = ?")) {
           return self.data.users.find((u: any) => u.username === args[0] && u.password === args[1]);
         }
-        if (sql.includes("SELECT count(*)")) return { count: self.data.users.length };
+        if (normalizedSql.includes("select count(*)")) return { count: self.data.users.length };
         return null;
       },
-      run: (...args: any[]) => ({ changes: 1, lastInsertRowid: 1 })
+      run: (...args: any[]) => ({ changes: 1, lastInsertRowid: 1 }),
+      close: () => {}
     };
   }
+  close() {}
 }
 
 // Initialize SQLite Database
@@ -56,11 +61,16 @@ let db: any = new MockDatabase(); // Default to mock, will be replaced if sqlite
 
 async function initializeDatabase() {
   try {
-    // On Vercel, we might not have write access to the root, so use /tmp or memory
     const isVercel = !!process.env.VERCEL;
-    const actualDbPath = isVercel ? ":memory:" : DB_PATH;
     
-    console.log(`Initializing database at ${actualDbPath}... (isVercel: ${isVercel})`);
+    if (isVercel) {
+      console.log("Running on Vercel: Forcing MockDatabase to avoid native module issues.");
+      db = new MockDatabase();
+      return;
+    }
+
+    const actualDbPath = DB_PATH;
+    console.log(`Initializing database at ${actualDbPath}...`);
     
     try {
       // Dynamic import to prevent crash if module is missing/incompatible
@@ -69,9 +79,9 @@ async function initializeDatabase() {
       db.pragma('foreign_keys = ON');
       console.log("Database initialized successfully with better-sqlite3.");
     } catch (dbError: any) {
-      console.error("better-sqlite3 initialization failed (expected on Vercel), using mock:", dbError.message);
+      console.error("better-sqlite3 initialization failed, using mock:", dbError.message);
       db = new MockDatabase();
-      return; // Skip migrations for mock
+      return;
     }
   } catch (error) {
     console.error("Critical database initialization error:", error);
@@ -361,20 +371,29 @@ async function startServer() {
   app.post("/api/login", (req, res) => {
     try {
       const { username, password } = req.body;
+      console.log(`Login attempt for user: ${username}`);
+      
       if (!db) {
+        console.error("Login failed: Database not initialized");
         return res.status(500).json({ error: "Database not initialized" });
       }
+
       const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
+      console.log(`Database query result: ${user ? 'User found' : 'User not found'}`);
 
       if (user) {
         const { password: _, ...userWithoutPassword } = user;
         res.json({ user: userWithoutPassword });
       } else {
-        res.status(401).json({ error: 'Invalid credentials' });
+        res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
       }
     } catch (error: any) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "خطأ في الخادم أثناء تسجيل الدخول", details: error.message });
+      console.error("Login error details:", error);
+      res.status(500).json({ 
+        error: "خطأ في الخادم أثناء تسجيل الدخول", 
+        details: error.message,
+        stack: error.stack
+      });
     }
   });
 
@@ -858,6 +877,7 @@ async function startServer() {
   try {
     if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
       console.log("Initializing Vite middleware...");
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
