@@ -266,12 +266,6 @@ try {
   console.error("Failed to migrate permissions for settings screen:", e);
 }
 
-const app = express();
-const PORT = 3000;
-
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
-
 // Helper to clean API Key
 function cleanGeminiKey(key: string | undefined): string {
   if (!key) return '';
@@ -289,12 +283,13 @@ function cleanGeminiKey(key: string | undefined): string {
     .trim();
 }
 
+const app = express();
+
 async function startServer() {
-  const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "100mb" }));
+  app.use(express.urlencoded({ limit: "100mb", extended: true }));
 
   // API routes
   app.get("/api/health", (req, res) => {
@@ -853,7 +848,9 @@ async function startServer() {
 }
 
 // Start the server setup
-const serverPromise = startServer();
+const serverPromise = startServer().catch(err => {
+  console.error("Failed to start server:", err);
+});
 
 export { app, serverPromise };
 export default app;
