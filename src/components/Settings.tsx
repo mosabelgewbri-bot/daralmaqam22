@@ -201,6 +201,44 @@ export default function Settings({ user }: { user: User }) {
     setPendingFile(null);
   };
 
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagResult, setDiagResult] = useState<any>(null);
+
+  const runDiagnostic = async () => {
+    setDiagLoading(true);
+    setDiagResult(null);
+    try {
+      const { extractPassportData } = await import('../services/geminiService');
+      // Test with a tiny transparent pixel or a simple prompt
+      // Actually, let's just test the connection
+      const { GoogleGenAI } = await import('@google/genai');
+      const apiKey = process.env.GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        setDiagResult({ status: 'error', message: 'GEMINI_API_KEY غير مكوّن في البيئة.' });
+        return;
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Say 'Connection Successful'",
+      });
+
+      setDiagResult({ 
+        status: 'success', 
+        message: 'تم الاتصال بخوادم Google بنجاح.',
+        response: response.text,
+        keyPrefix: apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4)
+      });
+    } catch (error: any) {
+      console.error('Diagnostic error:', error);
+      setDiagResult({ status: 'error', message: error.message || 'فشل الاتصال بخوادم Google.' });
+    } finally {
+      setDiagLoading(false);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -641,14 +679,32 @@ export default function Settings({ user }: { user: User }) {
               <p className="text-[10px] text-white/60 leading-relaxed">
                 إذا كنت تواجه مشاكل في مسح الجوازات، يمكنك استخدام أداة التشخيص للتحقق من صحة مفتاح الـ API والاتصال بخوادم جوجل.
               </p>
-              <a 
-                href="/api/ocr/debug" 
-                target="_blank" 
+              <button 
+                onClick={runDiagnostic}
+                disabled={diagLoading}
                 className="btn-gold w-full py-2 flex items-center justify-center gap-2 text-xs"
               >
-                <RefreshCw className="w-3 h-3" />
-                تشغيل فحص الـ API
-              </a>
+                <RefreshCw className={clsx("w-3 h-3", diagLoading && "animate-spin")} />
+                {diagLoading ? 'جاري الفحص...' : 'تشغيل فحص الـ API'}
+              </button>
+
+              {diagResult && (
+                <div className={clsx(
+                  "p-3 rounded-lg border text-[10px] space-y-2",
+                  diagResult.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-red-500/10 border-red-500/20 text-red-500"
+                )}>
+                  <div className="flex items-center gap-2 font-bold">
+                    {diagResult.status === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                    {diagResult.message}
+                  </div>
+                  {diagResult.keyPrefix && (
+                    <div className="opacity-60">المفتاح: {diagResult.keyPrefix}</div>
+                  )}
+                  {diagResult.response && (
+                    <div className="opacity-60 italic">الاستجابة: {diagResult.response}</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

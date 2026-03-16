@@ -289,156 +289,25 @@ function cleanGeminiKey(key: string | undefined): string {
     .trim();
 }
 
-// API routes
-app.get("/api/health", (req, res) => {
-  try {
-    const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
-    res.json({ status: "ok", db: "connected", users: userCount.count });
-  } catch (error: any) {
-    res.status(500).json({ status: "error", db: "error", message: error.message });
-  }
-});
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
 
-app.get("/api/test", (req, res) => {
-  res.send("Server is running correctly");
-});
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-app.get("/api/ocr/debug", async (req, res) => {
-  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY;
-  const cleanedKey = cleanGeminiKey(rawKey);
-  
-  if (!cleanedKey) {
-    return res.json({ status: "missing", message: "GEMINI_API_KEY is not set" });
-  }
-  
-  let testResult = "Not tested";
-  let testError = null;
-  
-  try {
-    const ai = new GoogleGenAI({ apiKey: cleanedKey });
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: "Say 'Key is valid'",
-    });
-    testResult = response.text || "No response text";
-  } catch (e: any) {
-    testResult = "Failed";
-    testError = e.message;
-  }
-
-  res.json({ 
-    status: "configured", 
-    prefix: cleanedKey.substring(0, 4),
-    suffix: cleanedKey.substring(cleanedKey.length - 4),
-    length: cleanedKey.length,
-    startsWithAIza: cleanedKey.startsWith("AIza"),
-    hasQuotes: rawKey ? (rawKey.startsWith('"') || rawKey.startsWith("'") || rawKey.endsWith('"') || rawKey.endsWith("'")) : false,
-    hasWhitespace: rawKey ? /\s/.test(rawKey) : false,
-    testCall: {
-      result: testResult,
-      error: testError
+  // API routes
+  app.get("/api/health", (req, res) => {
+    try {
+      const userCount = db.prepare("SELECT count(*) as count FROM users").get() as { count: number };
+      res.json({ status: "ok", db: "connected", users: userCount.count });
+    } catch (error: any) {
+      res.status(500).json({ status: "error", db: "error", message: error.message });
     }
   });
-});
 
-async function startServer() {
-
-  // Passport OCR Endpoint
-  app.post("/api/ocr/passport", async (req, res) => {
-    try {
-      const { image } = req.body;
-      if (!image) {
-        return res.status(400).json({ error: "Image is required" });
-      }
-
-      const apiKey = cleanGeminiKey(
-        process.env.GEMINI_API_KEY || 
-        process.env.GOOGLE_API_KEY || 
-        process.env.API_KEY || 
-        process.env.VITE_GEMINI_API_KEY
-      );
-
-      if (!apiKey || apiKey === "undefined" || apiKey === "" || apiKey === "null") {
-        console.error("Server OCR: GEMINI_API_KEY is missing or invalid after cleaning");
-        return res.status(500).json({ 
-          error: "مفتاح API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables)." 
-        });
-      }
-
-      // Log safe debug info
-      console.log(`Server OCR: Using API Key (Length: ${apiKey.length}, StartsWithAIza: ${apiKey.startsWith("AIza")})`);
-
-      const ai = new GoogleGenAI({ apiKey });
-      
-      const mimeMatch = image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
-      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
-      const base64Data = image.includes(",") ? image.split(",")[1] : image;
-
-      console.log("Server OCR: Sending request to Gemini (2.0-flash)...");
-      
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: base64Data,
-              },
-            },
-            {
-              text: `Extract passport information from this image. 
-              Return ONLY a JSON object with these exact keys:
-              - passportNumber: (the passport number)
-              - expiryDate: (the expiry date in YYYY-MM-DD format)
-              - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
-              
-              Do not include any other text or markdown formatting.`,
-            },
-          ],
-        },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              passportNumber: { type: Type.STRING },
-              expiryDate: { type: Type.STRING },
-              fullNameArabic: { type: Type.STRING },
-            },
-            required: ["passportNumber", "expiryDate", "fullNameArabic"],
-          },
-          systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
-        },
-      });
-
-      const text = response.text;
-      console.log("Server OCR: Raw response text:", text);
-      
-      if (!text) {
-        throw new Error("No text returned from Gemini");
-      }
-
-      try {
-        const data = JSON.parse(text);
-        console.log("Server OCR: Success", { passportNumber: data.passportNumber });
-        res.json(data);
-      } catch (parseError) {
-        console.error("Server OCR: Failed to parse JSON:", text);
-        throw new Error("فشل في تحليل بيانات الجواز المستخرجة. يرجى التأكد من وضوح الصورة.");
-      }
-    } catch (error: any) {
-      console.error("Server OCR Error:", error);
-      
-      let errorMessage = "فشل في معالجة صورة الجواز";
-      if (error.message && (error.message.includes("API key not valid") || error.message.includes("API_KEY_INVALID"))) {
-        errorMessage = "مفتاح API الذي تم إدخاله غير صالح. يرجى التأكد من:\n1. نسخ المفتاح كاملاً من Google AI Studio.\n2. أن المفتاح يبدأ بـ AIza.\n3. تفعيل Generative Language API في مشروعك.";
-      } else if (error.message && error.message.includes("Quota exceeded")) {
-        errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.";
-      }
-      
-      res.status(500).json({ error: errorMessage, details: error.message });
-    }
+  app.get("/api/test", (req, res) => {
+    res.send("Server is running correctly");
   });
 
   // Auth
