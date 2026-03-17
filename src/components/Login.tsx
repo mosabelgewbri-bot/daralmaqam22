@@ -80,8 +80,13 @@ export default function Login({ onLogin }: LoginProps) {
                 onClick={async () => {
                   try {
                     const response = await fetch('/api/ping-simple');
-                    const data = await response.json();
-                    alert(`✅ Simple Ping: ${JSON.stringify(data)}`);
+                    const text = await response.text();
+                    try {
+                      const data = JSON.parse(text);
+                      alert(`✅ Simple Ping: ${JSON.stringify(data)}`);
+                    } catch (parseError) {
+                      alert(`⚠️ Simple Ping (Not JSON): ${text.substring(0, 200)}`);
+                    }
                   } catch (e: any) {
                     alert(`❌ Simple Ping failed: ${e.name || 'Error'} - ${e.message}`);
                   }

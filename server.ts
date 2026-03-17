@@ -6,9 +6,6 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
 console.log("server.ts module loading...");
 
 // Remove global process listeners that might interfere with Vercel
@@ -127,8 +124,11 @@ async function initializeDatabase() {
     console.log(`Initializing database at ${actualDbPath}...`);
     
     try {
-      // Use require to hide better-sqlite3 from Vercel's static analysis
-      const Database = require("better-sqlite3");
+      // Use dynamic require to hide better-sqlite3 from Vercel's bundler
+      // We only do this if NOT on Vercel
+      const nodeModule = await import("node:module");
+      const requireFunc = nodeModule.createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       db = new Database(actualDbPath);
       db.pragma('foreign_keys = ON');
       console.log("Database initialized successfully with better-sqlite3.");
@@ -881,7 +881,9 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     fs.writeFileSync(tempPath, buffer);
     
     try {
-      const Database = require("better-sqlite3");
+      const nodeModule = await import("node:module");
+      const requireFunc = nodeModule.createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       tempDb = new Database(tempPath);
       // Verify it's a valid DB by running a simple query
       tempDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
@@ -917,7 +919,9 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     
     // Re-open database connection
     try {
-      const Database = require("better-sqlite3");
+      const nodeModule = await import("node:module");
+      const requireFunc = nodeModule.createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       db = new Database(DB_PATH);
       db.pragma('foreign_keys = ON');
     } catch (e) {
@@ -934,7 +938,9 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     }
     // Try to re-open if it was closed
     try {
-      const Database = require("better-sqlite3");
+      const nodeModule = await import("node:module");
+      const requireFunc = nodeModule.createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       db = new Database(DB_PATH);
       db.pragma('foreign_keys = ON');
     } catch (e) {

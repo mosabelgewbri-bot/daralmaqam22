@@ -1,10 +1,11 @@
-import { app, serverPromise } from "../server";
-
 export default async (req: any, res: any) => {
   const requestId = Math.random().toString(36).substring(7);
   console.log(`[${requestId}] Vercel request: ${req.method} ${req.url}`);
   
   try {
+    console.log(`[${requestId}] Importing server...`);
+    const { app, serverPromise } = await import("../server");
+    
     console.log(`[${requestId}] Awaiting serverPromise...`);
     // Add a timeout to serverPromise to avoid hanging indefinitely
     const timeoutPromise = new Promise((_, reject) => 
