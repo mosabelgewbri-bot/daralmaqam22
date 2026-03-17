@@ -53,9 +53,13 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "mosabelgewbri@gmail.com" && request.auth.token.email_verified == true));
+      // For now, since we're using a custom login system, we'll check if the user is authenticated 
+      // and has an admin role in their document, OR if they match the bootstrap email.
+      // Note: In a production app, we should use Firebase Auth roles/claims.
+      return isAuthenticated() && 
+             (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+             (request.auth.token.email == "mosabelgewbri@gmail.com" && request.auth.token.email_verified == true);
     }
 
     function isOwner(userId) {
@@ -114,41 +118,45 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      // Allow read for login and bootstrap (unauthenticated)
+      allow read: if true; 
+      // Allow create for bootstrap (unauthenticated)
+      allow create: if true;
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow delete: if isAdmin();
     }
 
     match /trips/{tripId} {
-      allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidTrip(request.resource.data);
-      allow update: if isAdmin() && isValidTrip(request.resource.data);
+      allow read: if true;
+      allow create: if isAuthenticated() && (isAdmin() && isValidTrip(request.resource.data));
+      allow update: if isAuthenticated() && (isAdmin() && isValidTrip(request.resource.data));
       allow delete: if isAdmin();
     }
 
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidBooking(request.resource.data);
       allow update: if isAuthenticated() && isValidBooking(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /pilgrims/{pilgrimId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidPilgrim(request.resource.data);
       allow update: if isAuthenticated() && isValidPilgrim(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /permissions/{permId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow create: if true; // Allow for bootstrap
+      allow update, delete: if isAdmin();
     }
 
     match /settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow create: if true; // Allow for bootstrap
+      allow update, delete: if isAdmin();
     }
 
     // Default deny

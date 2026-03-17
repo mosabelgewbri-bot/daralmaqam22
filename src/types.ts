@@ -73,6 +73,7 @@ export interface User {
   email?: string;
   status: "active" | "inactive";
   lastLogin?: string;
+  backupFrequency?: 'daily' | 'weekly' | 'monthly' | 'manual';
 }
 
 export interface RolePermissions {

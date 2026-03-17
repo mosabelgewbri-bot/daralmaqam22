@@ -65,8 +65,9 @@ export default function Settings({ user }: { user: User }) {
           currency: settings.pref_currency || 'LYD',
           dateFormat: settings.pref_date_format || 'DD/MM/YYYY',
           language: settings.pref_language || 'ar',
-          theme: settings.pref_theme || 'gold'
-        });
+          theme: settings.pref_theme || 'gold',
+          backupFrequency: settings.backup_frequency || 'daily'
+        } as any);
       } catch (error) {
         console.error('Error loading settings:', error);
       }
@@ -134,7 +135,8 @@ export default function Settings({ user }: { user: User }) {
         pref_currency: preferences.currency,
         pref_date_format: preferences.dateFormat,
         pref_language: preferences.language,
-        pref_theme: preferences.theme
+        pref_theme: preferences.theme,
+        backup_frequency: (preferences as any).backupFrequency || 'daily'
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -522,11 +524,11 @@ export default function Settings({ user }: { user: User }) {
           </div>
 
           {(user.role === 'admin' || user.role === 'manager') && (
-            <div className="glass-card p-8 space-y-6">
+            <div className="glass-card p-8 space-y-8">
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
                 <div className="flex items-center gap-3">
                   <DbIcon className="text-gold w-6 h-6" />
-                  <h3 className="text-xl font-bold">إدارة قاعدة البيانات</h3>
+                  <h3 className="text-xl font-bold">حالة قاعدة البيانات والنظام</h3>
                 </div>
                 <button 
                   onClick={loadDbStats}
@@ -537,117 +539,91 @@ export default function Settings({ user }: { user: User }) {
                 </button>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">الرحلات</p>
-                  <p className="text-2xl font-bold text-white">{dbStats?.trips || 0}</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-2">
+                  <p className="text-xs text-white/40 uppercase tracking-widest">حالة الاتصال</p>
+                  <div className="flex items-center gap-3">
+                    <div className={clsx(
+                      "w-3 h-3 rounded-full animate-pulse",
+                      dbStats?.health === 'Excellent' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                    )} />
+                    <span className="text-xl font-bold text-white">{dbStats?.health === 'Excellent' ? 'ممتازة' : 'خطأ في الاتصال'}</span>
+                  </div>
+                  <p className="text-[10px] text-white/30">وقت التشغيل: {dbStats?.uptime || '---'}</p>
                 </div>
-                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">الحجوزات</p>
-                  <p className="text-2xl font-bold text-white">{dbStats?.bookings || 0}</p>
+
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-2">
+                  <p className="text-xs text-white/40 uppercase tracking-widest">المساحة المستخدمة</p>
+                  <div className="flex items-end gap-2">
+                    <span className="text-2xl font-bold text-gold">
+                      {dbStats?.dbSize ? (dbStats.dbSize / 1024).toFixed(2) : '0'}
+                    </span>
+                    <span className="text-xs text-white/40 mb-1">KB</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gold transition-all duration-1000" 
+                      style={{ width: `${Math.min((dbStats?.dbSize || 0) / (1024 * 1024) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-white/30">من إجمالي 1GB (خطة Firebase المجانية)</p>
                 </div>
-                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">المعتمرين</p>
-                  <p className="text-2xl font-bold text-white">{dbStats?.pilgrims || 0}</p>
-                </div>
-                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">السجلات</p>
-                  <p className="text-2xl font-bold text-white">{dbStats?.logs || 0}</p>
+
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-2">
+                  <p className="text-xs text-white/40 uppercase tracking-widest">إجمالي السجلات</p>
+                  <div className="flex items-end gap-2">
+                    <span className="text-2xl font-bold text-white">{dbStats?.totalDocs || 0}</span>
+                    <span className="text-xs text-white/40 mb-1">وثيقة</span>
+                  </div>
+                  <p className="text-[10px] text-white/30">عبر جميع المجموعات</p>
                 </div>
               </div>
 
-              <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-4">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-white/40">حجم ملف قاعدة البيانات:</span>
-                  <span className="text-white font-mono">
-                    {dbStats?.dbSize ? (dbStats.dbSize / 1024).toFixed(2) + ' KB' : '---'}
-                  </span>
+              <div className="space-y-6 pt-4 border-t border-white/10">
+                <div className="flex items-center gap-3">
+                  <RefreshCw className="text-gold w-5 h-5" />
+                  <h4 className="font-bold">خطة النسخ الاحتياطي (Backup Plan)</h4>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-white/40">آخر تحديث للبيانات:</span>
-                  <span className="text-white">
-                    {dbStats?.lastBackup ? new Date(dbStats.lastBackup).toLocaleString('ar-LY') : '---'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-white/40">حالة الاتصال:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400 font-bold">{dbStats?.dbType || 'نشط (Supabase)'}</span>
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs text-white/40 uppercase tracking-widest">تكرار النسخ الاحتياطي التلقائي</label>
+                      <select 
+                        className="input-field w-full"
+                        value={preferences.backupFrequency || 'daily'}
+                        onChange={e => setPreferences({...preferences, backupFrequency: e.target.value} as any)}
+                      >
+                        <option value="daily">يومي (Daily)</option>
+                        <option value="weekly">أسبوعي (Weekly)</option>
+                        <option value="monthly">شهري (Monthly)</option>
+                        <option value="manual">يدوي فقط (Manual Only)</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3 p-4 bg-gold/5 border border-gold/10 rounded-xl">
+                      <AlertCircle className="w-5 h-5 text-gold shrink-0" />
+                      <p className="text-[10px] text-white/60 leading-relaxed">
+                        يتم تخزين النسخ الاحتياطية التلقائية في سحابة Firebase بشكل آمن. يمكنك دائماً تصدير نسخة يدوية لجهازك الخاص.
+                      </p>
+                    </div>
                   </div>
-                </div>
-                {dbStats?.dbType === 'SQLite (Local)' && (
-                  <>
-                    <div className="pt-4">
-                      <a 
-                        href="/api/db-download" 
-                        download 
-                        className="btn-gold w-full py-3 flex items-center justify-center gap-2 text-sm"
+
+                  <div className="space-y-4">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">إجراءات يدوية</label>
+                    <div className="grid grid-cols-1 gap-3">
+                      <button 
+                        onClick={() => api.exportDatabase()}
+                        className="btn-gold py-3 flex items-center justify-center gap-3 text-sm"
                       >
                         <Save className="w-4 h-4" />
-                        تحميل نسخة احتياطية من قاعدة البيانات
-                      </a>
+                        تصدير قاعدة البيانات بالكامل (JSON)
+                      </button>
+                      <p className="text-[10px] text-white/30 text-center">
+                        * سيتم تحميل ملف يحتوي على جميع البيانات (الرحلات، الحجوزات، المعتمرين، المستخدمين).
+                      </p>
                     </div>
-                    <div className="pt-2 space-y-3">
-                      {showRestoreConfirm ? (
-                        <div className="bg-gold/10 border border-gold/30 p-4 rounded-xl space-y-4">
-                          <p className="text-sm text-white/90 text-center">
-                            هل أنت متأكد من استعادة قاعدة البيانات؟ سيتم استبدال جميع البيانات الحالية.
-                          </p>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={confirmRestore}
-                              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-sm font-bold transition-all"
-                            >
-                              تأكيد الاستعادة
-                            </button>
-                            <button 
-                              onClick={cancelRestore}
-                              className="flex-1 bg-white/10 hover:bg-white/20 text-white py-2 rounded-lg text-sm transition-all"
-                            >
-                              إلغاء
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <label 
-                            htmlFor="db-restore-input"
-                            className={clsx(
-                              "bg-white/5 text-white border border-white/10 hover:bg-white/10 w-full py-3 flex items-center justify-center gap-2 text-sm rounded-xl cursor-pointer transition-all",
-                              restoring && "opacity-50 cursor-not-allowed"
-                            )}
-                          >
-                            <Upload className="w-4 h-4" />
-                            {restoring ? 'جاري الاستعادة...' : 'استعادة نسخة احتياطية (رفع ملف .sqlite أو .db)'}
-                          </label>
-                          <input 
-                            id="db-restore-input"
-                            type="file" 
-                            className="hidden" 
-                            accept=".sqlite,.db,.sqlite3" 
-                            onChange={handleFileSelect}
-                            disabled={restoring}
-                          />
-                        </>
-                      )}
-
-                      {restoreStatus.type === 'error' && (
-                        <div className="flex items-center gap-2 text-red-500 text-xs bg-red-500/10 p-3 rounded-lg border border-red-500/20">
-                          <AlertCircle className="w-4 h-4" />
-                          {restoreStatus.message}
-                        </div>
-                      )}
-
-                      {restoreStatus.type === 'success' && (
-                        <div className="flex items-center gap-2 text-emerald-500 text-xs bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
-                          <CheckCircle className="w-4 h-4" />
-                          {restoreStatus.message}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
