@@ -1,10 +1,25 @@
+import path from "path";
+import fs from "fs";
+
 export default async (req: any, res: any) => {
   const requestId = Math.random().toString(36).substring(7);
   console.log(`[${requestId}] Vercel request: ${req.method} ${req.url}`);
   
   try {
     console.log(`[${requestId}] Importing server...`);
-    const { app, serverPromise } = await import("../server");
+    const serverPath = path.resolve(process.cwd(), "server.js");
+    const serverTsPath = path.resolve(process.cwd(), "server.ts");
+    console.log(`[${requestId}] Checking paths: JS=${fs.existsSync(serverPath)}, TS=${fs.existsSync(serverTsPath)}`);
+    
+    let server;
+    try {
+      server = await import("../server.js");
+    } catch (e) {
+      console.log(`[${requestId}] Failed to import ../server.js, trying ../server.ts...`);
+      server = await import("../server.ts");
+    }
+    
+    const { app, serverPromise } = server;
     
     console.log(`[${requestId}] Awaiting serverPromise...`);
     // Add a timeout to serverPromise to avoid hanging indefinitely
