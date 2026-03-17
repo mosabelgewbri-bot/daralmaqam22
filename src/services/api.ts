@@ -126,6 +126,7 @@ export const api = {
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
     try {
+      await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trip));
     } catch (error) {
@@ -137,6 +138,7 @@ export const api = {
     const path = 'trips';
     const { id, ...data } = trip;
     try {
+      await this.ensureAuth();
       if (id && id !== 'new') {
         const docRef = doc(db, path, id);
         // Check if document exists to decide between create and update
@@ -156,6 +158,7 @@ export const api = {
   async deleteTrip(id: string): Promise<void> {
     const path = 'trips';
     try {
+      await this.ensureAuth();
       await deleteDoc(doc(db, path, id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
@@ -166,6 +169,7 @@ export const api = {
   async getBookings(): Promise<Booking[]> {
     const path = 'bookings';
     try {
+      await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
     } catch (error) {
@@ -177,6 +181,7 @@ export const api = {
     const path = 'bookings';
     const { id, ...data } = booking;
     try {
+      await this.ensureAuth();
       if (id && id !== 'new') {
         await updateDoc(doc(db, path, id), data);
       } else {
@@ -189,6 +194,7 @@ export const api = {
   async deleteBooking(id: string): Promise<void> {
     const path = 'bookings';
     try {
+      await this.ensureAuth();
       await deleteDoc(doc(db, path, id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
@@ -199,6 +205,7 @@ export const api = {
   async getPermissions(): Promise<RolePermissions[]> {
     const path = 'permissions';
     try {
+      await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
     } catch (error) {
@@ -210,6 +217,7 @@ export const api = {
     const path = 'permissions';
     const { id, ...data } = permission as any;
     try {
+      await this.ensureAuth();
       if (id) {
         await updateDoc(doc(db, path, id), data);
       } else {
@@ -224,6 +232,7 @@ export const api = {
   async getUsers(): Promise<User[]> {
     const path = 'users';
     try {
+      await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
     } catch (error) {
@@ -235,6 +244,7 @@ export const api = {
     const path = 'users';
     const { id, ...data } = user;
     try {
+      await this.ensureAuth();
       if (id) {
         await updateDoc(doc(db, path, id), data);
       } else {
@@ -247,6 +257,7 @@ export const api = {
   async deleteUser(id: string): Promise<void> {
     const path = 'users';
     try {
+      await this.ensureAuth();
       await deleteDoc(doc(db, path, id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
@@ -257,6 +268,7 @@ export const api = {
   async getSettings(): Promise<Record<string, string>> {
     const path = 'settings';
     try {
+      await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       const settings: Record<string, string> = {};
       querySnapshot.docs.forEach(doc => {
@@ -272,6 +284,7 @@ export const api = {
   async saveSettings(settings: Record<string, string>): Promise<void> {
     const path = 'settings';
     try {
+      await this.ensureAuth();
       for (const [key, value] of Object.entries(settings)) {
         // Find if setting exists
         const q = query(collection(db, path), where("key", "==", key));
@@ -290,6 +303,7 @@ export const api = {
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     const path = 'users';
     try {
+      await this.ensureAuth();
       const userRef = doc(db, path, userId);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) throw new Error('المستخدم غير موجود');
@@ -305,6 +319,7 @@ export const api = {
 
   async getDbStats(): Promise<any> {
     try {
+      await this.ensureAuth();
       const [users, trips, bookings, pilgrims, logs] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'trips')),
@@ -343,6 +358,7 @@ export const api = {
 
   async exportDatabase(): Promise<void> {
     try {
+      await this.ensureAuth();
       const collections = ['users', 'trips', 'bookings', 'pilgrims', 'permissions', 'settings', 'logs'];
       const backupData: Record<string, any[]> = {};
 
@@ -368,6 +384,7 @@ export const api = {
   async logAction(userId: string, action: string, details?: string): Promise<void> {
     const path = 'logs';
     try {
+      await this.ensureAuth();
       await addDoc(collection(db, path), {
         userId,
         action,
