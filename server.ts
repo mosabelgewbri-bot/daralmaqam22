@@ -407,6 +407,22 @@ app.get("/api/test-html", (req, res) => {
   res.send("<h1>الخادم يعمل (HTML Test OK)</h1>");
 });
 
+app.get("/api/ocr/debug", (req, res) => {
+  const key = process.env.GEMINI_API_KEY;
+  const cleaned = cleanGeminiKey(key);
+  
+  res.json({
+    hasKey: !!key,
+    keyLength: key ? key.length : 0,
+    keyPrefix: key ? key.substring(0, 4) : 'none',
+    cleanedKeyLength: cleaned.length,
+    isVercel: !!process.env.VERCEL,
+    nodeEnv: process.env.NODE_ENV,
+    timestamp: new Date().toISOString(),
+    instructions: "If hasKey is false, add GEMINI_API_KEY to Vercel environment variables and REDEPLOY."
+  });
+});
+
 // Apply middlewares immediately for Vercel
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));

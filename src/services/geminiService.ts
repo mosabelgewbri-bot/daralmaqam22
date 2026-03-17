@@ -4,9 +4,10 @@ export async function extractPassportData(base64Image: string) {
   try {
     console.log("OCR Service: Initializing Gemini on frontend...");
     
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured in the environment.");
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'undefined') {
+      console.error("OCR Service: GEMINI_API_KEY is missing!");
+      throw new Error("GEMINI_API_KEY is not configured. Please add it to Vercel environment variables.");
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -16,10 +17,10 @@ export async function extractPassportData(base64Image: string) {
     const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
     const base64Data = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
 
-    console.log("OCR Service: Sending request to Gemini (3-flash)...");
+    console.log("OCR Service: Sending request to Gemini (flash-latest)...");
     
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: {
         parts: [
           {
