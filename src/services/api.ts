@@ -98,7 +98,9 @@ export const api = {
       return { 
         user: { 
           id: userDoc.id, 
-          ...userData 
+          ...userData,
+          createdAt: userData.createdAt?.toDate?.()?.toISOString() || userData.createdAt,
+          updatedAt: userData.updatedAt?.toDate?.()?.toISOString() || userData.updatedAt
         } 
       };
     } catch (error) {
@@ -128,7 +130,15 @@ export const api = {
     try {
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trip));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Trip;
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -137,19 +147,24 @@ export const api = {
   async saveTrip(trip: Trip): Promise<void> {
     const path = 'trips';
     const { id, ...data } = trip;
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+
     try {
       await this.ensureAuth();
       if (id && id !== 'new') {
         const docRef = doc(db, path, id);
-        // Check if document exists to decide between create and update
         const docSnap = await getDocFromServer(docRef);
         if (docSnap.exists()) {
-          await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
         } else {
-          await setDoc(docRef, { ...data, createdAt: serverTimestamp() });
+          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
         }
       } else {
-        await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -171,7 +186,15 @@ export const api = {
     try {
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Booking;
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -180,12 +203,24 @@ export const api = {
   async saveBooking(booking: Booking): Promise<void> {
     const path = 'bookings';
     const { id, ...data } = booking;
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+
     try {
       await this.ensureAuth();
       if (id && id !== 'new') {
-        await updateDoc(doc(db, path, id), data);
+        const docRef = doc(db, path, id);
+        const docSnap = await getDocFromServer(docRef);
+        if (docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+        }
       } else {
-        await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -216,12 +251,24 @@ export const api = {
   async savePermission(permission: RolePermissions): Promise<void> {
     const path = 'permissions';
     const { id, ...data } = permission as any;
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+
     try {
       await this.ensureAuth();
-      if (id) {
-        await updateDoc(doc(db, path, id), data);
+      if (id && id !== 'new') {
+        const docRef = doc(db, path, id);
+        const docSnap = await getDocFromServer(docRef);
+        if (docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+        }
       } else {
-        await addDoc(collection(db, path), data);
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -234,7 +281,15 @@ export const api = {
     try {
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as User;
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -243,12 +298,24 @@ export const api = {
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
     const path = 'users';
     const { id, ...data } = user;
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+
     try {
       await this.ensureAuth();
-      if (id) {
-        await updateDoc(doc(db, path, id), data);
+      if (id && id !== 'new') {
+        const docRef = doc(db, path, id);
+        const docSnap = await getDocFromServer(docRef);
+        if (docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+        }
       } else {
-        await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
