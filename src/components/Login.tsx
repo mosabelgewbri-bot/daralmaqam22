@@ -79,13 +79,11 @@ export default function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={async () => {
                   try {
-                    const url = window.location.origin + '/api/ping-simple';
-                    console.log("Fetching:", url);
-                    const response = await fetch(url);
+                    const response = await fetch('/api/ping-simple');
                     const data = await response.json();
                     alert(`✅ Simple Ping: ${JSON.stringify(data)}`);
                   } catch (e: any) {
-                    alert(`❌ Simple Ping failed: ${e.message}`);
+                    alert(`❌ Simple Ping failed: ${e.name || 'Error'} - ${e.message}`);
                   }
                 }}
                 className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
@@ -96,18 +94,16 @@ export default function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={async () => {
                   try {
-                    const url = window.location.origin + '/api/ping';
-                    console.log("Fetching:", url);
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    alert(`✅ Ping: ${JSON.stringify(data)}`);
+                    const response = await fetch('/api/test-html');
+                    const text = await response.text();
+                    alert(`✅ HTML Test: ${text}`);
                   } catch (e: any) {
-                    alert(`❌ Ping failed: ${e.message}`);
+                    alert(`❌ HTML Test failed: ${e.name || 'Error'} - ${e.message}`);
                   }
                 }}
                 className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
               >
-                اختبار الاتصال (Ping)
+                اختبار HTML
               </button>
             </div>
             <button 
@@ -115,11 +111,10 @@ export default function Login({ onLogin }: LoginProps) {
               onClick={async () => {
                 console.log("Starting health check...");
                 try {
-                  const url = window.location.origin + '/api/health';
-                  console.log("Fetching:", url);
-                  const response = await fetch(url);
+                  const response = await fetch('/api/health');
                   console.log(`Response status: ${response.status}`);
                   const text = await response.text();
+                  console.log(`Response text: ${text.substring(0, 200)}`);
                   try {
                     const data = JSON.parse(text);
                     alert(`✅ حالة الخادم:\nStatus: ${response.status}\nData: ${JSON.stringify(data, null, 2)}`);
