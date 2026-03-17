@@ -4,7 +4,6 @@ import { motion } from 'motion/react';
 import { Lock, User as UserIcon, ChevronRight } from 'lucide-react';
 import Logo from './Logo';
 import { api } from '../services/api';
-import { supabase } from '../utils/supabase';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -79,81 +78,26 @@ export default function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/ping-simple');
-                    const text = await response.text();
-                    try {
-                      const data = JSON.parse(text);
-                      alert(`✅ Simple Ping: ${JSON.stringify(data)}`);
-                    } catch (parseError) {
-                      alert(`⚠️ Simple Ping (Not JSON): ${text.substring(0, 200)}`);
-                    }
+                    const stats = await api.getDbStats();
+                    alert(`✅ Firestore Stats: ${JSON.stringify(stats)}`);
                   } catch (e: any) {
-                    alert(`❌ Simple Ping failed: ${e.name || 'Error'} - ${e.message}`);
+                    alert(`❌ Firestore check failed: ${e.message}`);
                   }
                 }}
                 className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
               >
-                اختبار بسيط (Simple)
+                اختبار Firestore
               </button>
               <button 
                 type="button"
-                onClick={async () => {
-                  try {
-                    const response = await fetch('/api/test-html');
-                    const text = await response.text();
-                    alert(`✅ HTML Test: ${text}`);
-                  } catch (e: any) {
-                    alert(`❌ HTML Test failed: ${e.name || 'Error'} - ${e.message}`);
-                  }
+                onClick={() => {
+                  const config = localStorage.getItem('user');
+                  alert(`Session: ${config ? 'Active' : 'None'}`);
                 }}
                 className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
               >
-                اختبار HTML
+                حالة الجلسة
               </button>
-            </div>
-            <button 
-              type="button"
-              onClick={async () => {
-                console.log("Starting health check...");
-                try {
-                  const response = await fetch('/api/health');
-                  console.log(`Response status: ${response.status}`);
-                  const text = await response.text();
-                  console.log(`Response text: ${text.substring(0, 200)}`);
-                  try {
-                    const data = JSON.parse(text);
-                    alert(`✅ حالة الخادم:\nStatus: ${response.status}\nData: ${JSON.stringify(data, null, 2)}`);
-                  } catch (parseError) {
-                    alert(`⚠️ استجابة غير JSON (Status: ${response.status}):\n${text.substring(0, 300)}`);
-                  }
-                } catch (e: any) {
-                  console.error("Health check failed:", e);
-                  alert(`❌ فشل الاتصال بالخادم:\nName: ${e.name}\nMessage: ${e.message}`);
-                }
-              }}
-              className="w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95 mt-2"
-            >
-              اختبار الخادم (Health)
-            </button>
-            <button 
-              type="button"
-              onClick={async () => {
-                console.log("Starting Supabase test...");
-                try {
-                  const { count, error } = await supabase.from('users').select('*', { count: 'exact', head: true });
-                  if (error) throw error;
-                  alert(`✅ تم الاتصال بـ Supabase بنجاح!\nعدد المستخدمين: ${count}`);
-                } catch (e: any) {
-                  console.error("Supabase test failed:", e);
-                  alert(`⚠️ فشل الاتصال بـ Supabase:\n${e.message || JSON.stringify(e)}`);
-                }
-              }}
-              className="w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95 mt-2"
-            >
-              اختبار Supabase
-            </button>
-            <div className="text-[8px] text-white/30 font-mono break-all opacity-50">
-              URL: {import.meta.env.VITE_SUPABASE_URL || 'Default'}
             </div>
           </div>
 

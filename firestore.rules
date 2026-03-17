@@ -1,0 +1,159 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields:
+    //   - username: string (required)
+    //   - password: string (required)
+    //   - name: string (required)
+    //   - role: string (required, enum: admin, staff, manager)
+    //   - status: string (required, enum: active, inactive)
+    //   - email: string (optional, format: email)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: trips
+    // Fields:
+    //   - title: string (required)
+    //   - type: string (required, enum: hajj, umrah)
+    //   - startDate: timestamp (required)
+    //   - endDate: timestamp (required)
+    //   - price: number (required, positive)
+    //   - capacity: int (required, positive)
+    //   - status: string (required, enum: open, closed, completed)
+    //
+    // Collection: bookings
+    // Fields:
+    //   - tripId: string (required)
+    //   - userId: string (required)
+    //   - pilgrimCount: int (required, positive)
+    //   - totalAmount: number (required, positive)
+    //   - paidAmount: number (optional, positive)
+    //   - status: string (required, enum: pending, confirmed, cancelled)
+    //
+    // Collection: pilgrims
+    // Fields:
+    //   - bookingId: string (required)
+    //   - name: string (required)
+    //   - passportNumber: string (required)
+    //   - gender: string (required, enum: male, female)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "mosabelgewbri@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['username', 'password', 'name', 'role', 'status', 'email', 'createdAt']) &&
+             data.username is string && data.username.size() > 0 && data.username.size() < 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.role in ['admin', 'staff', 'manager'] &&
+             data.status in ['active', 'inactive'] &&
+             (!('email' in data) || isValidEmail(data.email));
+    }
+
+    function isValidTrip(data) {
+      return hasOnlyAllowedFields(['title', 'type', 'startDate', 'endDate', 'price', 'capacity', 'status', 'description']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.type in ['hajj', 'umrah'] &&
+             data.price is number && data.price >= 0 &&
+             data.capacity is int && data.capacity >= 0 &&
+             data.status in ['open', 'closed', 'completed'];
+    }
+
+    function isValidBooking(data) {
+      return hasOnlyAllowedFields(['tripId', 'userId', 'pilgrimCount', 'totalAmount', 'paidAmount', 'status', 'createdAt']) &&
+             data.tripId is string &&
+             data.userId is string &&
+             data.pilgrimCount is int && data.pilgrimCount > 0 &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             data.status in ['pending', 'confirmed', 'cancelled'];
+    }
+
+    function isValidPilgrim(data) {
+      return hasOnlyAllowedFields(['bookingId', 'name', 'passportNumber', 'nationality', 'gender', 'birthDate', 'visaStatus', 'roomNumber']) &&
+             data.bookingId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.passportNumber is string && data.passportNumber.size() > 0 &&
+             data.gender in ['male', 'female'];
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /trips/{tripId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidTrip(request.resource.data);
+      allow update: if isAdmin() && isValidTrip(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidBooking(request.resource.data);
+      allow update: if isAuthenticated() && isValidBooking(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /pilgrims/{pilgrimId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPilgrim(request.resource.data);
+      allow update: if isAuthenticated() && isValidPilgrim(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /permissions/{permId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

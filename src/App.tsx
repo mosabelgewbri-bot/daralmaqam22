@@ -110,6 +110,45 @@ export default function App() {
     if (user) {
       syncPermissions();
       applyTheme();
+    } else {
+      // Bootstrap initial admin if users collection is empty
+      const bootstrapAdmin = async () => {
+        try {
+          const users = await api.getUsers();
+          if (users.length === 0) {
+            console.log('Bootstrapping initial admin user...');
+            await api.saveUser({
+              username: 'admin',
+              password: 'admin123',
+              name: 'المدير العام',
+              role: 'admin',
+              status: 'active'
+            });
+            
+            // Also bootstrap permissions
+            await api.savePermission({
+              role: 'admin',
+              allowedScreens: JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']),
+              canEdit: true,
+              canDelete: true,
+              canExport: true,
+              canViewFinance: true,
+              canApproveBookings: true,
+              canManageUsers: true,
+              canEditTrips: true,
+              canViewReports: true,
+              canManageSettings: true,
+              canManageFinance: true,
+              canChangeVisaStatus: true,
+              canManageRooms: true,
+              dataScope: 'all'
+            } as any);
+          }
+        } catch (error) {
+          console.error('Error bootstrapping admin:', error);
+        }
+      };
+      bootstrapAdmin();
     }
     
     window.addEventListener('settings_updated', applyTheme);

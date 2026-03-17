@@ -1,139 +1,306 @@
 import { Trip, Booking, RolePermissions, User } from '../types';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  where, 
+  getDoc,
+  setDoc,
+  serverTimestamp,
+  getDocFromServer
+} from 'firebase/firestore';
+import { db, auth } from '../firebase';
 
-const API_URL = '/api';
-
-async function handleResponse(response: Response) {
-  if (!response.ok) {
-    let errorMessage = `HTTP error! status: ${response.status}`;
-    try {
-      const error = await response.json();
-      errorMessage = error.error || errorMessage;
-    } catch (e) {
-      try {
-        const text = await response.text();
-        if (text && text.length < 100) errorMessage = text;
-      } catch (e2) {}
-    }
-    throw new Error(errorMessage);
-  }
-  return response.json();
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
 }
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Test connection on boot
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. ");
+    }
+  }
+}
+testConnection();
 
 export const api = {
   // Auth
-  async login(username: string, password: string): Promise<any> {
-    const response = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    return handleResponse(response);
+  async login(username: string, password: string): Promise<{ user: User }> {
+    const path = 'users';
+    try {
+      const q = query(collection(db, path), where("username", "==", username), where("password", "==", password));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
+      }
+      
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data() as any;
+      
+      return { 
+        user: { 
+          id: userDoc.id, 
+          ...userData 
+        } 
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message === 'اسم المستخدم أو كلمة المرور غير صحيحة') throw error;
+      handleFirestoreError(error, OperationType.GET, path);
+      throw error;
+    }
   },
 
   // Trips
   async getTrips(): Promise<Trip[]> {
-    const response = await fetch(`${API_URL}/trips`);
-    return handleResponse(response);
+    const path = 'trips';
+    try {
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trip));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
   async saveTrip(trip: Trip): Promise<void> {
-    const response = await fetch(`${API_URL}/trips`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(trip),
-    });
-    return handleResponse(response);
+    const path = 'trips';
+    const { id, ...data } = trip;
+    try {
+      if (id && id !== 'new') {
+        await updateDoc(doc(db, path, id), data);
+      } else {
+        await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
   },
   async deleteTrip(id: string): Promise<void> {
-    const response = await fetch(`${API_URL}/trips/${id}`, {
-      method: 'DELETE',
-    });
-    return handleResponse(response);
+    const path = 'trips';
+    try {
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   },
 
   // Bookings
   async getBookings(): Promise<Booking[]> {
-    const response = await fetch(`${API_URL}/bookings`);
-    return handleResponse(response);
+    const path = 'bookings';
+    try {
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
   async saveBooking(booking: Booking): Promise<void> {
-    const response = await fetch(`${API_URL}/bookings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(booking),
-    });
-    return handleResponse(response);
+    const path = 'bookings';
+    const { id, ...data } = booking;
+    try {
+      if (id && id !== 'new') {
+        await updateDoc(doc(db, path, id), data);
+      } else {
+        await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
   },
   async deleteBooking(id: string): Promise<void> {
-    const response = await fetch(`${API_URL}/bookings/${id}`, {
-      method: 'DELETE',
-    });
-    return handleResponse(response);
+    const path = 'bookings';
+    try {
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   },
 
   // Permissions
   async getPermissions(): Promise<RolePermissions[]> {
-    const response = await fetch(`${API_URL}/permissions`);
-    return handleResponse(response);
+    const path = 'permissions';
+    try {
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
   async savePermission(permission: RolePermissions): Promise<void> {
-    const response = await fetch(`${API_URL}/permissions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(permission),
-    });
-    return handleResponse(response);
+    const path = 'permissions';
+    const { id, ...data } = permission as any;
+    try {
+      if (id) {
+        await updateDoc(doc(db, path, id), data);
+      } else {
+        await addDoc(collection(db, path), data);
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
   },
 
   // Users
   async getUsers(): Promise<User[]> {
-    const response = await fetch(`${API_URL}/users`);
-    return handleResponse(response);
+    const path = 'users';
+    try {
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
   },
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
-    const response = await fetch(`${API_URL}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
-    });
-    return handleResponse(response);
+    const path = 'users';
+    const { id, ...data } = user;
+    try {
+      if (id) {
+        await updateDoc(doc(db, path, id), data);
+      } else {
+        await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
   },
   async deleteUser(id: string): Promise<void> {
-    const response = await fetch(`${API_URL}/users/${id}`, {
-      method: 'DELETE',
-    });
-    return handleResponse(response);
+    const path = 'users';
+    try {
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
   },
 
   // Settings
   async getSettings(): Promise<Record<string, string>> {
-    const response = await fetch(`${API_URL}/settings`);
-    return handleResponse(response);
+    const path = 'settings';
+    try {
+      const querySnapshot = await getDocs(collection(db, path));
+      const settings: Record<string, string> = {};
+      querySnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.key) settings[data.key] = data.value;
+      });
+      return settings;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return {};
+    }
   },
   async saveSettings(settings: Record<string, string>): Promise<void> {
-    const response = await fetch(`${API_URL}/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    return handleResponse(response);
+    const path = 'settings';
+    try {
+      for (const [key, value] of Object.entries(settings)) {
+        // Find if setting exists
+        const q = query(collection(db, path), where("key", "==", key));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          await updateDoc(doc(db, path, snapshot.docs[0].id), { value });
+        } else {
+          await addDoc(collection(db, path), { key, value });
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
   },
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
-    const response = await fetch(`${API_URL}/change-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, currentPassword, newPassword }),
-    });
-    return handleResponse(response);
+    const path = 'users';
+    try {
+      const userRef = doc(db, path, userId);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) throw new Error('المستخدم غير موجود');
+      
+      const userData = userSnap.data();
+      if (userData.password !== currentPassword) throw new Error('كلمة المرور الحالية غير صحيحة');
+      
+      await updateDoc(userRef, { password: newPassword });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
   },
 
   async getDbStats(): Promise<any> {
-    const response = await fetch(`${API_URL}/db-stats`);
-    return handleResponse(response);
+    // Mock stats for now
+    return {
+      users: (await getDocs(collection(db, 'users'))).size,
+      trips: (await getDocs(collection(db, 'trips'))).size,
+      bookings: (await getDocs(collection(db, 'bookings'))).size,
+      pilgrims: (await getDocs(collection(db, 'pilgrims'))).size
+    };
   },
 
   async logAction(userId: string, action: string, details?: string): Promise<void> {
-    // Optional: implement server-side logging if needed
-    console.log('Action logged:', { userId, action, details });
+    const path = 'logs';
+    try {
+      await addDoc(collection(db, path), {
+        userId,
+        action,
+        details,
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error logging action:', error);
+    }
   }
 };

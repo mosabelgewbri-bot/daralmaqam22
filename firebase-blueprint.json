@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Application users and staff",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Login username" },
+        "password": { "type": "string", "description": "Login password (plain text for now as per current mock, should be hashed in real app)" },
+        "name": { "type": "string", "description": "Full name" },
+        "role": { "type": "string", "enum": ["admin", "staff", "manager"], "description": "User role" },
+        "status": { "type": "string", "enum": ["active", "inactive"], "description": "Account status" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["username", "password", "name", "role", "status"]
+    },
+    "Trip": {
+      "title": "Trip",
+      "description": "Hajj or Umrah trips",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Trip title" },
+        "type": { "type": "string", "enum": ["hajj", "umrah"], "description": "Trip type" },
+        "startDate": { "type": "string", "format": "date", "description": "Start date" },
+        "endDate": { "type": "string", "format": "date", "description": "End date" },
+        "price": { "type": "number", "description": "Price per person" },
+        "capacity": { "type": "integer", "description": "Total capacity" },
+        "status": { "type": "string", "enum": ["open", "closed", "completed"], "description": "Trip status" },
+        "description": { "type": "string", "description": "Trip details" }
+      },
+      "required": ["title", "type", "startDate", "endDate", "price", "status"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Trip bookings",
+      "type": "object",
+      "properties": {
+        "tripId": { "type": "string", "description": "Reference to Trip ID" },
+        "userId": { "type": "string", "description": "Reference to User ID (staff who created it)" },
+        "pilgrimCount": { "type": "integer", "description": "Number of pilgrims" },
+        "totalAmount": { "type": "number", "description": "Total booking amount" },
+        "paidAmount": { "type": "number", "description": "Amount paid" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"], "description": "Booking status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Booking date" }
+      },
+      "required": ["tripId", "pilgrimCount", "totalAmount", "status"]
+    },
+    "Pilgrim": {
+      "title": "Pilgrim",
+      "description": "Individual pilgrim details",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string", "description": "Reference to Booking ID" },
+        "name": { "type": "string", "description": "Full name" },
+        "passportNumber": { "type": "string", "description": "Passport number" },
+        "nationality": { "type": "string", "description": "Nationality" },
+        "gender": { "type": "string", "enum": ["male", "female"], "description": "Gender" },
+        "birthDate": { "type": "string", "format": "date", "description": "Date of birth" },
+        "visaStatus": { "type": "string", "description": "Visa status" },
+        "roomNumber": { "type": "string", "description": "Assigned room number" }
+      },
+      "required": ["bookingId", "name", "passportNumber", "gender"]
+    },
+    "Permission": {
+      "title": "Permission",
+      "description": "Role-based permissions",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "description": "Role name" },
+        "allowedScreens": { "type": "string", "description": "JSON string of allowed screens" },
+        "canEdit": { "type": "boolean" },
+        "canDelete": { "type": "boolean" },
+        "canExport": { "type": "boolean" },
+        "canViewFinance": { "type": "boolean" },
+        "canApproveBookings": { "type": "boolean" },
+        "canManageUsers": { "type": "boolean" },
+        "canEditTrips": { "type": "boolean" },
+        "canViewReports": { "type": "boolean" },
+        "canManageSettings": { "type": "boolean" },
+        "canManageFinance": { "type": "boolean" },
+        "canChangeVisaStatus": { "type": "boolean" },
+        "canManageRooms": { "type": "boolean" },
+        "dataScope": { "type": "string", "enum": ["all", "own"], "description": "Data visibility scope" }
+      },
+      "required": ["role"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "Application settings",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "Setting key" },
+        "value": { "type": "string", "description": "Setting value" }
+      },
+      "required": ["key", "value"]
+    }
+  },
+  "firestore": {
+    "/users": { "schema": "User", "description": "Collection of application users" },
+    "/trips": { "schema": "Trip", "description": "Collection of Hajj/Umrah trips" },
+    "/bookings": { "schema": "Booking", "description": "Collection of trip bookings" },
+    "/pilgrims": { "schema": "Pilgrim", "description": "Collection of pilgrim details" },
+    "/permissions": { "schema": "Permission", "description": "Collection of role permissions" },
+    "/settings": { "schema": "Setting", "description": "Collection of app settings" }
+  }
+}
