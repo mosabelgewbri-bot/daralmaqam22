@@ -875,7 +875,8 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     fs.writeFileSync(tempPath, buffer);
     
     try {
-      const { default: Database } = await import("better-sqlite3");
+      const requireFunc = (await import('module')).createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       tempDb = new Database(tempPath);
       // Verify it's a valid DB by running a simple query
       tempDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
@@ -911,8 +912,8 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     
     // Re-open database connection
     try {
-      const dbModule = "better-sqlite3";
-      const { default: Database } = await import(dbModule);
+      const requireFunc = (await import('module')).createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       db = new Database(DB_PATH);
       db.pragma('foreign_keys = ON');
     } catch (e) {
@@ -929,8 +930,8 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
     }
     // Try to re-open if it was closed
     try {
-      const dbModule = "better-sqlite3";
-      const { default: Database } = await import(dbModule);
+      const requireFunc = (await import('module')).createRequire(import.meta.url);
+      const Database = requireFunc("better-sqlite3");
       db = new Database(DB_PATH);
       db.pragma('foreign_keys = ON');
     } catch (e) {

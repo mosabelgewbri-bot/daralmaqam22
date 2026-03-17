@@ -1,23 +1,27 @@
 import { app, serverPromise } from "../server";
 
 export default async (req: any, res: any) => {
-  console.log(`Vercel request received: ${req.method} ${req.url}`);
-  console.log(`Headers: ${JSON.stringify(req.headers)}`);
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[${requestId}] Vercel request: ${req.method} ${req.url}`);
+  
   try {
-    console.log("Awaiting serverPromise...");
-    await serverPromise;
-    console.log("serverPromise resolved. Handling request...");
+    console.log(`[${requestId}] Awaiting serverPromise...`);
+    // Add a timeout to serverPromise to avoid hanging indefinitely
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Server initialization timeout")), 10000)
+    );
+    
+    await Promise.race([serverPromise, timeoutPromise]);
+    console.log(`[${requestId}] serverPromise resolved.`);
+    
     return app(req, res);
   } catch (error: any) {
-    console.error("Vercel entry point error:", error);
+    console.error(`[${requestId}] Vercel entry point error:`, error);
     res.status(500).json({ 
       error: "Internal Server Error during initialization", 
       message: error.message,
-      details: "حدث خطأ في تهيئة الخادم. يرجى التحقق من السجلات.",
-      stack: error.stack,
-      env: process.env.NODE_ENV,
-      isVercel: !!process.env.VERCEL,
-      cwd: process.cwd()
+      requestId,
+      stack: error.stack
     });
   }
 };

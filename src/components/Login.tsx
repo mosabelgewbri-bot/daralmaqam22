@@ -79,7 +79,9 @@ export default function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/ping-simple');
+                    const url = window.location.origin + '/api/ping-simple';
+                    console.log("Fetching:", url);
+                    const response = await fetch(url);
                     const data = await response.json();
                     alert(`✅ Simple Ping: ${JSON.stringify(data)}`);
                   } catch (e: any) {
@@ -94,7 +96,9 @@ export default function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/ping');
+                    const url = window.location.origin + '/api/ping';
+                    console.log("Fetching:", url);
+                    const response = await fetch(url);
                     const data = await response.json();
                     alert(`✅ Ping: ${JSON.stringify(data)}`);
                   } catch (e: any) {
@@ -111,10 +115,11 @@ export default function Login({ onLogin }: LoginProps) {
               onClick={async () => {
                 console.log("Starting health check...");
                 try {
-                  const response = await fetch('/api/health');
+                  const url = window.location.origin + '/api/health';
+                  console.log("Fetching:", url);
+                  const response = await fetch(url);
                   console.log(`Response status: ${response.status}`);
                   const text = await response.text();
-                  console.log(`Response text: ${text.substring(0, 200)}`);
                   try {
                     const data = JSON.parse(text);
                     alert(`✅ حالة الخادم:\nStatus: ${response.status}\nData: ${JSON.stringify(data, null, 2)}`);
