@@ -14,6 +14,43 @@ export default function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isBootstrapMode, setIsBootstrapMode] = useState(false);
+
+  React.useEffect(() => {
+    const checkUsers = async () => {
+      try {
+        const users = await api.getUsers();
+        if (users.length === 0) {
+          setIsBootstrapMode(true);
+        }
+      } catch (e) {
+        console.error('Error checking users:', e);
+      }
+    };
+    checkUsers();
+  }, []);
+
+  const handleBootstrap = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const adminUser: User = {
+        id: 'ADMIN-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+        username: 'admin',
+        name: 'المدير العام',
+        role: 'admin',
+        status: 'active',
+        email: 'admin@dar-al-maqam.com'
+      };
+      await api.saveUser({ ...adminUser, password: 'admin' });
+      alert('تم إنشاء حساب المدير بنجاح: admin / admin');
+      setIsBootstrapMode(false);
+    } catch (err: any) {
+      setError('فشل إنشاء حساب المدير: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +138,21 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
           </div>
 
+          {isBootstrapMode && (
+            <div className="p-4 bg-gold/10 border border-gold/30 rounded-2xl space-y-3">
+              <p className="text-[10px] text-gold font-bold text-center uppercase tracking-widest">إعداد النظام لأول مرة</p>
+              <p className="text-[11px] text-white/60 text-center">لا يوجد مستخدمون في النظام حالياً. هل ترغب في إنشاء حساب مدير افتراضي؟</p>
+              <button
+                type="button"
+                onClick={handleBootstrap}
+                disabled={loading}
+                className="w-full py-2 bg-gold text-black rounded-xl text-xs font-bold hover:bg-gold/90 transition-all active:scale-95"
+              >
+                إنشاء حساب المدير (admin/admin)
+              </button>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="text-xs font-bold text-white/40 uppercase tracking-widest mr-1">اسم المستخدم</label>
             <div className="relative group">
@@ -168,36 +220,6 @@ export default function Login({ onLogin }: LoginProps) {
                 </>
               )}
             </div>
-          </button>
-
-          <div className="relative py-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-matte-black px-2 text-white/20">أو</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={async () => {
-              setLoading(true);
-              setError('');
-              try {
-                const { user } = await api.loginWithGoogle();
-                onLogin(user);
-              } catch (err: any) {
-                setError(err.message || 'فشل تسجيل الدخول بواسطة Google');
-              } finally {
-                setLoading(false);
-              }
-            }}
-            disabled={loading}
-            className="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold flex items-center justify-center gap-3 hover:bg-white/10 transition-all active:scale-95 disabled:opacity-50"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-            <span>الدخول بواسطة Google</span>
           </button>
         </form>
 

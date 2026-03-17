@@ -123,38 +123,6 @@ export const api = {
     }
   },
 
-  async loginWithGoogle(): Promise<{ user: User }> {
-    const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-      
-      // Check if user exists in our users collection
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      
-      if (userDoc.exists()) {
-        return { user: { id: userDoc.id, ...userDoc.data() } as User };
-      } else {
-        // Create a new user if it's the bootstrap email
-        const isAdmin = firebaseUser.email === 'mosabelgewbri@gmail.com';
-        const newUser: User = {
-          id: firebaseUser.uid,
-          username: firebaseUser.email?.split('@')[0] || 'user',
-          name: firebaseUser.displayName || 'مستخدم جديد',
-          role: isAdmin ? 'admin' : 'staff',
-          email: firebaseUser.email || undefined,
-          status: 'active',
-          createdAt: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-        return { user: newUser };
-      }
-    } catch (error) {
-      console.error('Google Sign-in Error:', error);
-      throw error;
-    }
-  },
-
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
     try {
