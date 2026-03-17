@@ -544,10 +544,12 @@ export default function Settings({ user }: { user: User }) {
                   <p className="text-xs text-white/40 uppercase tracking-widest">حالة الاتصال</p>
                   <div className="flex items-center gap-3">
                     <div className={clsx(
-                      "w-3 h-3 rounded-full animate-pulse",
-                      dbStats?.health === 'Excellent' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                      "w-3 h-3 rounded-full",
+                      dbLoading ? "bg-gold animate-pulse" : (dbStats?.health === 'Excellent' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]")
                     )} />
-                    <span className="text-xl font-bold text-white">{dbStats?.health === 'Excellent' ? 'ممتازة' : 'خطأ في الاتصال'}</span>
+                    <span className="text-xl font-bold text-white">
+                      {dbLoading ? 'جاري الاتصال...' : (dbStats?.health === 'Excellent' ? 'متصل (ممتازة)' : 'خطأ في الاتصال')}
+                    </span>
                   </div>
                   <p className="text-[10px] text-white/30">وقت التشغيل: {dbStats?.uptime || '---'}</p>
                 </div>

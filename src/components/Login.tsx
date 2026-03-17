@@ -169,6 +169,36 @@ export default function Login({ onLogin }: LoginProps) {
               )}
             </div>
           </button>
+
+          <div className="relative py-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-matte-black px-2 text-white/20">أو</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              setLoading(true);
+              setError('');
+              try {
+                const { user } = await api.loginWithGoogle();
+                onLogin(user);
+              } catch (err: any) {
+                setError(err.message || 'فشل تسجيل الدخول بواسطة Google');
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+            className="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold flex items-center justify-center gap-3 hover:bg-white/10 transition-all active:scale-95 disabled:opacity-50"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+            <span>الدخول بواسطة Google</span>
+          </button>
         </form>
 
         <div className="pt-4 text-center">

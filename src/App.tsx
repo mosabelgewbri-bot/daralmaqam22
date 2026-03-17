@@ -96,6 +96,7 @@ export default function App() {
 
     const applyTheme = async () => {
       try {
+        await api.ensureAuth();
         const settings = await api.getSettings();
         const theme = settings.pref_theme || 'gold';
         document.documentElement.setAttribute('data-theme', theme);
@@ -114,6 +115,7 @@ export default function App() {
       // Bootstrap initial admin if users collection is empty
       const bootstrapAdmin = async () => {
         try {
+          await api.ensureAuth();
           const users = await api.getUsers();
           if (users.length === 0) {
             console.log('Bootstrapping initial admin user...');

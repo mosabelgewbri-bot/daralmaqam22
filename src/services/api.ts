@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   getDocFromServer
 } from 'firebase/firestore';
+import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../firebase';
 
 enum OperationType {
@@ -83,6 +84,7 @@ export const api = {
   async login(username: string, password: string): Promise<{ user: User }> {
     const path = 'users';
     try {
+      await this.ensureAuth();
       const q = query(collection(db, path), where("username", "==", username), where("password", "==", password));
       const querySnapshot = await getDocs(q);
       
@@ -107,6 +109,52 @@ export const api = {
   },
 
   // Trips
+  async ensureAuth(): Promise<void> {
+    if (!auth.currentUser) {
+      try {
+        await signInAnonymously(auth);
+      } catch (error: any) {
+        if (error.code === 'auth/admin-restricted-operation') {
+          console.warn('Anonymous auth is disabled in Firebase Console. Please enable it or use Google Sign-in.');
+        } else {
+          console.error('Error signing in anonymously:', error);
+        }
+      }
+    }
+  },
+
+  async loginWithGoogle(): Promise<{ user: User }> {
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+      
+      // Check if user exists in our users collection
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      
+      if (userDoc.exists()) {
+        return { user: { id: userDoc.id, ...userDoc.data() } as User };
+      } else {
+        // Create a new user if it's the bootstrap email
+        const isAdmin = firebaseUser.email === 'mosabelgewbri@gmail.com';
+        const newUser: User = {
+          id: firebaseUser.uid,
+          username: firebaseUser.email?.split('@')[0] || 'user',
+          name: firebaseUser.displayName || 'مستخدم جديد',
+          role: isAdmin ? 'admin' : 'staff',
+          email: firebaseUser.email || undefined,
+          status: 'active',
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
+        return { user: newUser };
+      }
+    } catch (error) {
+      console.error('Google Sign-in Error:', error);
+      throw error;
+    }
+  },
+
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
     try {
@@ -122,7 +170,14 @@ export const api = {
     const { id, ...data } = trip;
     try {
       if (id && id !== 'new') {
-        await updateDoc(doc(db, path, id), data);
+        const docRef = doc(db, path, id);
+        // Check if document exists to decide between create and update
+        const docSnap = await getDocFromServer(docRef);
+        if (docSnap.exists()) {
+          await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...data, createdAt: serverTimestamp() });
+        }
       } else {
         await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
       }
@@ -282,11 +337,13 @@ export const api = {
 
   async getDbStats(): Promise<any> {
     try {
-      const users = await getDocs(collection(db, 'users'));
-      const trips = await getDocs(collection(db, 'trips'));
-      const bookings = await getDocs(collection(db, 'bookings'));
-      const pilgrims = await getDocs(collection(db, 'pilgrims'));
-      const logs = await getDocs(collection(db, 'logs'));
+      const [users, trips, bookings, pilgrims, logs] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'trips')),
+        getDocs(collection(db, 'bookings')),
+        getDocs(collection(db, 'pilgrims')),
+        getDocs(collection(db, 'logs'))
+      ]);
       
       // Estimate size (very rough: ~500 bytes per doc)
       const totalDocs = users.size + trips.size + bookings.size + pilgrims.size + logs.size;
@@ -306,7 +363,13 @@ export const api = {
       };
     } catch (error) {
       console.error('Error getting DB stats:', error);
-      return { dbType: 'Cloud (Firestore)', health: 'Error', error: String(error) };
+      // Return a partial object if we can't get everything
+      return { 
+        dbType: 'Cloud (Firestore)', 
+        health: 'Error', 
+        error: String(error),
+        uptime: '---'
+      };
     }
   },
 
