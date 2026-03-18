@@ -801,7 +801,7 @@ export default function BookingForm({ user }: { user: User }) {
                     <input 
                       type="number"
                       className="input-field w-full py-1 text-lg font-bold text-gold"
-                      value={manualTicketPrice === 0 ? '' : manualTicketPrice}
+                      value={manualTicketPrice}
                       onChange={(e) => setManualTicketPrice(parseFloat(e.target.value) || 0)}
                     />
                     <span className="text-gold font-bold">{selectedTrip.currency}</span>

@@ -71,7 +71,7 @@ export default function FinanceModule({ user }: { user: User }) {
       }
     };
     loadBookings();
-  }, [selectedTripId, searchTerm]);
+  }, [selectedTripId, searchTerm, filterRemainingOnly]);
 
   const handleUpdatePaid = (bookingId: string, field: 'paidLYD' | 'paidUSD' | 'paidCashLYD' | 'paidTransferLYD' | 'paidCashUSD' | 'paidTransferUSD', value: string) => {
     const numValue = parseFloat(value) || 0;

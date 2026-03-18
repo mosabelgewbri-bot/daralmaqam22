@@ -111,18 +111,40 @@ export const api = {
   },
 
   // Trips
+  authPromise: null as Promise<void> | null,
+  lastAuthAttempt: 0,
+
   async ensureAuth(): Promise<void> {
-    if (!auth.currentUser) {
+    if (auth.currentUser) return;
+    
+    // Cooldown of 5 seconds between attempts if it failed before
+    const now = Date.now();
+    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 5000) {
+      return;
+    }
+
+    if (this.authPromise) {
+      return this.authPromise;
+    }
+
+    this.authPromise = (async () => {
+      this.lastAuthAttempt = Date.now();
       try {
         await signInAnonymously(auth);
       } catch (error: any) {
         if (error.code === 'auth/admin-restricted-operation') {
           console.warn('Anonymous auth is disabled in Firebase Console. Please enable it or use Google Sign-in.');
+        } else if (error.code === 'auth/too-many-requests') {
+          console.warn('Too many auth requests. Waiting for cooldown...');
         } else {
           console.error('Error signing in anonymously:', error);
         }
+      } finally {
+        this.authPromise = null;
       }
-    }
+    })();
+
+    return this.authPromise;
   },
 
   async getTrips(): Promise<Trip[]> {

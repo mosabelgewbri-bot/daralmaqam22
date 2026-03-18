@@ -108,49 +108,73 @@ export default function App() {
       }
     };
 
+    const bootstrapData = async () => {
+      try {
+        await api.ensureAuth();
+        
+        // 1. Bootstrap Users if empty
+        const users = await api.getUsers();
+        if (users.length === 0) {
+          console.log('Bootstrapping initial admin user...');
+          await api.saveUser({
+            username: 'admin',
+            password: 'admin123',
+            name: 'المدير العام',
+            role: 'admin',
+            status: 'active'
+          });
+        }
+
+        // 2. Bootstrap Permissions if missing for any role
+        const perms = await api.getPermissions();
+        const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
+        
+        let createdAny = false;
+        for (const role of roles) {
+          const exists = perms.some(p => p.role === role);
+          if (!exists) {
+            console.log(`Bootstrapping permissions for role: ${role}`);
+            const isAdmin = role === 'admin';
+            await api.savePermission({
+              id: role, // Use role as ID to prevent duplicates
+              role,
+              allowedScreens: isAdmin 
+                ? ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']
+                : ['dashboard', 'booking', 'reports'],
+              canEdit: isAdmin,
+              canDelete: isAdmin,
+              canExport: isAdmin,
+              canViewFinance: isAdmin || role === 'accountant',
+              canApproveBookings: isAdmin || role === 'manager',
+              canManageUsers: isAdmin,
+              canEditTrips: isAdmin || role === 'manager',
+              canViewReports: true,
+              canManageSettings: isAdmin,
+              canManageFinance: isAdmin || role === 'accountant',
+              canChangeVisaStatus: isAdmin || role === 'visa_specialist',
+              canManageRooms: isAdmin || role === 'staff' || role === 'receptionist',
+              dataScope: isAdmin ? 'all' : 'own'
+            } as any);
+            createdAny = true;
+          }
+        }
+
+        if (createdAny) {
+          // Re-sync after bootstrap
+          const updatedPerms = await api.getPermissions();
+          localStorage.setItem('role_permissions', JSON.stringify(updatedPerms));
+          window.dispatchEvent(new Event('permissions_updated'));
+        }
+      } catch (error) {
+        console.error('Error bootstrapping data:', error);
+      }
+    };
+
+    bootstrapData();
+
     if (user) {
       syncPermissions();
       applyTheme();
-    } else {
-      // Bootstrap initial admin if users collection is empty
-      const bootstrapAdmin = async () => {
-        try {
-          await api.ensureAuth();
-          const users = await api.getUsers();
-          if (users.length === 0) {
-            console.log('Bootstrapping initial admin user...');
-            await api.saveUser({
-              username: 'admin',
-              password: 'admin123',
-              name: 'المدير العام',
-              role: 'admin',
-              status: 'active'
-            });
-            
-            // Also bootstrap permissions
-            await api.savePermission({
-              role: 'admin',
-              allowedScreens: JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']),
-              canEdit: true,
-              canDelete: true,
-              canExport: true,
-              canViewFinance: true,
-              canApproveBookings: true,
-              canManageUsers: true,
-              canEditTrips: true,
-              canViewReports: true,
-              canManageSettings: true,
-              canManageFinance: true,
-              canChangeVisaStatus: true,
-              canManageRooms: true,
-              dataScope: 'all'
-            } as any);
-          }
-        } catch (error) {
-          console.error('Error bootstrapping admin:', error);
-        }
-      };
-      bootstrapAdmin();
     }
     
     window.addEventListener('settings_updated', applyTheme);

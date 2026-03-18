@@ -28,6 +28,7 @@ export default function TrackingModule({ user }: { user: User }) {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTripId, setSelectedTripId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending'>('all');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,7 +74,11 @@ export default function TrackingModule({ user }: { user: User }) {
       (b.regId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (b.pilgrims || []).some(p => p.passportNo?.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    return matchesTrip && matchesSearch;
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'completed' && b.groupNo && b.groupNo.trim() !== '') ||
+      (statusFilter === 'pending' && (!b.groupNo || b.groupNo.trim() === ''));
+    
+    return matchesTrip && matchesSearch && matchesStatus;
   });
 
   const exportPDF = async () => {
@@ -240,7 +245,7 @@ export default function TrackingModule({ user }: { user: User }) {
         </div>
       </div>
 
-      <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-2">
           <label className="text-xs text-white/40 uppercase tracking-widest">اختر الرحلة</label>
           <div className="relative">
@@ -254,6 +259,21 @@ export default function TrackingModule({ user }: { user: User }) {
               {trips.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
+            </select>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs text-white/40 uppercase tracking-widest">حالة الإنجاز</label>
+          <div className="relative">
+            <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gold" />
+            <select 
+              className="input-field w-full pl-10"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+            >
+              <option value="all">الكل</option>
+              <option value="completed">منجز (تم تحديد المجموعة)</option>
+              <option value="pending">غير منجز (قيد الانتظار)</option>
             </select>
           </div>
         </div>

@@ -311,7 +311,7 @@ export default function TripForm({ user }: { user: User }) {
                       required
                       min="0"
                       className="input-field w-full"
-                      value={formData.ticketPrice === 0 ? '' : formData.ticketPrice}
+                      value={formData.ticketPrice}
                       onChange={(e) => setFormData({...formData, ticketPrice: parseFloat(e.target.value) || 0})}
                     />
                   </div>

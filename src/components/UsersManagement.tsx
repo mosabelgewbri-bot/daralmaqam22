@@ -78,11 +78,22 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
           api.getUsers(),
           api.getPermissions()
         ]);
+        
+        // Deduplicate permissions by role to prevent duplicate key errors
+        const uniquePerms = permsData.reduce((acc: RolePermissions[], current) => {
+          const x = acc.find(item => item.role === current.role);
+          if (!x) {
+            return acc.concat([current]);
+          } else {
+            return acc;
+          }
+        }, []);
+
         setUsers(usersData);
-        setRolePermissions(permsData);
+        setRolePermissions(uniquePerms);
         
         // Update localStorage cache for Sidebar
-        localStorage.setItem('role_permissions', JSON.stringify(permsData));
+        localStorage.setItem('role_permissions', JSON.stringify(uniquePerms));
       } catch (error) {
         console.error('Error loading users/permissions:', error);
       }
@@ -182,6 +193,32 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
           </div>
         </div>
           <div className="flex gap-4">
+            <button 
+              onClick={async () => {
+                const [usersData, permsData] = await Promise.all([
+                  api.getUsers(),
+                  api.getPermissions()
+                ]);
+                
+                const uniquePerms = permsData.reduce((acc: RolePermissions[], current) => {
+                  const x = acc.find(item => item.role === current.role);
+                  if (!x) {
+                    return acc.concat([current]);
+                  } else {
+                    return acc;
+                  }
+                }, []);
+
+                setUsers(usersData);
+                setRolePermissions(uniquePerms);
+                localStorage.setItem('role_permissions', JSON.stringify(uniquePerms));
+                alert('تم تحديث البيانات بنجاح');
+              }}
+              className="p-3 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-xl border border-white/10 transition-all"
+              title="تحديث البيانات"
+            >
+              <Filter className="w-5 h-5" />
+            </button>
             <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
               <button 
                 onClick={() => { setActiveTab('users'); setSelectedUser(null); }}
