@@ -9,16 +9,17 @@ import {
   Hotel, 
   TrendingUp,
   ChevronRight,
-  PlusCircle,
-  Bed,
-  ShieldCheck,
-  FileText,
-  LogOut,
-  Settings,
-  CreditCard,
-  Map as MapIcon,
-  Monitor,
-  BarChart3
+  Calculator,
+  PlusCircle, 
+  Bed, 
+  ShieldCheck, 
+  FileText, 
+  LogOut, 
+  Settings, 
+  CreditCard, 
+  Map as MapIcon, 
+  Monitor, 
+  BarChart3 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -122,6 +123,7 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
     { icon: MapIcon, label: 'إضافة رحلة', path: '/trips', id: 'trips', color: 'bg-indigo-500/10 text-indigo-400' },
     { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming', color: 'bg-blue-500/10 text-blue-400' },
     { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance', color: 'bg-amber-500/10 text-amber-400' },
+    { icon: Calculator, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss', color: 'bg-emerald-500/10 text-emerald-400' },
     { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics', color: 'bg-indigo-500/10 text-indigo-400' },
     { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/tracking', id: 'tracking', color: 'bg-emerald-500/10 text-emerald-400' },
     { icon: FileText, label: 'التقارير', path: '/reports', id: 'reports', color: 'bg-purple-500/10 text-purple-400' },
@@ -146,7 +148,7 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
     // Fallback
     if (user.role === 'admin') return true;
     if (user.role === 'staff') return ['booking', 'rooming', 'tracking', 'finance'].includes(m.id);
-    if (user.role === 'accountant') return ['reports', 'finance'].includes(m.id);
+    if (user.role === 'accountant') return ['reports', 'finance', 'profit-loss'].includes(m.id);
     if (user.role === 'manager') return true;
     return false;
   });

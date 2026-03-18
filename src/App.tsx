@@ -15,6 +15,7 @@ import TripForm from './components/TripForm';
 import Settings from './components/Settings';
 import FinanceModule from './components/FinanceModule';
 import { FinanceAnalytics } from './components/FinanceAnalytics';
+import ProfitLossModule from './components/ProfitLossModule';
 import PilgrimCardsModule from './components/PilgrimCardsModule';
 import LogsModule from './components/LogsModule';
 import Sidebar from './components/Sidebar';
@@ -60,6 +61,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
             <Route path="/rooming" element={<RoomingModule user={user} />} />
             <Route path="/finance" element={<FinanceModule user={user} />} />
             <Route path="/analytics" element={<FinanceAnalytics />} />
+            <Route path="/profit-loss" element={<ProfitLossModule user={user} />} />
             <Route path="/reports" element={<ReportsModule user={user} />} />
             <Route path="/tracking" element={<TrackingModule user={user} />} />
             <Route path="/users" element={<UsersManagement user={user} />} />
