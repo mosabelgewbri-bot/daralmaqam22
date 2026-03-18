@@ -104,6 +104,25 @@ export default function ProfitLossModule({ user }: { user: User }) {
     }
   };
 
+  const handleBookingCostChange = async (bookingId: string, field: 'costLYD' | 'costUSD', value: string) => {
+    const numValue = parseFloat(value) || 0;
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    const updatedBooking = { ...booking, [field]: numValue };
+    
+    // Optimistic update
+    setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
+
+    try {
+      await api.saveBooking(updatedBooking);
+    } catch (error) {
+      console.error('Error saving booking cost:', error);
+      // Revert on error
+      setBookings(prev => prev.map(b => b.id === bookingId ? booking : b));
+    }
+  };
+
   const calculateDetailedMetrics = () => {
     const filteredTrips = selectedTripId === 'all' ? trips : trips.filter(t => t.id === selectedTripId);
     const filteredBookings = selectedTripId === 'all' ? bookings : bookings.filter(b => b.tripId === selectedTripId);
@@ -129,8 +148,9 @@ export default function ProfitLossModule({ user }: { user: User }) {
       const revenueLYD = booking.totals?.totalLYD || 0;
       const revenueUSD = booking.totals?.totalUSD || 0;
       
-      const costLYD = costPerPax.lyd * (booking.passengerCount || 0);
-      const costUSD = costPerPax.usd * (booking.passengerCount || 0);
+      // Use booking-specific cost if set, otherwise fallback to distributed trip cost
+      const costLYD = booking.costLYD !== undefined ? booking.costLYD : (costPerPax.lyd * (booking.passengerCount || 0));
+      const costUSD = booking.costUSD !== undefined ? booking.costUSD : (costPerPax.usd * (booking.passengerCount || 0));
       
       return {
         id: booking.id,
@@ -234,7 +254,14 @@ export default function ProfitLossModule({ user }: { user: User }) {
                   <td className="px-6 py-4 text-white font-medium">{row.tripName}</td>
                   <td className="px-6 py-4 text-white">{row.headName}</td>
                   <td className="px-6 py-4 text-emerald-400 font-bold">{row.revenueLYD.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-rose-400">{row.costLYD.toLocaleString()}</td>
+                  <td className="px-6 py-4">
+                    <input 
+                      type="number" 
+                      className="bg-white/5 border border-white/10 rounded px-2 py-1 text-rose-400 w-24 text-sm focus:border-gold outline-none transition-colors"
+                      value={row.costLYD}
+                      onChange={(e) => handleBookingCostChange(row.id, 'costLYD', e.target.value)}
+                    />
+                  </td>
                   <td className={clsx(
                     "px-6 py-4 font-black",
                     row.profitLYD >= 0 ? "text-emerald-400" : "text-rose-400"
@@ -242,7 +269,17 @@ export default function ProfitLossModule({ user }: { user: User }) {
                     {row.profitLYD.toLocaleString()}
                   </td>
                   <td className="px-6 py-4 text-blue-400 font-bold">${row.revenueUSD.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-rose-400">${row.costUSD.toLocaleString()}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1">
+                      <span className="text-rose-400 text-xs">$</span>
+                      <input 
+                        type="number" 
+                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-rose-400 w-24 text-sm focus:border-gold outline-none transition-colors"
+                        value={row.costUSD}
+                        onChange={(e) => handleBookingCostChange(row.id, 'costUSD', e.target.value)}
+                      />
+                    </div>
+                  </td>
                   <td className={clsx(
                     "px-6 py-4 font-black",
                     row.profitUSD >= 0 ? "text-blue-400" : "text-rose-400"
@@ -289,7 +326,7 @@ export default function ProfitLossModule({ user }: { user: User }) {
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-white">ملخص الأداء العام</h3>
-                  <p className="text-white/40">صافي الربح الإجمالي بناءً على التكاليف الموزعة</p>
+                  <p className="text-white/40">صافي الربح الإجمالي بناءً على التكاليف المخصصة لكل قيد</p>
                 </div>
               </div>
               
@@ -387,7 +424,9 @@ export default function ProfitLossModule({ user }: { user: User }) {
 
                 <div className="p-4 bg-blue-500/10 rounded-xl border border-blue-500/20">
                   <p className="text-xs text-blue-400 leading-relaxed">
-                    * يتم حساب تكلفة كل قيد بضرب (إجمالي تكاليف الرحلة ÷ عدد المقاعد الكلي) في (عدد أفراد القيد).
+                    * يمكنك تعديل تكلفة كل قيد (رب أسرة) مباشرة من الجدول أعلاه.
+                    <br />
+                    * في حال عدم تحديد تكلفة خاصة، سيتم استخدام التكلفة الموزعة آلياً (إجمالي تكاليف الرحلة ÷ عدد المقاعد).
                   </p>
                 </div>
               </div>

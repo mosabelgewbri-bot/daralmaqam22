@@ -38,6 +38,8 @@ export interface Booking {
     totalLYD: number;
     totalUSD: number;
   };
+  costLYD?: number;
+  costUSD?: number;
   paidLYD?: number;
   paidUSD?: number;
   paidCashLYD?: number;
