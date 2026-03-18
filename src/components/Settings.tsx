@@ -217,7 +217,10 @@ export default function Settings({ user }: { user: User }) {
       const apiKey = process.env.GEMINI_API_KEY;
       
       if (!apiKey) {
-        setDiagResult({ status: 'error', message: 'GEMINI_API_KEY غير مكوّن في البيئة.' });
+        setDiagResult({ 
+          status: 'error', 
+          message: 'GEMINI_API_KEY غير مكوّن في البيئة. يرجى إضافته في الإعدادات (Settings) -> الأسرار (Secrets) باسم GEMINI_API_KEY.' 
+        });
         return;
       }
 
