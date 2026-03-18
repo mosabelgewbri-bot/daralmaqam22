@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Pilgrim } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan } from 'lucide-react';
+import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X } from 'lucide-react';
 import Logo from './Logo';
 import PassportScanner from './PassportScanner';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -26,6 +26,7 @@ export default function BookingForm({ user }: { user: User }) {
   const [activeScannerIndex, setActiveScannerIndex] = useState<number | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [savedBooking, setSavedBooking] = useState<any>(null);
+  const [viewingPassport, setViewingPassport] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const fieldRefs = React.useRef<Record<string, HTMLElement | null>>({});
@@ -699,7 +700,8 @@ export default function BookingForm({ user }: { user: User }) {
   const canSave = !id || permissions.canEdit;
 
   return (
-    <motion.div 
+    <>
+      <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="min-h-screen bg-matte-black p-8 space-y-8"
@@ -1115,7 +1117,16 @@ export default function BookingForm({ user }: { user: User }) {
                           />
                         </label>
                         {p.passportImage && (
-                          <div className="w-10 h-10 rounded bg-white/10 overflow-hidden border border-white/20 shadow-lg">
+                          <button 
+                            onClick={() => setViewingPassport(p.passportImage || null)}
+                            className="p-2 hover:bg-blue-500/20 rounded-lg text-blue-400 transition-all"
+                            title="عرض الجواز"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                        )}
+                        {p.passportImage && (
+                          <div className="w-10 h-10 rounded bg-white/10 overflow-hidden border border-white/20 shadow-lg cursor-pointer" onClick={() => setViewingPassport(p.passportImage || null)}>
                             <img src={p.passportImage} className="w-full h-full object-cover" alt="Passport" />
                           </div>
                         )}
@@ -1240,5 +1251,63 @@ export default function BookingForm({ user }: { user: User }) {
           </div>
         </div>
       </motion.div>
-    );
-  }
+
+      <AnimatePresence>
+        {viewingPassport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+            onClick={() => setViewingPassport(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-4xl w-full bg-zinc-900 rounded-2xl overflow-hidden shadow-2xl border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute top-4 right-4 z-10 flex gap-2">
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = viewingPassport;
+                    link.download = `passport-${Date.now()}.jpg`;
+                    link.click();
+                  }}
+                  className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                  title="تحميل الصورة"
+                >
+                  <Download className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setViewingPassport(null)}
+                  className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-2">
+                <img
+                  src={viewingPassport}
+                  alt="Passport Preview"
+                  className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
+                />
+              </div>
+              <div className="p-4 bg-black/40 border-t border-white/10 flex justify-between items-center">
+                <p className="text-sm text-white/60">معاينة صورة الجواز</p>
+                <button
+                  onClick={() => setViewingPassport(null)}
+                  className="text-sm text-gold hover:underline"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}

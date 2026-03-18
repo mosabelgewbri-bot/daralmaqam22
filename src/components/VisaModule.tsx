@@ -3,7 +3,7 @@ import { User, Pilgrim, Booking, Trip } from '../types';
 import { api } from '../services/api';
 import { deduplicateBookings } from '../utils/dataUtils';
 import { motion } from 'motion/react';
-import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText } from 'lucide-react';
+import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import Logo from './Logo';
@@ -17,6 +17,27 @@ export default function VisaModule({ user }: { user: User }) {
   const [selectedTripId, setSelectedTripId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredPilgrims, setFilteredPilgrims] = useState<(Pilgrim & { bookingId: string, regId: string })[]>([]);
+  const [selectedPilgrims, setSelectedPilgrims] = useState<string[]>([]); // Array of passportNo
+  const [bulkStatus, setBulkStatus] = useState<Pilgrim['visaStatus'] | ''>('');
+
+  const sendWhatsAppMessage = (pilgrim: any) => {
+    const phone = pilgrim.phone?.replace(/\s+/g, '');
+    if (!phone) {
+      alert('رقم الهاتف غير متوفر لهذا المعتمر');
+      return;
+    }
+
+    const statusMap: Record<string, string> = {
+      'Pending': 'قيد الانتظار',
+      'Processed': 'تمت المعالجة',
+      'Visa Issued': 'تم إصدار التأشيرة'
+    };
+
+    const message = `السلام عليكم سيد/ة ${pilgrim.name}%0A%0Aنحيطكم علماً بأن حالة التأشيرة الخاصة بكم هي: *${statusMap[pilgrim.visaStatus] || pilgrim.visaStatus}*%0A%0Aشكراً لاختياركم شركتنا.`;
+    
+    const whatsappUrl = `https://wa.me/${phone.startsWith('+') ? phone : '+' + phone}?text=${message}`;
+    window.open(whatsappUrl, '_blank');
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -56,6 +77,7 @@ export default function VisaModule({ user }: { user: User }) {
               ...p,
               bookingId: booking.id,
               regId: booking.regId,
+              phone: booking.phone,
               visaStatus: p.visaStatus || 'Pending'
             } as any);
           } else if (!searchTerm || (booking.id || '').toLowerCase().includes(lowerSearch) || (booking.regId || '').toLowerCase().includes(lowerSearch)) {
@@ -63,6 +85,7 @@ export default function VisaModule({ user }: { user: User }) {
               ...p,
               bookingId: booking.id,
               regId: booking.regId,
+              phone: booking.phone,
               visaStatus: p.visaStatus || 'Pending'
             } as any);
           }
@@ -109,6 +132,54 @@ export default function VisaModule({ user }: { user: User }) {
     } catch (error) {
       console.error('Error updating group number:', error);
     }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (!bulkStatus || selectedPilgrims.length === 0) return;
+
+    const updatedBookings = [...bookings];
+    let changed = false;
+
+    for (const passportNo of selectedPilgrims) {
+      const bookingIndex = updatedBookings.findIndex(b => b.pilgrims.some(p => p.passportNo === passportNo));
+      if (bookingIndex !== -1) {
+        updatedBookings[bookingIndex] = {
+          ...updatedBookings[bookingIndex],
+          pilgrims: updatedBookings[bookingIndex].pilgrims.map(p => 
+            p.passportNo === passportNo ? { ...p, visaStatus: bulkStatus as any } : p
+          )
+        };
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      try {
+        await Promise.all(updatedBookings.map(b => api.saveBooking(b)));
+        setBookings(updatedBookings);
+        setSelectedPilgrims([]);
+        setBulkStatus('');
+        alert('تم تحديث حالة التأشيرات بنجاح');
+      } catch (error) {
+        console.error('Error in bulk update:', error);
+      }
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPilgrims.length === filteredPilgrims.length) {
+      setSelectedPilgrims([]);
+    } else {
+      setSelectedPilgrims(filteredPilgrims.map(p => p.passportNo));
+    }
+  };
+
+  const toggleSelectOne = (passportNo: string) => {
+    setSelectedPilgrims(prev => 
+      prev.includes(passportNo) 
+        ? prev.filter(p => p !== passportNo) 
+        : [...prev, passportNo]
+    );
   };
 
   const exportPDF = async () => {
@@ -273,7 +344,7 @@ export default function VisaModule({ user }: { user: User }) {
         </div>
       </div>
 
-      <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-2">
           <label className="text-xs text-white/60">البحث (رقم القيد، الجواز، الفاتورة)</label>
           <div className="relative">
@@ -300,12 +371,44 @@ export default function VisaModule({ user }: { user: User }) {
             ))}
           </select>
         </div>
+        <div className="space-y-2">
+          <label className="text-xs text-white/60">إجراءات جماعية ({selectedPilgrims.length})</label>
+          <div className="flex gap-2">
+            <select 
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value as any)}
+              className="input-field flex-1"
+              disabled={selectedPilgrims.length === 0}
+            >
+              <option value="">تغيير الحالة إلى...</option>
+              <option value="Pending">قيد الانتظار</option>
+              <option value="Processed">تمت المعالجة</option>
+              <option value="Visa Issued">صدرت التأشيرة</option>
+            </select>
+            <button 
+              onClick={handleBulkUpdate}
+              disabled={!bulkStatus || selectedPilgrims.length === 0}
+              className="btn-gold px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              تطبيق
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="glass-card overflow-hidden">
         <table className="w-full text-right">
           <thead className="bg-white/5 text-xs uppercase text-white/40">
             <tr>
+              <th className="px-6 py-4 w-10">
+                <button onClick={toggleSelectAll} className="p-1 hover:bg-white/10 rounded">
+                  {selectedPilgrims.length === filteredPilgrims.length && filteredPilgrims.length > 0 ? (
+                    <CheckSquare className="w-4 h-4 text-gold" />
+                  ) : (
+                    <Square className="w-4 h-4" />
+                  )}
+                </button>
+              </th>
               <th className="px-6 py-4">اسم المعتمر</th>
               <th className="px-6 py-4">رقم الجواز</th>
               <th className="px-6 py-4">رقم القيد</th>
@@ -316,7 +419,19 @@ export default function VisaModule({ user }: { user: User }) {
           <tbody className="divide-y divide-white/5">
             {filteredPilgrims.length > 0 ? (
               filteredPilgrims.map((p, idx) => (
-                <tr key={`${p.bookingId}-${p.passportNo}`} className="hover:bg-white/5 transition-colors">
+                <tr key={`${p.bookingId}-${p.passportNo}`} className={clsx(
+                  "hover:bg-white/5 transition-colors",
+                  selectedPilgrims.includes(p.passportNo) && "bg-gold/5"
+                )}>
+                  <td className="px-6 py-4">
+                    <button onClick={() => toggleSelectOne(p.passportNo)} className="p-1 hover:bg-white/10 rounded">
+                      {selectedPilgrims.includes(p.passportNo) ? (
+                        <CheckSquare className="w-4 h-4 text-gold" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  </td>
                   <td className="px-6 py-4 font-medium">{p.name}</td>
                   <td className="px-6 py-4 font-mono text-white/60">{p.passportNo}</td>
                   <td className="px-6 py-4 text-xs text-gold">{p.regId}</td>
@@ -330,20 +445,29 @@ export default function VisaModule({ user }: { user: User }) {
                     />
                   </td>
                   <td className="px-6 py-4">
-                    <select
-                      value={p.visaStatus || 'Pending'}
-                      onChange={(e) => updateStatus(p.bookingId, p.passportNo, e.target.value as any)}
-                      className={clsx(
-                        "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-transparent outline-none cursor-pointer",
-                        p.visaStatus === 'Pending' && "text-yellow-500 border-yellow-500/20",
-                        p.visaStatus === 'Processed' && "text-blue-500 border-blue-500/20",
-                        p.visaStatus === 'Visa Issued' && "text-emerald-500 border-emerald-500/20"
-                      )}
-                    >
-                      <option value="Pending" className="bg-matte-dark">قيد الانتظار</option>
-                      <option value="Processed" className="bg-matte-dark">تمت المعالجة</option>
-                      <option value="Visa Issued" className="bg-matte-dark">صدرت التأشيرة</option>
-                    </select>
+                    <div className="flex items-center gap-3">
+                      <select
+                        value={p.visaStatus || 'Pending'}
+                        onChange={(e) => updateStatus(p.bookingId, p.passportNo, e.target.value as any)}
+                        className={clsx(
+                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-transparent outline-none cursor-pointer",
+                          p.visaStatus === 'Pending' && "text-yellow-500 border-yellow-500/20",
+                          p.visaStatus === 'Processed' && "text-blue-500 border-blue-500/20",
+                          p.visaStatus === 'Visa Issued' && "text-emerald-500 border-emerald-500/20"
+                        )}
+                      >
+                        <option value="Pending" className="bg-matte-dark">قيد الانتظار</option>
+                        <option value="Processed" className="bg-matte-dark">تمت المعالجة</option>
+                        <option value="Visa Issued" className="bg-matte-dark">صدرت التأشيرة</option>
+                      </select>
+                      <button
+                        onClick={() => sendWhatsAppMessage(p)}
+                        className="p-1.5 hover:bg-emerald-500/10 text-emerald-500 rounded-lg transition-colors"
+                        title="إرسال تحديث عبر واتساب"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

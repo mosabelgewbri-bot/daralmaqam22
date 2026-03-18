@@ -14,7 +14,9 @@ import UsersManagement from './components/UsersManagement';
 import TripForm from './components/TripForm';
 import Settings from './components/Settings';
 import FinanceModule from './components/FinanceModule';
+import { FinanceAnalytics } from './components/FinanceAnalytics';
 import PilgrimCardsModule from './components/PilgrimCardsModule';
+import LogsModule from './components/LogsModule';
 import Sidebar from './components/Sidebar';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu } from 'lucide-react';
@@ -57,12 +59,14 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
             <Route path="/booking/:id?" element={<BookingForm user={user} />} />
             <Route path="/rooming" element={<RoomingModule user={user} />} />
             <Route path="/finance" element={<FinanceModule user={user} />} />
+            <Route path="/analytics" element={<FinanceAnalytics />} />
             <Route path="/reports" element={<ReportsModule user={user} />} />
             <Route path="/tracking" element={<TrackingModule user={user} />} />
             <Route path="/users" element={<UsersManagement user={user} />} />
             <Route path="/trips" element={<TripForm user={user} />} />
             <Route path="/cards" element={<PilgrimCardsModule user={user} />} />
             <Route path="/settings" element={<Settings user={user} />} />
+            <Route path="/logs" element={<LogsModule onBack={() => window.history.back()} />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </motion.div>

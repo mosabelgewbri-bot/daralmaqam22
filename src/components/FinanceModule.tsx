@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Trip, Booking } from '../types';
 import { api } from '../services/api';
 import { motion } from 'motion/react';
-import { Search, DollarSign, CreditCard, Save, CheckCircle2, AlertCircle, ShieldAlert, FileText, Download } from 'lucide-react';
+import { Search, DollarSign, CreditCard, Save, CheckCircle2, AlertCircle, ShieldAlert, FileText, Download, MessageSquare } from 'lucide-react';
 import { clsx } from 'clsx';
 import { getRolePermissions } from '../utils/dataUtils';
 import jsPDF from 'jspdf';
@@ -18,6 +18,13 @@ export default function FinanceModule({ user }: { user: User }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ id: string, status: 'idle' | 'saving' | 'success' | 'error' }>({ id: '', status: 'idle' });
+
+  const sendWhatsAppMessage = (phone: string, message: string) => {
+    if (!phone) return;
+    const cleanPhone = phone.replace(/\s+/g, '').replace(/^0/, '218'); // Assuming Libya country code if starts with 0
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
 
   useEffect(() => {
     const loadTrips = async () => {
@@ -437,7 +444,14 @@ export default function FinanceModule({ user }: { user: User }) {
                           {remainingUSD.toLocaleString()}
                         </td>
  
-                        <td className="px-2 py-4">
+                        <td className="px-2 py-4 flex items-center gap-2">
+                          <button 
+                            onClick={() => sendWhatsAppMessage(b.phone || '', `السلام عليكم السيد/ة ${b.headName}، نود إبلاغكم بأن الرصيد المتبقي لحجزكم هو ${remainingLYD} د.ل. يرجى مراجعة المكتب.`)}
+                            className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                            title="إرسال رسالة واتساب"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </button>
                           <button 
                             onClick={() => savePayment(b)}
                             disabled={saveStatus.id === b.id && saveStatus.status === 'saving'}

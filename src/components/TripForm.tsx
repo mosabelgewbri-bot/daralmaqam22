@@ -16,7 +16,8 @@ import {
   X,
   Calendar,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  CreditCard
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -33,7 +34,19 @@ export default function TripForm({ user }: { user: User }) {
     airline: '',
     totalSeats: 50,
     ticketPrice: 0,
-    currency: 'LYD'
+    currency: 'LYD',
+    costs: {
+      flightLYD: 0,
+      hotelLYD: 0,
+      transportLYD: 0,
+      visaLYD: 0,
+      otherLYD: 0,
+      flightUSD: 0,
+      hotelUSD: 0,
+      transportUSD: 0,
+      visaUSD: 0,
+      otherUSD: 0
+    }
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,7 +100,8 @@ export default function TripForm({ user }: { user: User }) {
             totalSeats: Number(formData.totalSeats),
             ticketPrice: Number(formData.ticketPrice),
             currency: formData.currency as any,
-            availableSeats: Math.max(0, tripToUpdate.availableSeats + (Number(formData.totalSeats) - tripToUpdate.totalSeats))
+            availableSeats: Math.max(0, tripToUpdate.availableSeats + (Number(formData.totalSeats) - tripToUpdate.totalSeats)),
+            costs: formData.costs
           };
           console.log('Calling api.saveTrip for update:', updatedTrip);
           await api.saveTrip(updatedTrip);
@@ -109,7 +123,8 @@ export default function TripForm({ user }: { user: User }) {
           availableSeats: Number(formData.totalSeats),
           ticketPrice: Number(formData.ticketPrice),
           currency: formData.currency as any,
-          status: 'Upcoming'
+          status: 'Upcoming',
+          costs: formData.costs
         };
         console.log('Calling api.saveTrip for new trip:', newTrip);
         await api.saveTrip(newTrip);
@@ -152,7 +167,19 @@ export default function TripForm({ user }: { user: User }) {
       airline: trip.airline,
       totalSeats: trip.totalSeats,
       ticketPrice: trip.ticketPrice,
-      currency: trip.currency
+      currency: trip.currency,
+      costs: trip.costs || {
+        flightLYD: 0,
+        hotelLYD: 0,
+        transportLYD: 0,
+        visaLYD: 0,
+        otherLYD: 0,
+        flightUSD: 0,
+        hotelUSD: 0,
+        transportUSD: 0,
+        visaUSD: 0,
+        otherUSD: 0
+      }
     });
     setEditingId(trip.id);
     setShowForm(true);
@@ -161,7 +188,26 @@ export default function TripForm({ user }: { user: User }) {
 
   const cancelEdit = () => {
     setEditingId(null);
-    setFormData({ tripNumber: '', name: '', airline: '', totalSeats: 50, ticketPrice: 0, currency: 'LYD' });
+    setFormData({ 
+      tripNumber: '', 
+      name: '', 
+      airline: '', 
+      totalSeats: 50, 
+      ticketPrice: 0, 
+      currency: 'LYD',
+      costs: {
+        flightLYD: 0,
+        hotelLYD: 0,
+        transportLYD: 0,
+        visaLYD: 0,
+        otherLYD: 0,
+        flightUSD: 0,
+        hotelUSD: 0,
+        transportUSD: 0,
+        visaUSD: 0,
+        otherUSD: 0
+      }
+    });
     setShowForm(false);
   };
 
@@ -329,6 +375,118 @@ export default function TripForm({ user }: { user: User }) {
                       <option value="LYD">LYD</option>
                       <option value="USD">USD</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* Costs Section */}
+                <div className="mt-8 pt-8 border-t border-white/10">
+                  <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-gold" /> تكاليف الرحلة (للتحليل المالي)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* LYD Costs */}
+                    <div className="space-y-4 bg-white/[0.02] p-6 rounded-2xl border border-white/5">
+                      <h4 className="text-sm font-bold text-emerald-400 mb-4">التكاليف بالدينار الليبي (LYD)</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">طيران</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.flightLYD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, flightLYD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">فندق</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.hotelLYD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, hotelLYD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">نقل</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.transportLYD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, transportLYD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">تأشيرة</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.visaLYD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, visaLYD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1 col-span-2">
+                          <label className="text-[10px] text-white/40 uppercase">أخرى</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.otherLYD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, otherLYD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* USD Costs */}
+                    <div className="space-y-4 bg-white/[0.02] p-6 rounded-2xl border border-white/5">
+                      <h4 className="text-sm font-bold text-blue-400 mb-4">التكاليف بالدولار (USD)</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">طيران</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.flightUSD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, flightUSD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">فندق</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.hotelUSD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, hotelUSD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">نقل</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.transportUSD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, transportUSD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-white/40 uppercase">تأشيرة</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.visaUSD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, visaUSD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                        <div className="space-y-1 col-span-2">
+                          <label className="text-[10px] text-white/40 uppercase">أخرى</label>
+                          <input 
+                            type="number" 
+                            className="input-field w-full py-1.5 text-sm"
+                            value={formData.costs?.otherUSD}
+                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, otherUSD: parseFloat(e.target.value) || 0}})}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

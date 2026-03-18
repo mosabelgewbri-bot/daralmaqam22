@@ -13,7 +13,9 @@ import {
   ShieldCheck,
   Users,
   Settings,
-  Monitor
+  Monitor,
+  History,
+  BarChart3
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -38,11 +40,13 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     { icon: PlusCircle, label: 'حجز جديد', path: '/booking', id: 'booking' },
     { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming' },
     { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance' },
+    { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics' },
     { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/tracking', id: 'tracking' },
     { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
     { icon: CreditCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
     { icon: PlusCircle, label: 'إدارة الرحلات', path: '/trips', id: 'trips' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
+    { icon: History, label: 'سجل العمليات', path: '/logs', id: 'logs' },
     { icon: Settings, label: 'الإعدادات', path: '/settings', id: 'settings' },
   ];
 
@@ -64,8 +68,8 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
 
     // Fallback to basic logic if no permissions found or role not in saved permissions
     if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'cards'].includes(item.id);
-    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance'].includes(item.id);
-    if (user.role === 'manager') return ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'cards'].includes(item.id);
+    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics'].includes(item.id);
+    if (user.role === 'manager') return ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'cards', 'analytics'].includes(item.id);
     if (user.role === 'visa_specialist') return ['dashboard', 'tracking', 'reports'].includes(item.id);
     if (user.role === 'receptionist') return ['dashboard', 'booking'].includes(item.id);
     return false;

@@ -122,6 +122,7 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
     { icon: MapIcon, label: 'إضافة رحلة', path: '/trips', id: 'trips', color: 'bg-indigo-500/10 text-indigo-400' },
     { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming', color: 'bg-blue-500/10 text-blue-400' },
     { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance', color: 'bg-amber-500/10 text-amber-400' },
+    { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics', color: 'bg-indigo-500/10 text-indigo-400' },
     { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/tracking', id: 'tracking', color: 'bg-emerald-500/10 text-emerald-400' },
     { icon: FileText, label: 'التقارير', path: '/reports', id: 'reports', color: 'bg-purple-500/10 text-purple-400' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users', color: 'bg-orange-500/10 text-orange-400' },

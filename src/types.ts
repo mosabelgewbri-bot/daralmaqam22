@@ -8,6 +8,18 @@ export interface Trip {
   ticketPrice: number;
   currency: "LYD" | "USD";
   status: "Upcoming" | "Active" | "Completed";
+  costs?: {
+    flightLYD: number;
+    hotelLYD: number;
+    transportLYD: number;
+    visaLYD: number;
+    otherLYD: number;
+    flightUSD: number;
+    hotelUSD: number;
+    transportUSD: number;
+    visaUSD: number;
+    otherUSD: number;
+  };
 }
 
 export interface Booking {
@@ -78,7 +90,7 @@ export interface User {
 
 export interface RolePermissions {
   role: Role;
-  allowedScreens: string[]; // e.g. ['dashboard', 'booking', 'rooming', 'visa', 'reports', 'users', 'trips', 'settings']
+  allowedScreens: string[]; // e.g. ['dashboard', 'booking', 'rooming', 'visa', 'reports', 'users', 'trips', 'settings', 'logs']
   canEdit: boolean;
   canDelete: boolean;
   canExport: boolean;
@@ -91,5 +103,25 @@ export interface RolePermissions {
   canManageFinance: boolean;
   canChangeVisaStatus: boolean;
   canManageRooms: boolean;
+  canViewLogs: boolean;
   dataScope: 'all' | 'own';
+}
+
+export interface AuditLog {
+  id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  details?: string;
+  timestamp: any;
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  read: boolean;
+  createdAt: any;
+  userId?: string;
 }

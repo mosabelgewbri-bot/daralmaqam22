@@ -32,6 +32,7 @@ export function getRolePermissions(role: Role): RolePermissions {
       canManageFinance: true,
       canChangeVisaStatus: true,
       canManageRooms: true,
+      canViewLogs: true,
       dataScope: 'all'
     },
     staff: {
@@ -49,6 +50,7 @@ export function getRolePermissions(role: Role): RolePermissions {
       canManageFinance: false,
       canChangeVisaStatus: false,
       canManageRooms: true,
+      canViewLogs: false,
       dataScope: 'own'
     },
     accountant: {
@@ -66,6 +68,7 @@ export function getRolePermissions(role: Role): RolePermissions {
       canManageFinance: true,
       canChangeVisaStatus: false,
       canManageRooms: false,
+      canViewLogs: false,
       dataScope: 'all'
     },
     manager: {
@@ -83,6 +86,7 @@ export function getRolePermissions(role: Role): RolePermissions {
       canManageFinance: true,
       canChangeVisaStatus: true,
       canManageRooms: true,
+      canViewLogs: true,
       dataScope: 'all'
     },
     visa_specialist: {
@@ -100,6 +104,7 @@ export function getRolePermissions(role: Role): RolePermissions {
       canManageFinance: false,
       canChangeVisaStatus: true,
       canManageRooms: false,
+      canViewLogs: false,
       dataScope: 'all'
     },
     receptionist: {
@@ -117,6 +122,7 @@ export function getRolePermissions(role: Role): RolePermissions {
       canManageFinance: false,
       canChangeVisaStatus: false,
       canManageRooms: false,
+      canViewLogs: false,
       dataScope: 'own'
     }
   };

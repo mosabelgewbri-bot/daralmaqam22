@@ -1,4 +1,4 @@
-import { Trip, Booking, RolePermissions, User } from '../types';
+import { Trip, Booking, RolePermissions, User, AuditLog, Notification } from '../types';
 import { 
   collection, 
   getDocs, 
@@ -470,18 +470,85 @@ export const api = {
     }
   },
 
-  async logAction(userId: string, action: string, details?: string): Promise<void> {
+  async logAction(userId: string, userName: string, action: string, details?: string): Promise<void> {
     const path = 'logs';
     try {
       await this.ensureAuth();
       await addDoc(collection(db, path), {
         userId,
+        userName,
         action,
         details,
         timestamp: serverTimestamp()
       });
     } catch (error) {
       console.error('Error logging action:', error);
+    }
+  },
+
+  async getLogs(): Promise<AuditLog[]> {
+    const path = 'logs';
+    try {
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          timestamp: data.timestamp?.toDate?.()?.toISOString() || data.timestamp
+        } as unknown as AuditLog;
+      }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  async getNotifications(userId?: string): Promise<Notification[]> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      let q = query(collection(db, path));
+      if (userId) {
+        q = query(collection(db, path), where("userId", "==", userId));
+      }
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt
+        } as unknown as Notification;
+      }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
+  async addNotification(notification: Partial<Notification>): Promise<void> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      await addDoc(collection(db, path), {
+        ...notification,
+        read: false,
+        createdAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error adding notification:', error);
+    }
+  },
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      await updateDoc(doc(db, path, id), { read: true });
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
     }
   }
 };
