@@ -195,10 +195,10 @@ export default function FinanceModule({ user }: { user: User }) {
             <th style="border: 1px solid #333; padding: 10px; text-align: center;">نوع الغرفة</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">إجمالي د.ل</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">مدفوع د.ل</th>
-            <th style="border: 1px solid #333; padding: 10px; text-align: right;">متبقي د.ل</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">إجمالي $</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">مدفوع $</th>
-            <th style="border: 1px solid #333; padding: 10px; text-align: right;">متبقي $</th>
+            <th style="border: 1px solid #333; padding: 10px; text-align: right; background-color: #fef2f2; color: #000;">متبقي د.ل</th>
+            <th style="border: 1px solid #333; padding: 10px; text-align: right; background-color: #fef2f2; color: #000;">متبقي $</th>
           </tr>
         </thead>
         <tbody>
@@ -214,10 +214,10 @@ export default function FinanceModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 10px;">${getRoomSummary(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalLYD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.paidLYD || 0).toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remLYD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalUSD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.paidUSD || 0).toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remUSD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold; background-color: #fff1f2;">${remLYD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold; background-color: #fff1f2;">${remUSD.toLocaleString()}</td>
             </tr>
           `}).join('')}
         </tbody>
@@ -363,18 +363,18 @@ export default function FinanceModule({ user }: { user: User }) {
                   <th className="px-2 py-3 bg-emerald-500/5">إجمالي (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">نقداً (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">حوالة (د.ل)</th>
-                  <th className="px-2 py-3 bg-emerald-500/5">المتبقي (د.ل)</th>
                   <th className="px-2 py-3 bg-blue-500/5">إجمالي ($)</th>
                   <th className="px-2 py-3 bg-blue-500/5">نقداً ($)</th>
                   <th className="px-2 py-3 bg-blue-500/5">حوالة ($)</th>
-                  <th className="px-2 py-3 bg-blue-500/5">المتبقي ($)</th>
+                  <th className="px-2 py-3 bg-red-500/10">المتبقي (د.ل)</th>
+                  <th className="px-2 py-3 bg-red-500/10">المتبقي ($)</th>
                   <th className="px-2 py-3">إجراء</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {bookings.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-white/40">لا توجد حجوزات لهذه الرحلة</td>
+                    <td colSpan={13} className="px-4 py-8 text-center text-white/40">لا توجد حجوزات لهذه الرحلة</td>
                   </tr>
                 ) : (
                   bookings.map(b => {
@@ -410,12 +410,6 @@ export default function FinanceModule({ user }: { user: User }) {
                             onChange={(e) => handleUpdatePaid(b.id, 'paidTransferLYD', e.target.value)}
                           />
                         </td>
-                        <td className={clsx(
-                          "px-2 py-4 bg-emerald-500/5 font-bold text-xs",
-                          remainingLYD > 0 ? "text-red-400" : "text-emerald-400"
-                        )}>
-                          {remainingLYD.toLocaleString()}
-                        </td>
  
                         {/* USD Section */}
                         <td className="px-2 py-4 bg-blue-500/5 font-bold text-xs">
@@ -437,8 +431,16 @@ export default function FinanceModule({ user }: { user: User }) {
                             onChange={(e) => handleUpdatePaid(b.id, 'paidTransferUSD', e.target.value)}
                           />
                         </td>
+
+                        {/* Remaining Section */}
                         <td className={clsx(
-                          "px-2 py-4 bg-blue-500/5 font-bold text-xs",
+                          "px-2 py-4 bg-red-500/5 font-bold text-xs",
+                          remainingLYD > 0 ? "text-red-400" : "text-emerald-400"
+                        )}>
+                          {remainingLYD.toLocaleString()}
+                        </td>
+                        <td className={clsx(
+                          "px-2 py-4 bg-red-500/5 font-bold text-xs",
                           remainingUSD > 0 ? "text-red-400" : "text-blue-400"
                         )}>
                           {remainingUSD.toLocaleString()}

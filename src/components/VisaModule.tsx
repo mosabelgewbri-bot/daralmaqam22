@@ -107,11 +107,16 @@ export default function VisaModule({ user }: { user: User }) {
       )
     };
 
+    // Optimistic update
+    const originalBookings = [...bookings];
+    setBookings(bookings.map(b => b.id === bookingId ? updatedBooking : b));
+
     try {
       await api.saveBooking(updatedBooking);
-      setBookings(bookings.map(b => b.id === bookingId ? updatedBooking : b));
     } catch (error) {
       console.error('Error updating visa status:', error);
+      setBookings(originalBookings);
+      alert('حدث خطأ أثناء تحديث الحالة. يرجى المحاولة مرة أخرى.');
     }
   };
 
@@ -126,11 +131,16 @@ export default function VisaModule({ user }: { user: User }) {
       )
     };
 
+    // Optimistic update
+    const originalBookings = [...bookings];
+    setBookings(bookings.map(b => b.id === bookingId ? updatedBooking : b));
+
     try {
       await api.saveBooking(updatedBooking);
-      setBookings(bookings.map(b => b.id === bookingId ? updatedBooking : b));
     } catch (error) {
       console.error('Error updating group number:', error);
+      setBookings(originalBookings);
+      alert('حدث خطأ أثناء تحديث رقم المجموعة. يرجى المحاولة مرة أخرى.');
     }
   };
 
@@ -179,6 +189,41 @@ export default function VisaModule({ user }: { user: User }) {
       prev.includes(passportNo) 
         ? prev.filter(p => p !== passportNo) 
         : [...prev, passportNo]
+    );
+  };
+
+  // Optimized input component for Group Number to prevent typing lag
+  const GroupNoInput = ({ 
+    initialValue, 
+    onSave 
+  }: { 
+    initialValue: string, 
+    onSave: (val: string) => void 
+  }) => {
+    const [localValue, setLocalValue] = useState(initialValue || '');
+
+    useEffect(() => {
+      setLocalValue(initialValue || '');
+    }, [initialValue]);
+
+    return (
+      <input 
+        type="text" 
+        className="input-field w-32 py-1 text-sm"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={() => {
+          if (localValue !== (initialValue || '')) {
+            onSave(localValue);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        placeholder="رقم المجموعة"
+      />
     );
   };
 
@@ -436,12 +481,9 @@ export default function VisaModule({ user }: { user: User }) {
                   <td className="px-6 py-4 font-mono text-white/60">{p.passportNo}</td>
                   <td className="px-6 py-4 text-xs text-gold">{p.regId}</td>
                   <td className="px-6 py-4">
-                    <input 
-                      type="text" 
-                      className="input-field w-32 py-1 text-sm"
-                      value={p.groupNo || ''}
-                      onChange={(e) => updateGroup(p.bookingId, p.passportNo, e.target.value)}
-                      placeholder="رقم المجموعة"
+                    <GroupNoInput 
+                      initialValue={p.groupNo || ''} 
+                      onSave={(val) => updateGroup(p.bookingId, p.passportNo, val)} 
                     />
                   </td>
                   <td className="px-6 py-4">

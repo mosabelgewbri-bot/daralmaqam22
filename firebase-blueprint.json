@@ -94,6 +94,33 @@
         "value": { "type": "string", "description": "Setting value" }
       },
       "required": ["key", "value"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System notifications for users",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string", "description": "Target user ID (optional)" }
+      },
+      "required": ["title", "message", "type", "read"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Audit logs for system actions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "action", "timestamp"]
     }
   },
   "firestore": {
@@ -102,6 +129,8 @@
     "/bookings": { "schema": "Booking", "description": "Collection of trip bookings" },
     "/pilgrims": { "schema": "Pilgrim", "description": "Collection of pilgrim details" },
     "/permissions": { "schema": "Permission", "description": "Collection of role permissions" },
-    "/settings": { "schema": "Setting", "description": "Collection of app settings" }
+    "/settings": { "schema": "Setting", "description": "Collection of app settings" },
+    "/notifications": { "schema": "Notification", "description": "Collection of system notifications" },
+    "/logs": { "schema": "Log", "description": "Collection of audit logs" }
   }
 }

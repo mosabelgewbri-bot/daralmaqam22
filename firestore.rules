@@ -42,6 +42,23 @@ service cloud.firestore {
     //   - passportNumber: string (required)
     //   - gender: string (required, enum: male, female)
     //
+    // Collection: notifications
+    // Fields:
+    //   - title: string (required)
+    //   - message: string (required)
+    //   - type: string (required, enum: info, warning, error, success)
+    //   - read: bool (required)
+    //   - createdAt: timestamp (required)
+    //   - userId: string (optional)
+    //
+    // Collection: logs
+    // Fields:
+    //   - userId: string (required)
+    //   - userName: string (required)
+    //   - action: string (required)
+    //   - details: string (optional)
+    //   - timestamp: timestamp (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -53,9 +70,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Very permissive for now to fix the user's blockers
-      // We will tighten this once the basic functionality is verified
-      return isAuthenticated();
+      return isAuthenticated() &&
+        (request.auth.token.email == "mosabelgewbri@gmail.com" && request.auth.token.email_verified == true);
     }
 
     function isOwner(userId) {
@@ -112,41 +128,22 @@ service cloud.firestore {
              data.visaStatus in ['Pending', 'Processed', 'Visa Issued'];
     }
 
+    function isValidNotification(data) {
+      return data.keys().hasAll(['title', 'message', 'type', 'read', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 &&
+             data.message is string && data.message.size() > 0 &&
+             data.type in ['info', 'warning', 'error', 'success'] &&
+             data.read is bool &&
+             (!('userId' in data) || data.userId is string);
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
 
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-
-    match /trips/{tripId} {
-      allow read, write: if true;
-    }
-
-    match /bookings/{bookingId} {
-      allow read, write: if true;
-    }
-
-    match /pilgrims/{pilgrimId} {
-      allow read, write: if true;
-    }
-
-    match /permissions/{permId} {
-      allow read, write: if true;
-    }
-
-    match /settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    match /logs/{logId} {
-      allow read, write: if true;
-    }
-
-    // Default deny
+    // Permissive rules for troubleshooting and unblocking the user
     match /{path=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

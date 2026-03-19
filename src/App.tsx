@@ -9,7 +9,6 @@ import BookingForm from './components/BookingForm';
 import RoomingModule from './components/RoomingModule';
 import VisaModule from './components/VisaModule';
 import ReportsModule from './components/ReportsModule';
-import TrackingModule from './components/TrackingModule';
 import UsersManagement from './components/UsersManagement';
 import TripForm from './components/TripForm';
 import Settings from './components/Settings';
@@ -19,6 +18,8 @@ import ProfitLossModule from './components/ProfitLossModule';
 import PilgrimCardsModule from './components/PilgrimCardsModule';
 import LogsModule from './components/LogsModule';
 import Sidebar from './components/Sidebar';
+import { NotificationProvider } from './contexts/NotificationContext';
+import NotificationBell from './components/NotificationBell';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu } from 'lucide-react';
 
@@ -28,53 +29,58 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-matte-black overflow-hidden relative">
-      {!isLoginPage && (
-        <Sidebar 
-          user={user} 
-          onLogout={onLogout} 
-          isOpen={isSidebarOpen} 
-          onClose={() => setIsSidebarOpen(false)} 
-        />
-      )}
-      <main className="flex-1 overflow-y-auto relative">
+    <NotificationProvider user={user}>
+      <div className="flex h-screen bg-matte-black overflow-hidden relative">
         {!isLoginPage && (
-          <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className="lg:hidden fixed top-4 left-4 z-30 p-2 bg-matte-dark border border-white/10 rounded-lg text-gold shadow-lg"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
+          <Sidebar 
+            user={user} 
+            onLogout={onLogout} 
+            isOpen={isSidebarOpen} 
+            onClose={() => setIsSidebarOpen(false)} 
+          />
         )}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="h-full w-full"
-          >
-            <Routes location={location}>
-            <Route path="/" element={<Dashboard user={user} onLogout={onLogout} />} />
-            <Route path="/booking/:id?" element={<BookingForm user={user} />} />
-            <Route path="/rooming" element={<RoomingModule user={user} />} />
-            <Route path="/finance" element={<FinanceModule user={user} />} />
-            <Route path="/analytics" element={<FinanceAnalytics />} />
-            <Route path="/profit-loss" element={<ProfitLossModule user={user} />} />
-            <Route path="/reports" element={<ReportsModule user={user} />} />
-            <Route path="/tracking" element={<TrackingModule user={user} />} />
-            <Route path="/users" element={<UsersManagement user={user} />} />
-            <Route path="/trips" element={<TripForm user={user} />} />
-            <Route path="/cards" element={<PilgrimCardsModule user={user} />} />
-            <Route path="/settings" element={<Settings user={user} />} />
-            <Route path="/logs" element={<LogsModule onBack={() => window.history.back()} />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </motion.div>
-      </AnimatePresence>
-      </main>
-    </div>
+        <main className="flex-1 overflow-y-auto relative">
+          {!isLoginPage && (
+            <div className="fixed top-4 left-4 z-30 flex items-center gap-3">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="lg:hidden p-2 bg-matte-dark border border-white/10 rounded-lg text-gold shadow-lg"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              <NotificationBell />
+            </div>
+          )}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="h-full w-full"
+            >
+              <Routes location={location}>
+              <Route path="/" element={<Dashboard user={user} onLogout={onLogout} />} />
+              <Route path="/booking/:id?" element={<BookingForm user={user} />} />
+              <Route path="/rooming" element={<RoomingModule user={user} />} />
+              <Route path="/finance" element={<FinanceModule user={user} />} />
+              <Route path="/analytics" element={<FinanceAnalytics />} />
+              <Route path="/profit-loss" element={<ProfitLossModule user={user} />} />
+              <Route path="/reports" element={<ReportsModule user={user} />} />
+              <Route path="/visa" element={<VisaModule user={user} />} />
+              <Route path="/users" element={<UsersManagement user={user} />} />
+              <Route path="/trips" element={<TripForm user={user} />} />
+              <Route path="/cards" element={<PilgrimCardsModule user={user} />} />
+              <Route path="/settings" element={<Settings user={user} />} />
+              <Route path="/logs" element={<LogsModule onBack={() => window.history.back()} />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </motion.div>
+        </AnimatePresence>
+        </main>
+      </div>
+    </NotificationProvider>
   );
 }
 
@@ -135,38 +141,51 @@ export default function App() {
         const perms = await api.getPermissions();
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
-        let createdAny = false;
+        let updatedAny = false;
+        const allScreens = ['dashboard', 'booking', 'rooming', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'cards', 'trips', 'users', 'logs', 'settings'];
+
         for (const role of roles) {
-          const exists = perms.some(p => p.role === role);
-          if (!exists) {
+          const existingPerm = perms.find(p => p.role === role);
+          const isAdmin = role === 'admin';
+          const isManager = role === 'manager';
+
+          if (!existingPerm) {
             console.log(`Bootstrapping permissions for role: ${role}`);
-            const isAdmin = role === 'admin';
             await api.savePermission({
-              id: role, // Use role as ID to prevent duplicates
+              id: role,
               role,
-              allowedScreens: isAdmin 
-                ? ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']
-                : ['dashboard', 'booking', 'reports'],
-              canEdit: isAdmin,
+              allowedScreens: (isAdmin || isManager) ? allScreens : ['dashboard', 'booking', 'reports'],
+              canEdit: isAdmin || isManager,
               canDelete: isAdmin,
-              canExport: isAdmin,
-              canViewFinance: isAdmin || role === 'accountant',
-              canApproveBookings: isAdmin || role === 'manager',
+              canExport: isAdmin || isManager,
+              canViewFinance: isAdmin || isManager || role === 'accountant',
+              canApproveBookings: isAdmin || isManager,
               canManageUsers: isAdmin,
-              canEditTrips: isAdmin || role === 'manager',
+              canEditTrips: isAdmin || isManager,
               canViewReports: true,
               canManageSettings: isAdmin,
-              canManageFinance: isAdmin || role === 'accountant',
-              canChangeVisaStatus: isAdmin || role === 'visa_specialist',
-              canManageRooms: isAdmin || role === 'staff' || role === 'receptionist',
-              dataScope: isAdmin ? 'all' : 'own'
+              canManageFinance: isAdmin || isManager || role === 'accountant',
+              canChangeVisaStatus: isAdmin || isManager || role === 'visa_specialist',
+              canManageRooms: isAdmin || isManager || role === 'staff' || role === 'receptionist',
+              dataScope: (isAdmin || isManager) ? 'all' : 'own'
             } as any);
-            createdAny = true;
+            updatedAny = true;
+          } else if (isAdmin || isManager) {
+            // Ensure admin/manager always have all screens
+            const missingScreens = allScreens.filter(s => !existingPerm.allowedScreens.includes(s));
+            if (missingScreens.length > 0) {
+              console.log(`Updating missing screens for ${role}:`, missingScreens);
+              await api.savePermission({
+                ...existingPerm,
+                allowedScreens: [...new Set([...existingPerm.allowedScreens, ...allScreens])]
+              });
+              updatedAny = true;
+            }
           }
         }
 
-        if (createdAny) {
-          // Re-sync after bootstrap
+        if (updatedAny) {
+          // Re-sync after bootstrap/update
           const updatedPerms = await api.getPermissions();
           localStorage.setItem('role_permissions', JSON.stringify(updatedPerms));
           window.dispatchEvent(new Event('permissions_updated'));

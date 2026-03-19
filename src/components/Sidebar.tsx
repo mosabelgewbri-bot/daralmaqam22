@@ -13,10 +13,11 @@ import {
   ShieldCheck,
   Users,
   Settings,
-  Monitor,
   History,
   BarChart3,
-  Calculator
+  Calculator,
+  IdCard,
+  Plane
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -39,14 +40,14 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
   const menuItems = [
     { icon: LayoutDashboard, label: 'لوحة التحكم', path: '/', id: 'dashboard' },
     { icon: PlusCircle, label: 'حجز جديد', path: '/booking', id: 'booking' },
+    { icon: Plane, label: 'إدارة الرحلات', path: '/trips', id: 'trips' },
+    { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/visa', id: 'visa' },
     { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming' },
     { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance' },
     { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics' },
     { icon: Calculator, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss' },
-    { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/tracking', id: 'tracking' },
     { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
-    { icon: CreditCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
-    { icon: PlusCircle, label: 'إدارة الرحلات', path: '/trips', id: 'trips' },
+    { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
     { icon: History, label: 'سجل العمليات', path: '/logs', id: 'logs' },
     { icon: Settings, label: 'الإعدادات', path: '/settings', id: 'settings' },
@@ -69,10 +70,10 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     }
 
     // Fallback to basic logic if no permissions found or role not in saved permissions
-    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'cards'].includes(item.id);
-    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss'].includes(item.id);
-    if (user.role === 'manager') return ['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'cards', 'analytics', 'profit-loss'].includes(item.id);
-    if (user.role === 'visa_specialist') return ['dashboard', 'tracking', 'reports'].includes(item.id);
+    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs'].includes(item.id);
+    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'logs'].includes(item.id);
+    if (user.role === 'manager') return true;
+    if (user.role === 'visa_specialist') return ['dashboard', 'visa', 'reports'].includes(item.id);
     if (user.role === 'receptionist') return ['dashboard', 'booking'].includes(item.id);
     return false;
   });

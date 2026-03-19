@@ -461,122 +461,130 @@ export default function RoomingModule({ user }: { user: User }) {
               ) : (
                 filteredBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-white/5 transition-colors">
-                  <td className="px-2 py-3 font-mono text-gold">{b.regId}</td>
-                  <td className="px-2 py-3 font-medium whitespace-nowrap">{b.headName}</td>
-                  <td className="px-2 py-3 font-mono text-white/60">{b.phone || '---'}</td>
-                  <td className="px-2 py-3 text-white/60 max-w-[150px]">
-                    <div className="flex flex-col gap-1">
-                      {b.pilgrims.map((p, idx) => (
-                        <div key={idx} className="whitespace-nowrap" title={p.name}>{p.name}</div>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-2 py-3 text-gold/80">
-                    <div className="flex flex-col gap-1">
-                      {b.pilgrims.map((p, idx) => (
-                        <div key={idx}>{getRoomTypeArabic(p.roomType)}</div>
-                      ))}
-                    </div>
-                  </td>
-                  
-                  {/* Makkah Section */}
-                  <td className="px-2 py-3 bg-gold/5">{b.makkahHotel}</td>
-                  <td className="px-2 py-3 bg-gold/5">
-                    <input 
-                      type="text" 
-                      className="bg-transparent border-b border-white/10 focus:border-gold outline-none w-16 py-1"
-                      value={b.makkahBookingNo || ''}
-                      onChange={(e) => handleLocalUpdate(b.id, { makkahBookingNo: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-2 py-3 bg-gold/5">{b.makkahNights}</td>
-                  <td className="px-2 py-3 bg-gold/5">
-                    <input 
-                      type="date" 
-                      className="bg-transparent border-b border-white/10 focus:border-gold outline-none w-24 py-1 text-[9px]"
-                      value={b.makkahCheckIn || ''}
-                      onChange={(e) => handleLocalUpdate(b.id, { makkahCheckIn: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-2 py-3 bg-gold/5 font-mono text-emerald-400">
-                    {calculateCheckOut(b.makkahCheckIn, b.makkahNights)}
-                  </td>
+                    <td className="px-2 py-3 font-mono text-gold">{b.regId}</td>
+                    <td className="px-2 py-3 font-medium whitespace-nowrap">{b.headName}</td>
+                    <td className="px-2 py-3 font-mono text-white/60">{b.phone || '---'}</td>
+                    <td className="px-2 py-3 text-white/60 max-w-[150px]">
+                      <div className="flex flex-col gap-1">
+                        {b.pilgrims.map((p, idx) => (
+                          <div key={idx} className="whitespace-nowrap" title={p.name}>{p.name}</div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-gold/80">
+                      <div className="flex flex-col gap-1">
+                        {b.pilgrims.map((p, idx) => (
+                          <div key={idx}>{getRoomTypeArabic(p.roomType)}</div>
+                        ))}
+                      </div>
+                    </td>
+                    
+                    {/* Makkah Section */}
+                    <td className="px-2 py-3 bg-gold/5">{b.makkahHotel}</td>
+                    <td className="px-2 py-3 bg-gold/5">
+                      <input 
+                        type="text" 
+                        className={clsx(
+                          "bg-transparent border-b outline-none w-16 py-1",
+                          !b.makkahBookingNo ? "border-red-500/50 placeholder-red-400" : "border-white/10 focus:border-gold"
+                        )}
+                        placeholder="ناقص"
+                        value={b.makkahBookingNo || ''}
+                        onChange={(e) => handleLocalUpdate(b.id, { makkahBookingNo: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-2 py-3 bg-gold/5">{b.makkahNights}</td>
+                    <td className="px-2 py-3 bg-gold/5">
+                      <input 
+                        type="date" 
+                        className="bg-transparent border-b border-white/10 focus:border-gold outline-none w-24 py-1 text-[9px]"
+                        value={b.makkahCheckIn || ''}
+                        onChange={(e) => handleLocalUpdate(b.id, { makkahCheckIn: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-2 py-3 bg-gold/5 font-mono text-emerald-400">
+                      {calculateCheckOut(b.makkahCheckIn, b.makkahNights)}
+                    </td>
 
-                  {/* Madinah Section */}
-                  <td className="px-2 py-3 bg-blue-500/5">{b.madinahHotel}</td>
-                  <td className="px-2 py-3 bg-blue-500/5">
-                    <input 
-                      type="text" 
-                      className="bg-transparent border-b border-white/10 focus:border-blue-400 outline-none w-16 py-1"
-                      value={b.madinahBookingNo || ''}
-                      onChange={(e) => handleLocalUpdate(b.id, { madinahBookingNo: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-2 py-3 bg-blue-500/5">{b.madinahNights}</td>
-                  <td className="px-2 py-3 bg-blue-500/5">
-                    <input 
-                      type="date" 
-                      className="bg-transparent border-b border-white/10 focus:border-blue-400 outline-none w-24 py-1 text-[9px]"
-                      value={b.madinahCheckIn || ''}
-                      onChange={(e) => handleLocalUpdate(b.id, { madinahCheckIn: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-2 py-3 bg-blue-500/5 font-mono text-emerald-400">
-                    {calculateCheckOut(b.madinahCheckIn, b.madinahNights)}
-                  </td>
+                    {/* Madinah Section */}
+                    <td className="px-2 py-3 bg-blue-500/5">{b.madinahHotel}</td>
+                    <td className="px-2 py-3 bg-blue-500/5">
+                      <input 
+                        type="text" 
+                        className={clsx(
+                          "bg-transparent border-b outline-none w-16 py-1",
+                          !b.madinahBookingNo ? "border-red-500/50 placeholder-red-400" : "border-white/10 focus:border-blue-400"
+                        )}
+                        placeholder="ناقص"
+                        value={b.madinahBookingNo || ''}
+                        onChange={(e) => handleLocalUpdate(b.id, { madinahBookingNo: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-2 py-3 bg-blue-500/5">{b.madinahNights}</td>
+                    <td className="px-2 py-3 bg-blue-500/5">
+                      <input 
+                        type="date" 
+                        className="bg-transparent border-b border-white/10 focus:border-blue-400 outline-none w-24 py-1 text-[9px]"
+                        value={b.madinahCheckIn || ''}
+                        onChange={(e) => handleLocalUpdate(b.id, { madinahCheckIn: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-2 py-3 bg-blue-500/5 font-mono text-emerald-400">
+                      {calculateCheckOut(b.madinahCheckIn, b.madinahNights)}
+                    </td>
 
-                  <td className="px-2 py-3">
-                    <div className="flex items-center gap-2">
-                      {pendingSaveIds.has(b.id) && (
-                        <button 
-                          onClick={() => handleSaveBooking(b.id)}
-                          disabled={isSaving !== null}
-                          className="p-1.5 text-emerald-400 hover:bg-emerald-400/10 rounded transition-all"
-                          title="Save Changes"
-                        >
-                          {isSaving === b.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Save className="w-4 h-4" />
-                          )}
-                        </button>
-                      )}
-                      {saveSuccess === b.id && (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 animate-bounce" />
-                      )}
-                      {permissions.canDelete && (
-                        <div className="flex items-center gap-1">
-                          {confirmDeleteBookingId === b.id ? (
-                            <div className="flex items-center gap-1 bg-red-500/20 p-1 rounded border border-red-500/30">
+                    <td className="px-2 py-3">
+                      <div className="flex items-center gap-2">
+                        {pendingSaveIds.has(b.id) && (
+                          <button 
+                            onClick={() => handleSaveBooking(b.id)}
+                            disabled={isSaving !== null}
+                            className="p-1.5 text-emerald-400 hover:bg-emerald-400/10 rounded transition-all"
+                            title="Save Changes"
+                          >
+                            {isSaving === b.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Save className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
+                        {saveSuccess === b.id && (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 animate-bounce" />
+                        )}
+                        {permissions.canDelete && (
+                          <div className="flex items-center gap-1">
+                            {confirmDeleteBookingId === b.id ? (
+                              <div className="flex items-center gap-1 bg-red-500/20 p-1 rounded border border-red-500/30">
+                                <button 
+                                  onClick={() => handleDeleteBooking(b.id)}
+                                  className="p-1 hover:bg-red-500 text-white rounded transition-colors"
+                                  title="Confirm Delete"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                                <button 
+                                  onClick={() => setConfirmDeleteBookingId(null)}
+                                  className="p-1 hover:bg-gray-500 text-white rounded transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
                               <button 
-                                onClick={() => handleDeleteBooking(b.id)}
-                                className="p-1 hover:bg-red-500 text-white rounded transition-colors"
-                                title="Confirm Delete"
+                                onClick={() => setConfirmDeleteBookingId(b.id)}
+                                className="p-1 text-red-400 hover:bg-red-400/10 rounded"
+                                title="Delete"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>
-                              <button 
-                                onClick={() => setConfirmDeleteBookingId(null)}
-                                className="p-1 hover:bg-gray-500 text-white rounded transition-colors"
-                                title="Cancel"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <button 
-                              onClick={() => setConfirmDeleteBookingId(b.id)}
-                              className="p-1 text-red-400 hover:bg-red-400/10 rounded"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>

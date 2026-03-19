@@ -72,7 +72,7 @@ export default function Logo({
           className={clsx(
             "relative p-2 rounded-2xl flex items-center justify-center overflow-hidden transition-all duration-500",
             transparent ? "bg-transparent border-none shadow-none" : 
-            dark ? "bg-white border-2 border-gold/60 shadow-md" : "bg-matte-dark border-2 border-gold/40 shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+            dark ? "bg-white border-2 border-gold/60 shadow-md" : "bg-matte-black/40 border-2 border-gold/20 shadow-[0_0_20px_rgba(212,175,55,0.2)]"
           )}
           style={{ width: iconSize, height: iconSize }}
         >

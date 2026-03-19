@@ -1,4 +1,4 @@
-import { Trip, Booking, RolePermissions, User, AuditLog, Notification } from '../types';
+import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim } from '../types';
 import { 
   collection, 
   getDocs, 
@@ -505,6 +505,30 @@ export const api = {
     }
   },
 
+  async getPilgrims(bookingId?: string): Promise<Pilgrim[]> {
+    const path = 'pilgrims';
+    try {
+      await this.ensureAuth();
+      let q = query(collection(db, path));
+      if (bookingId) {
+        q = query(collection(db, path), where("bookingId", "==", bookingId));
+      }
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Pilgrim;
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+
   async getNotifications(userId?: string): Promise<Notification[]> {
     const path = 'notifications';
     try {
@@ -530,10 +554,16 @@ export const api = {
 
   async addNotification(notification: Partial<Notification>): Promise<void> {
     const path = 'notifications';
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(notification).filter(([_, v]) => v !== undefined)
+    );
+
     try {
       await this.ensureAuth();
       await addDoc(collection(db, path), {
-        ...notification,
+        ...cleanData,
         read: false,
         createdAt: serverTimestamp()
       });

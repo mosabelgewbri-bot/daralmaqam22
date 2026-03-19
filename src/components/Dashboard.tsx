@@ -3,6 +3,9 @@ import { User, Booking } from '../types';
 import { deduplicateBookings, getRolePermissions } from '../utils/dataUtils';
 import { motion } from 'motion/react';
 import Logo from './Logo';
+import AnalogClock from './AnalogClock';
+import PrayerTimes from './PrayerTimes';
+import WeatherWidget from './WeatherWidget';
 import { 
   Users, 
   Plane, 
@@ -18,8 +21,14 @@ import {
   Settings, 
   CreditCard, 
   Map as MapIcon, 
-  Monitor, 
-  BarChart3 
+  BarChart3,
+  Calendar,
+  UserPlus,
+  Bus,
+  Wallet,
+  PieChart,
+  Activity,
+  IdCard
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -48,6 +57,14 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
     { label: 'نسبة الإشغال', value: '0%', icon: Hotel, color: 'text-emerald-400' },
     { label: 'الإيرادات (د.ل)', value: '0', icon: TrendingUp, color: 'text-purple-400' },
   ]);
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setRefreshKey(prev => prev + 1);
+    window.addEventListener('permissions_updated', handleUpdate);
+    return () => window.removeEventListener('permissions_updated', handleUpdate);
+  }, []);
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -109,7 +126,6 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
           { label: 'إجمالي المعتمرين', value: totalPilgrims.toLocaleString(), icon: Users, color: 'text-blue-400' },
           { label: 'الرحلات النشطة', value: activeTripsCount.toString(), icon: Plane, color: 'text-gold' },
           { label: 'نسبة الإشغال', value: `${occupancy}%`, icon: Hotel, color: 'text-emerald-400' },
-          { label: 'الإيرادات (د.ل)', value: totalRevenue > 1000 ? `${(totalRevenue / 1000).toFixed(1)}k` : totalRevenue.toString(), icon: TrendingUp, color: 'text-purple-400' },
         ]);
       } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -119,19 +135,23 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
   }, [user.id, user.role]);
 
   const modules = [
-    { icon: PlusCircle, label: 'حجز جديد', path: '/booking', id: 'booking', color: 'bg-gold/10 text-gold' },
-    { icon: MapIcon, label: 'إضافة رحلة', path: '/trips', id: 'trips', color: 'bg-indigo-500/10 text-indigo-400' },
+    { icon: UserPlus, label: 'حجز جديد', path: '/booking', id: 'booking', color: 'bg-gold/10 text-gold' },
+    { icon: Plane, label: 'إدارة الرحلات', path: '/trips', id: 'trips', color: 'bg-indigo-500/10 text-indigo-400' },
     { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming', color: 'bg-blue-500/10 text-blue-400' },
-    { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance', color: 'bg-amber-500/10 text-amber-400' },
-    { icon: Calculator, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss', color: 'bg-emerald-500/10 text-emerald-400' },
+    { icon: Wallet, label: 'المالية', path: '/finance', id: 'finance', color: 'bg-amber-500/10 text-amber-400' },
+    { icon: PieChart, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss', color: 'bg-emerald-500/10 text-emerald-400' },
     { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics', color: 'bg-indigo-500/10 text-indigo-400' },
-    { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/tracking', id: 'tracking', color: 'bg-emerald-500/10 text-emerald-400' },
+    { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/visa', id: 'visa', color: 'bg-emerald-500/10 text-emerald-400' },
     { icon: FileText, label: 'التقارير', path: '/reports', id: 'reports', color: 'bg-purple-500/10 text-purple-400' },
+    { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards', color: 'bg-rose-500/10 text-rose-400' },
+    { icon: Activity, label: 'سجل العمليات', path: '/logs', id: 'logs', color: 'bg-cyan-500/10 text-cyan-400' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users', color: 'bg-orange-500/10 text-orange-400' },
     { icon: Settings, label: 'الإعدادات', path: '/settings', id: 'settings', color: 'bg-slate-500/10 text-slate-400' },
   ];
 
   const filteredModules = modules.filter(m => {
+    if (user.role === 'admin') return true;
+    
     try {
       const savedPermissions = localStorage.getItem('role_permissions');
       if (savedPermissions) {
@@ -146,78 +166,120 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
     }
     
     // Fallback
-    if (user.role === 'admin') return true;
-    if (user.role === 'staff') return ['booking', 'rooming', 'tracking', 'finance'].includes(m.id);
-    if (user.role === 'accountant') return ['reports', 'finance', 'profit-loss'].includes(m.id);
+    if (user.role === 'staff') return ['booking', 'rooming', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs'].includes(m.id);
+    if (user.role === 'accountant') return ['reports', 'finance', 'profit-loss', 'analytics', 'visa', 'cards', 'logs'].includes(m.id);
     if (user.role === 'manager') return true;
+    if (user.role === 'visa_specialist') return ['visa', 'reports'].includes(m.id);
+    if (user.role === 'receptionist') return ['booking'].includes(m.id);
     return false;
   });
 
   return (
-    <div className="min-h-screen bg-matte-black p-4 md:p-8 space-y-8">
+    <div className="min-h-screen bg-matte-black p-4 md:p-8 space-y-12 relative overflow-hidden">
+      {/* Background Decorative Elements */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-gold/5 rounded-full blur-[120px]" />
+        <div className="absolute top-[20%] -right-[5%] w-[30%] h-[30%] bg-gold/3 rounded-full blur-[100px]" />
+      </div>
+
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="flex items-center gap-6">
-          <div className="relative group hidden md:block">
-            <div className="absolute -inset-1 bg-gradient-to-r from-gold/50 to-gold/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-            <Logo iconSize={64} showSubtitle={false} className="relative" />
-          </div>
-          <div className="h-12 w-px bg-white/10 hidden md:block" />
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <span className="text-[10px] text-gold font-bold uppercase tracking-[0.3em] bg-gold/10 px-2 py-0.5 rounded">نظام الإدارة</span>
-              <span className="text-white/20 text-[10px]">•</span>
-              <span className="text-white/40 text-[10px] uppercase tracking-widest">{user.role === 'admin' ? 'المدير العام' : 'موظف'}</span>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
-              أهلاً بك، <span className="gold-text-gradient">{user.name}</span>
-            </h1>
-          </div>
+      <div className="flex flex-col md:flex-row justify-between items-end gap-8 mb-12">
+        <div className="space-y-4">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-3"
+          >
+            <div className="w-2 h-2 rounded-full bg-gold animate-pulse shadow-[0_0_10px_rgba(212,175,55,0.5)]" />
+            <span className="text-[10px] text-gold font-bold uppercase tracking-[0.4em]">لوحة التحكم الرئيسية</span>
+          </motion.div>
+          <h1 className="text-2xl md:text-4xl font-serif text-white tracking-tight leading-tight">
+            شركة دار المقام <span className="text-gold/90">للخدمات السياحية والحج والعمرة</span>
+          </h1>
+          <p className="text-white/30 text-xs tracking-[0.2em] uppercase font-medium max-w-md">
+            نظام إدارة الرحلات والحجوزات المتكامل • الكفاءة في كل خطوة
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          {(user.role === 'admin' || user.role === 'manager') && (
-            <button 
-              onClick={() => navigate('/trips')}
-              className="hidden md:flex items-center gap-2 px-5 py-2.5 bg-gold text-black rounded-xl font-bold hover:bg-gold/90 transition-all shadow-lg shadow-gold/20"
-            >
-              <PlusCircle className="w-5 h-5" />
-              <span>إضافة رحلة</span>
-            </button>
-          )}
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">التاريخ اليوم</p>
-            <p className="text-sm font-medium text-white/80">
-              {new Date().toLocaleDateString('ar-LY', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
-          </div>
-          <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-gold">
-            <Monitor className="w-5 h-5" />
+
+        <div className="flex items-center gap-6">
+          <div className="glass-card px-8 py-4 flex items-center gap-6 border-white/5 group hover:border-gold/20 transition-all">
+            <div className="text-right">
+              <p className="text-[10px] text-white/20 uppercase tracking-widest leading-none mb-2">الوقت الآن</p>
+              <p className="text-sm font-bold text-white/80 tracking-tight group-hover:text-gold transition-colors">
+                {new Date().toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+            <div className="w-px h-10 bg-white/5" />
+            <div className="p-3 rounded-xl bg-white/5 text-gold/40 group-hover:text-gold transition-colors">
+              <Activity className="w-6 h-6" />
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Top Row: Clock, Prayer Times & Weather */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12 items-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="h-full"
+        >
+          <PrayerTimes />
+        </motion.div>
+        
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1.1, y: 0 }}
+          transition={{ 
+            duration: 0.6, 
+            type: "spring",
+            stiffness: 100,
+            damping: 15
+          }}
+          className="h-full z-20 relative"
+        >
+          <div className="drop-shadow-[0_20px_50px_rgba(212,175,55,0.25)]">
+            <AnalogClock />
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="h-full"
+        >
+          <WeatherWidget />
+        </motion.div>
+      </div>
+
       {/* Stats Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
         {stats.map((stat, idx) => (
           <motion.div
             key={idx}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.1 }}
-            className="glass-card p-6 relative overflow-hidden group hover:border-gold/30 transition-all"
+            transition={{ delay: (idx + 2) * 0.1 }}
+            whileHover={{ y: -8, transition: { duration: 0.3, ease: "circOut" } }}
+            className="glass-card p-8 relative overflow-hidden group border-white/5 hover:border-gold/30 transition-all flex flex-col"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
-              <stat.icon size={80} />
+            <div className="absolute top-0 right-0 p-6 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity group-hover:scale-110 transition-transform duration-700">
+              <stat.icon size={120} />
             </div>
-            <div className="relative flex flex-col gap-4">
-              <div className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center ${stat.color}`}>
-                <stat.icon className="w-5 h-5" />
+            <div className="relative flex flex-col gap-6">
+              <div className={`w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center ${stat.color} border border-white/5 group-hover:border-gold/20 transition-all`}>
+                <stat.icon className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-bold mb-1">{stat.label}</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-bold text-white">{stat.value}</p>
-                  <TrendingUp className="w-3 h-3 text-emerald-500" />
+                <p className="text-[10px] text-white/30 uppercase tracking-[0.3em] font-bold mb-2">{stat.label}</p>
+                <div className="flex items-baseline gap-3">
+                  <p className="text-4xl font-serif text-white group-hover:text-gold transition-colors">{stat.value.toLocaleString()}</p>
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    <TrendingUp className="w-3 h-3" />
+                    <span>+12%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -225,170 +287,109 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
         ))}
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Quick Actions - Left Rail */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="glass-card p-6">
-            <h3 className="text-xs font-bold text-white/40 uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
-              <PlusCircle className="w-3 h-3 text-gold" /> الوصول السريع
-            </h3>
-            <div className="grid grid-cols-1 gap-3">
-              {filteredModules.map((module, idx) => (
-                <motion.button
-                  key={idx}
-                  whileHover={{ x: -4 }}
-                  onClick={() => navigate(module.path)}
-                  className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-gold/20 transition-all group text-right"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${module.color}`}>
-                      <module.icon className="w-4 h-4" />
-                    </div>
-                    <span className="text-sm font-medium text-white/80 group-hover:text-white">{module.label}</span>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-white/10 group-hover:text-gold rotate-180" />
-                </motion.button>
-              ))}
-            </div>
+      {/* Quick Access Horizontal Section */}
+      <div className="glass-card p-8">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-4 bg-gold rounded-full" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-[0.2em]">الوصول السريع</h3>
           </div>
-
-          <div className="glass-card p-6 bg-gold/5 border-gold/10">
-            <h3 className="text-xs font-bold text-gold uppercase tracking-[0.3em] mb-4">حالة النظام</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/60">اتصال قاعدة البيانات</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-emerald-400 font-bold">متصل</span>
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/60">مزامنة البيانات</span>
-                <span className="text-[10px] text-white/40">منذ دقيقتين</span>
-              </div>
-            </div>
-          </div>
+          <div className="flex-1 h-px bg-white/5 mx-8 hidden md:block" />
         </div>
-
-        {/* Charts & Activity - Center/Right */}
-        <div className="lg:col-span-9 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Revenue Chart */}
-            <div className="md:col-span-2 glass-card p-6">
-              <div className="flex justify-between items-center mb-8">
-                <div>
-                  <h3 className="font-bold text-white flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-gold" /> تحليل الإيرادات
-                  </h3>
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest mt-1">آخر 7 أيام عمل</p>
-                </div>
-                <div className="flex gap-2">
-                  <div className="px-3 py-1 rounded-lg bg-gold/10 border border-gold/20 text-[10px] text-gold font-bold">أسبوعي</div>
-                </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-4">
+          {filteredModules.map((module, idx) => (
+            <motion.button
+              key={idx}
+              whileHover={{ y: -5, backgroundColor: 'rgba(255,255,255,0.03)' }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate(module.path)}
+              className="flex flex-col items-center justify-center p-4 rounded-3xl bg-white/[0.01] border border-white/5 hover:border-gold/30 transition-all group text-center gap-3 relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className={`w-12 h-12 rounded-2xl ${module.color} bg-opacity-10 flex items-center justify-center border border-white/5 group-hover:border-gold/40 transition-all duration-500`}>
+                <module.icon className="w-5 h-5" />
               </div>
-              <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={revenueData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="#ffffff20" 
-                      fontSize={10}
-                      tickLine={false}
-                      axisLine={false}
-                      dy={10}
-                    />
-                    <YAxis 
-                      stroke="#ffffff20" 
-                      fontSize={10}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value) => `${value > 1000 ? (value/1000).toFixed(0) + 'k' : value}`}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#0a0a0a', 
-                        border: '1px solid rgba(212,175,55,0.2)',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                      }}
-                      itemStyle={{ color: '#d4af37' }}
-                      cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                    />
-                    <Bar dataKey="revenue" radius={[6, 6, 0, 0]} barSize={32}>
-                      {revenueData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === revenueData.length - 1 ? '#d4af37' : '#d4af3720'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+              <span className="text-[10px] font-bold text-white/40 group-hover:text-white transition-colors uppercase tracking-widest whitespace-nowrap">{module.label}</span>
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Charts & Activity */}
+        <div className="lg:col-span-8 space-y-8">
+          {/* Revenue Chart */}
+          <div className="glass-card p-8">
+            <div className="flex justify-between items-center mb-10">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-[0.2em]">تحليل الإيرادات</h3>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">آخر 7 أيام عمل</p>
+              </div>
+              <div className="flex gap-2">
+                <div className="px-4 py-1.5 rounded-full bg-gold/10 border border-gold/20 text-[10px] text-gold font-bold tracking-widest uppercase">أسبوعي</div>
               </div>
             </div>
-
-            {/* Trip Progress */}
-            <div className="glass-card p-6">
-              <h3 className="font-bold text-white mb-6 flex items-center gap-2">
-                <Plane className="w-4 h-4 text-gold" /> توفر الرحلات
-              </h3>
-              <div className="space-y-8">
-                {tripAvailability.length > 0 ? (
-                  tripAvailability.map((trip, idx) => (
-                    <div key={idx} className="space-y-3">
-                      <div className="flex justify-between items-end">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-white/80">{trip.name}</p>
-                          <p className="text-[10px] text-white/40 uppercase tracking-tighter">نسبة الحجز</p>
-                        </div>
-                        <span className="text-sm font-mono text-gold">{trip.filled}%</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: `${trip.filled}%` }}
-                          transition={{ duration: 1, ease: "easeOut" }}
-                          className={`h-full bg-gradient-to-l from-gold to-gold/40 shadow-[0_0_10px_rgba(212,175,55,0.3)]`}
-                        />
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/10">
-                      <Plane className="w-6 h-6" />
-                    </div>
-                    <p className="text-[10px] text-white/20 uppercase tracking-widest">لا توجد رحلات نشطة</p>
-                  </div>
-                )}
-              </div>
-              {tripAvailability.length > 0 && (
-                <button 
-                  onClick={() => navigate('/trips')}
-                  className="w-full mt-8 py-3 rounded-xl border border-white/5 text-[10px] text-white/40 uppercase tracking-[0.2em] hover:bg-white/5 hover:text-white transition-all"
-                >
-                  إدارة جميع الرحلات
-                </button>
-              )}
+            <div className="h-[320px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                  <XAxis 
+                    dataKey="date" 
+                    stroke="#ffffff20" 
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    dy={15}
+                  />
+                  <YAxis 
+                    stroke="#ffffff20" 
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `${value > 1000 ? (value/1000).toFixed(0) + 'k' : value}`}
+                  />
+                  <Tooltip 
+                    cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-matte-black border border-white/10 p-4 rounded-2xl shadow-2xl backdrop-blur-xl">
+                            <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">{payload[0].payload.date}</p>
+                            <p className="text-lg font-bold text-gold">{payload[0].value?.toLocaleString()} <span className="text-xs font-normal">د.ل</span></p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="revenue" radius={[4, 4, 0, 0]} barSize={40}>
+                    {revenueData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === revenueData.length - 1 ? '#d4af37' : 'rgba(212,175,55,0.1)'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Recent Activity Table-like Grid */}
-          <div className="glass-card p-6">
-            <div className="flex justify-between items-center mb-8">
+          {/* Recent Activity */}
+          <div className="glass-card p-8">
+            <div className="flex justify-between items-center mb-10">
               <div>
-                <h3 className="font-bold text-white">أحدث الحجوزات</h3>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest mt-1">متابعة العمليات الأخيرة</p>
+                <h3 className="text-sm font-bold text-white uppercase tracking-[0.2em]">أحدث الحجوزات</h3>
+                <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">متابعة العمليات الأخيرة</p>
               </div>
               <button 
                 onClick={() => navigate('/reports')}
-                className="btn-gold py-1.5 px-4 text-[10px] flex items-center gap-2"
+                className="text-[10px] text-gold font-bold uppercase tracking-widest hover:text-white transition-colors flex items-center gap-2"
               >
                 عرض السجل الكامل <ChevronRight className="w-3 h-3 rotate-180" />
               </button>
             </div>
             
-            <div className="space-y-3">
+            <div className="space-y-4">
               {recentBookings.length > 0 ? (
                 recentBookings.map((booking, idx) => (
                   <motion.div 
@@ -396,35 +397,34 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-gold/20 hover:bg-white/[0.04] transition-all group"
+                    className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.01] border border-white/5 hover:border-gold/20 hover:bg-white/[0.03] transition-all group"
                   >
-                    <div className="flex items-center gap-4 mb-3 sm:mb-0">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gold/20 to-gold/5 flex items-center justify-center text-gold font-serif text-xl border border-gold/10">
+                    <div className="flex items-center gap-5">
+                      <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-gold font-serif text-xl border border-white/5 group-hover:border-gold/20 transition-all">
                         {booking.headName?.charAt(0) || '?'}
                       </div>
                       <div>
-                        <p className="font-bold text-white group-hover:text-gold transition-colors whitespace-nowrap">{booking.headName}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-white/40 font-mono">#{booking.id}</span>
+                        <p className="font-bold text-white group-hover:text-gold transition-colors">{booking.headName}</p>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <span className="text-[10px] text-white/30 font-mono tracking-tighter">#{booking.id.slice(0, 8)}</span>
                           <span className="text-white/10 text-[10px]">•</span>
-                          <span className="text-[10px] text-white/40">{new Date(booking.createdAt).toLocaleDateString('ar-LY')}</span>
+                          <span className="text-[10px] text-white/30 uppercase tracking-widest">{new Date(booking.createdAt).toLocaleDateString('ar-LY', { day: 'numeric', month: 'short' })}</span>
                         </div>
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-8 w-full sm:w-auto justify-between sm:justify-end">
-                      <div className="text-right">
-                        <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">المبلغ الإجمالي</p>
-                        <p className="font-mono text-white font-bold">{booking.totals?.totalLYD.toLocaleString()} <span className="text-gold text-[10px]">د.ل</span></p>
+                    <div className="flex items-center gap-10">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-[9px] text-white/20 uppercase tracking-widest mb-1">المبلغ</p>
+                        <p className="text-sm font-bold text-white">{booking.totals?.totalLYD.toLocaleString()} <span className="text-[10px] text-gold/60 font-normal">د.ل</span></p>
                       </div>
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-end gap-2">
                         <span className={clsx(
-                          "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-tighter border",
+                          "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border",
                           booking.status === 'Confirmed' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-gold/10 text-gold border-gold/20"
                         )}>
                           {booking.status === 'Confirmed' ? 'مؤكد' : 'قيد المعالجة'}
                         </span>
-                        <p className="text-[9px] text-white/20">بواسطة: {booking.createdBy || 'النظام'}</p>
                       </div>
                     </div>
                   </motion.div>
@@ -435,6 +435,46 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
                     <FileText className="w-8 h-8" />
                   </div>
                   <p className="text-sm text-white/20">لا توجد حجوزات مسجلة في النظام حالياً</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Trip Progress */}
+        <div className="lg:col-span-4 space-y-8">
+          <div className="glass-card p-8">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-sm font-bold text-white uppercase tracking-[0.2em]">توفر الرحلات</h3>
+              <Plane className="w-4 h-4 text-gold/40" />
+            </div>
+            <div className="space-y-8">
+              {tripAvailability.length > 0 ? (
+                tripAvailability.map((trip, idx) => (
+                  <div key={idx} className="space-y-3">
+                    <div className="flex justify-between items-end">
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-white/80">{trip.name}</p>
+                        <p className="text-[10px] text-white/30 uppercase tracking-widest">نسبة الحجز</p>
+                      </div>
+                      <span className="text-xs font-mono text-gold font-bold">{trip.filled}%</span>
+                    </div>
+                    <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${trip.filled}%` }}
+                        transition={{ duration: 1.5, ease: "circOut" }}
+                        className="h-full bg-gold shadow-[0_0_15px_rgba(212,175,55,0.4)]"
+                      />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/10">
+                    <Plane className="w-6 h-6" />
+                  </div>
+                  <p className="text-[10px] text-white/20 uppercase tracking-widest">لا توجد رحلات نشطة</p>
                 </div>
               )}
             </div>
