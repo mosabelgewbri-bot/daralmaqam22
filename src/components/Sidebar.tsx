@@ -17,7 +17,8 @@ import {
   BarChart3,
   Calculator,
   IdCard,
-  Plane
+  Plane,
+  Megaphone
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -47,6 +48,8 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics' },
     { icon: Calculator, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss' },
     { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
+    { icon: Megaphone, label: 'عروض العمرة', path: '/offers', id: 'offers' },
+    { icon: Users, label: 'التسويق والعملاء', path: '/marketing', id: 'marketing' },
     { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
     { icon: History, label: 'سجل العمليات', path: '/logs', id: 'logs' },

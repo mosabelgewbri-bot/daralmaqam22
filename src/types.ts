@@ -8,6 +8,8 @@ export interface Trip {
   ticketPrice: number;
   currency: "LYD" | "USD";
   status: "Upcoming" | "Active" | "Completed";
+  startDate?: string;
+  departureDate?: string;
   costs?: {
     flightLYD: number;
     hotelLYD: number;
@@ -126,4 +128,37 @@ export interface Notification {
   read: boolean;
   createdAt: any;
   userId?: string;
+}
+
+export interface UmrahOfferRow {
+  makkah: string;
+  madinah: string;
+  offer?: string;
+  meals: string;
+  double: number;
+  triple: number;
+  quad: number;
+  quint?: number;
+  currency: "LYD" | "USD";
+}
+
+export interface UmrahOffer {
+  id: string;
+  name: string;
+  category: string;
+  documentTitle?: string;
+  rows: UmrahOfferRow[];
+  fixedText?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  lastBookingDate?: string;
+  totalBookings: number;
+  createdAt: string;
 }

@@ -35,6 +35,8 @@ export default function TripForm({ user }: { user: User }) {
     totalSeats: 50,
     ticketPrice: 0,
     currency: 'LYD',
+    startDate: '',
+    departureDate: '',
     costs: {
       flightLYD: 0,
       hotelLYD: 0,
@@ -100,6 +102,8 @@ export default function TripForm({ user }: { user: User }) {
             totalSeats: Number(formData.totalSeats),
             ticketPrice: Number(formData.ticketPrice),
             currency: formData.currency as any,
+            startDate: formData.startDate,
+            departureDate: formData.departureDate,
             availableSeats: Math.max(0, tripToUpdate.availableSeats + (Number(formData.totalSeats) - tripToUpdate.totalSeats)),
             costs: formData.costs
           };
@@ -123,6 +127,8 @@ export default function TripForm({ user }: { user: User }) {
           availableSeats: Number(formData.totalSeats),
           ticketPrice: Number(formData.ticketPrice),
           currency: formData.currency as any,
+          startDate: formData.startDate,
+          departureDate: formData.departureDate,
           status: 'Upcoming',
           costs: formData.costs
         };
@@ -168,6 +174,8 @@ export default function TripForm({ user }: { user: User }) {
       totalSeats: trip.totalSeats,
       ticketPrice: trip.ticketPrice,
       currency: trip.currency,
+      startDate: trip.startDate || '',
+      departureDate: trip.departureDate || '',
       costs: trip.costs || {
         flightLYD: 0,
         hotelLYD: 0,
@@ -195,6 +203,8 @@ export default function TripForm({ user }: { user: User }) {
       totalSeats: 50, 
       ticketPrice: 0, 
       currency: 'LYD',
+      startDate: '',
+      departureDate: '',
       costs: {
         flightLYD: 0,
         hotelLYD: 0,
@@ -375,6 +385,32 @@ export default function TripForm({ user }: { user: User }) {
                       <option value="LYD">LYD</option>
                       <option value="USD">USD</option>
                     </select>
+                  </div>
+
+                  {/* Start Date */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                      <Calendar className="w-3 h-3" /> تاريخ بداية الرحلة
+                    </label>
+                    <input 
+                      type="date" 
+                      className="input-field w-full"
+                      value={formData.startDate || ''}
+                      onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+                    />
+                  </div>
+
+                  {/* Departure Date */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                      <Calendar className="w-3 h-3" /> تاريخ المغادرة
+                    </label>
+                    <input 
+                      type="date" 
+                      className="input-field w-full"
+                      value={formData.departureDate || ''}
+                      onChange={(e) => setFormData({...formData, departureDate: e.target.value})}
+                    />
                   </div>
                 </div>
 

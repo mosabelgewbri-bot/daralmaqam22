@@ -10,7 +10,8 @@ import {
   Filter,
   Download,
   Calendar,
-  Briefcase
+  Briefcase,
+  Hotel
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { 
@@ -163,6 +164,54 @@ export const FinanceAnalytics: React.FC = () => {
     });
   };
 
+  const getMonthlySalesData = () => {
+    const months: Record<string, number> = {};
+    bookings.forEach(b => {
+      const month = format(new Date(b.createdAt), 'MMMM', { locale: ar });
+      months[month] = (months[month] || 0) + (b.totals.totalLYD || 0);
+    });
+    return Object.entries(months).map(([name, value]) => ({ name, value }));
+  };
+
+  const getPopularHotelsData = () => {
+    const hotels: Record<string, number> = {};
+    bookings.forEach(b => {
+      if (b.makkahHotel && b.makkahHotel !== 'تأشيرة فقط') {
+        hotels[b.makkahHotel] = (hotels[b.makkahHotel] || 0) + 1;
+      }
+    });
+    return Object.entries(hotels)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  };
+
+  const getGrowthData = () => {
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
+    
+    const currentYearData = new Array(12).fill(0);
+    const lastYearData = new Array(12).fill(0);
+
+    bookings.forEach(b => {
+      const date = new Date(b.createdAt);
+      const month = date.getMonth();
+      if (date.getFullYear() === currentYear) {
+        currentYearData[month] += b.totals.totalLYD || 0;
+      } else if (date.getFullYear() === lastYear) {
+        lastYearData[month] += b.totals.totalLYD || 0;
+      }
+    });
+
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    
+    return monthNames.map((name, i) => ({
+      name,
+      current: currentYearData[i],
+      last: lastYearData[i]
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -295,6 +344,90 @@ export const FinanceAnalytics: React.FC = () => {
         </div>
       </div>
 
+      {/* New Performance Reports Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Best Selling Months */}
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gold" /> أكثر الشهور مبيعاً
+          </h3>
+          <div className="h-[250px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={getMonthlySalesData()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" fontSize={10} />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+                <Bar dataKey="value" fill="#D4AF37" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Popular Hotels */}
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <Hotel className="w-5 h-5 text-gold" /> الفنادق الأكثر طلباً
+          </h3>
+          <div className="h-[250px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={getPopularHotelsData()}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {getPopularHotelsData().map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 space-y-2">
+            {getPopularHotelsData().map((item, index) => (
+              <div key={item.name} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                  <span className="text-white/70 truncate max-w-[150px]">{item.name}</span>
+                </div>
+                <span className="text-white font-bold">{item.value} حجز</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Sales Growth */}
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-gold" /> نمو المبيعات (سنوي)
+          </h3>
+          <div className="h-[250px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={getGrowthData()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" fontSize={10} />
+                <YAxis hide />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+                <Line type="monotone" dataKey="current" name="السنة الحالية" stroke="#D4AF37" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="last" name="السنة الماضية" stroke="rgba(255,255,255,0.2)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
       {/* Profit Margin Trend */}
       <div className="glass-card p-8">
         <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-2">
@@ -317,6 +450,80 @@ export const FinanceAnalytics: React.FC = () => {
               />
               <Area type="monotone" dataKey="profit" name="الربح" stroke="#D4AF37" fillOpacity={1} fill="url(#colorProfit)" />
             </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Performance Reports Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Best Selling Months */}
+        <div className="glass-card p-8">
+          <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gold" /> الأشهر الأكثر مبيعاً
+          </h3>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={getMonthlySalesData()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" fontSize={12} />
+                <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+                <Bar dataKey="value" name="المبيعات" fill="#D4AF37" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Popular Hotels */}
+        <div className="glass-card p-8">
+          <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-2">
+            <Briefcase className="w-5 h-5 text-gold" /> الفنادق الأكثر طلباً
+          </h3>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={getPopularHotelsData()}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {getPopularHotelsData().map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Sales Growth Chart */}
+      <div className="glass-card p-8">
+        <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-gold" /> نمو المبيعات (مقارنة بالعام الماضي)
+        </h3>
+        <div className="h-[350px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={getGrowthData()}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" fontSize={12} />
+              <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+              />
+              <Line type="monotone" dataKey="current" name="العام الحالي" stroke="#D4AF37" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="last" name="العام الماضي" stroke="rgba(255,255,255,0.2)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </div>

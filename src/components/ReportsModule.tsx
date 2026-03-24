@@ -3,7 +3,7 @@ import { User, Booking, Trip, Pilgrim } from '../types';
 import { api } from '../services/api';
 import { getRolePermissions } from '../utils/dataUtils';
 import { motion } from 'motion/react';
-import { Search, FileSpreadsheet, FileText, Filter, ArrowLeft, Users, FileBarChart, Trash2, Edit2, Check, X, Hotel, ShieldCheck, DollarSign } from 'lucide-react';
+import { Search, FileSpreadsheet, FileText, Filter, ArrowLeft, Users, FileBarChart, Trash2, Edit2, Check, X, Hotel, ShieldCheck, DollarSign, MessageSquare } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -11,10 +11,11 @@ import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import Logo from './Logo';
 import { addDays, format, parseISO, isValid } from 'date-fns';
+import { sendWhatsAppMessage, generateTripDetailsMessage } from '../utils/whatsapp';
 
 export default function ReportsModule({ user }: { user: User }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'master' | 'pilgrims' | 'rooming' | 'visa' | 'finance'>('master');
+  const [activeTab, setActiveTab] = useState<'master' | 'pilgrims' | 'rooming' | 'visa' | 'finance' | 'reminders'>('master');
   const [searchTerm, setSearchTerm] = useState('');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -54,18 +55,50 @@ export default function ReportsModule({ user }: { user: User }) {
 
   const permissions = getRolePermissions(user.role);
 
+  const getPaymentReminders = () => {
+    return bookings.filter(b => {
+      const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+      const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+      const hasRemaining = remainingLYD > 0 || remainingUSD > 0;
+      
+      if (!hasRemaining) return false;
+
+      const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(b.tripId || '').trim().toLowerCase());
+      if (!trip || !trip.startDate) return true; // Show if no trip date found but has remaining
+
+      const tripDate = parseISO(trip.startDate);
+      const today = new Date();
+      const diffDays = Math.ceil((tripDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      return diffDays <= 15; // Show reminders for trips starting within 15 days
+    }).sort((a, b) => {
+      const tripA = trips.find(t => String(t.id).trim().toLowerCase() === String(a.tripId || '').trim().toLowerCase());
+      const tripB = trips.find(t => String(t.id).trim().toLowerCase() === String(b.tripId || '').trim().toLowerCase());
+      if (!tripA?.startDate || !tripB?.startDate) return 0;
+      return parseISO(tripA.startDate).getTime() - parseISO(tripB.startDate).getTime();
+    });
+  };
+
+  const sendPaymentReminder = (booking: Booking) => {
+    const remainingLYD = (booking.totals?.totalLYD || 0) - (booking.paidLYD || 0);
+    const remainingUSD = (booking.totals?.totalUSD || 0) - (booking.paidUSD || 0);
+    const tripName = getTripName(booking);
+    
+    let message = `السلام عليكم سيد/ة ${booking.headName}\n\n`;
+    message += `نود تذكيركم بخصوص حجزكم في رحلة: ${tripName}\n`;
+    message += `المبلغ المتبقي للسداد هو:\n`;
+    if (remainingLYD > 0) message += `- ${remainingLYD.toLocaleString()} دينار ليبي\n`;
+    if (remainingUSD > 0) message += `- ${remainingUSD.toLocaleString()} دولار أمريكي\n`;
+    message += `\nيرجى التكرم بتسوية المبلغ في أقرب وقت ممكن لضمان تأكيد الحجز.\n`;
+    message += `شكراً لاختياركم دار المقام.`;
+
+    sendWhatsAppMessage(booking.phone, message);
+  };
   const getTripName = (input: Booking | string) => {
     if (typeof input === 'object' && (input as any).tripName) return (input as any).tripName;
     const tripId = typeof input === 'string' ? input : (input.tripId || (input as any).tripid || (input as any).trip_id);
     const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(tripId).trim().toLowerCase());
     return trip ? trip.name : 'رحلة غير معروفة';
-  };
-
-  const getTripNumber = (input: Booking | string) => {
-    if (typeof input === 'object' && (input as any).tripNumber) return (input as any).tripNumber;
-    const tripId = typeof input === 'string' ? input : (input.tripId || (input as any).tripid || (input as any).trip_id);
-    const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(tripId).trim().toLowerCase());
-    return trip ? trip.tripNumber : '---';
   };
 
   const baseFilteredBookings = bookings.filter(b => {
@@ -234,7 +267,6 @@ export default function ReportsModule({ user }: { user: User }) {
         return {
           'رقم الفاتورة': b.id,
           'رقم القيد': b.regId || '---',
-          'رقم الرحلة': getTripNumber(b),
           'الرحلة': trip?.name || '---',
           'رب الأسرة': b.headName || '---',
           'الأسماء': (b.pilgrims || []).map(p => p.name || '---').join(', '),
@@ -270,7 +302,6 @@ export default function ReportsModule({ user }: { user: User }) {
 
         return {
           'رقم القيد': b.regId || '---',
-          'رقم الرحلة': getTripNumber(b),
           'الرحلة': trip?.name || '---',
           'رب الأسرة': b.headName || '---',
           'الأسماء': (b.pilgrims || []).map(p => p.name || '---').join(', '),
@@ -293,7 +324,6 @@ export default function ReportsModule({ user }: { user: User }) {
           'اسم المعتمر': p.name || '---',
           'رقم الجواز': p.passportNo || '---',
           'رقم القيد': p.regId || '---',
-          'رقم الرحلة': getTripNumber(p.bookingId),
           'الرحلة': trip?.name || '---',
           'رقم المجموعة': p.groupNo || '---',
           'الحالة': p.visaStatus || 'Pending'
@@ -315,7 +345,6 @@ export default function ReportsModule({ user }: { user: User }) {
 
         return {
           'رقم القيد': b.regId || '---',
-          'رقم الرحلة': getTripNumber(b),
           'الرحلة': trip?.name || '---',
           'رب الأسرة': b.headName || '---',
           'رقم الهاتف': b.phone || '---',
@@ -337,7 +366,6 @@ export default function ReportsModule({ user }: { user: User }) {
           'الصلة': p.relationship || '---',
           'نوع الغرفة': p.roomType || '---',
           'رب الأسرة': p.bookingHead || '---',
-          'رقم الرحلة': getTripNumber(p.bookingId),
           'الرحلة': p.tripName || '---',
           'حالة التأشيرة': p.visaStatus || 'Pending'
         };
@@ -416,7 +444,6 @@ export default function ReportsModule({ user }: { user: User }) {
           <tr style="background-color: #1a1a1a; color: #ffffff;">
             ${activeTab === 'master' ? `
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
-              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الأسماء</th>
@@ -432,7 +459,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">متبقي $</th>
             ` : activeTab === 'rooming' ? `
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
-              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الهاتف</th>
@@ -450,13 +476,11 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">اسم المعتمر</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الجواز</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
-              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">المجموعة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">الحالة</th>
             ` : activeTab === 'finance' ? `
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم القيد</th>
-              <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الهاتف</th>
@@ -472,7 +496,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 12px; text-align: center;">الصلة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: center;">نوع الغرفة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: right;">رب الأسرة</th>
-              <th style="border: 1px solid #333; padding: 12px; text-align: center;">رقم الرحلة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: right;">الرحلة</th>
               <th style="border: 1px solid #333; padding: 12px; text-align: center;">حالة التأشيرة</th>
             `}
@@ -493,7 +516,6 @@ export default function ReportsModule({ user }: { user: User }) {
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; font-size: 11px;">${(b.pilgrims || []).map(p => `<div style="margin-bottom: 2px; white-space: nowrap;">${p.name || '---'}</div>`).join('')}</td>
@@ -520,7 +542,6 @@ export default function ReportsModule({ user }: { user: User }) {
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; white-space: nowrap;">${b.phone || '---'}</td>
@@ -542,7 +563,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold;">${p.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.passportNo || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; color: #d4af37;">${p.regId || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(p.bookingId)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">${p.groupNo || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus || 'Pending'}</td>
@@ -561,7 +581,6 @@ export default function ReportsModule({ user }: { user: User }) {
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #d4af37;">${b.regId || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(b)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; white-space: nowrap;">${b.phone || '---'}</td>
@@ -580,7 +599,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.relationship || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.roomType || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px;">${p.bookingHead || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-family: monospace;">${getTripNumber(p.bookingId)}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; color: #d4af37;">${p.tripName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus || 'Pending'}</td>
             </tr>
@@ -729,6 +747,17 @@ export default function ReportsModule({ user }: { user: User }) {
           <DollarSign className="w-4 h-4" />
           <span>تقرير المالية</span>
           {activeTab === 'finance' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold" />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('reminders')}
+          className={clsx(
+            "pb-4 px-2 flex items-center gap-2 transition-all relative whitespace-nowrap",
+            activeTab === 'reminders' ? "text-gold" : "text-white/40 hover:text-white"
+          )}
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>تنبيهات الدفع</span>
+          {activeTab === 'reminders' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold" />}
         </button>
         <button 
           onClick={() => setActiveTab('pilgrims')}
@@ -929,7 +958,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <thead className="bg-white/5 uppercase text-white/40">
                 <tr>
                   <th className="px-4 py-4">رقم القيد</th>
-                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">رب الأسرة</th>
                   <th className="px-4 py-4">الأسماء</th>
@@ -959,9 +987,6 @@ export default function ReportsModule({ user }: { user: User }) {
                         >
                           {b.regId || '---'}
                         </button>
-                      </td>
-                      <td className="px-4 py-4 text-white/40 font-mono">
-                        {getTripNumber(b)}
                       </td>
                       <td className="px-4 py-4 text-white/60">
                         {getTripName(b)}
@@ -1011,6 +1036,19 @@ export default function ReportsModule({ user }: { user: User }) {
                       <td className="px-4 py-4">
                         <div className="flex gap-2 justify-end">
                           <button 
+                            onClick={() => {
+                              const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+                              if (b.phone && trip) {
+                                const msg = generateTripDetailsMessage(b, trip);
+                                sendWhatsAppMessage(b.phone, msg);
+                              }
+                            }}
+                            className="p-1.5 text-emerald-400 hover:bg-emerald-400/10 rounded-lg"
+                            title="إرسال تفاصيل الرحلة عبر واتساب"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </button>
+                          <button 
                             onClick={() => navigate(`/booking/${b.id}`)}
                             className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded-lg"
                           >
@@ -1055,7 +1093,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <thead className="bg-white/5 uppercase text-white/40">
                 <tr>
                   <th className="px-2 py-3">رقم القيد</th>
-                  <th className="px-2 py-3">رقم الرحلة</th>
                   <th className="px-2 py-3">الرحلة</th>
                   <th className="px-2 py-3">رب الأسرة</th>
                   <th className="px-2 py-3">رقم الهاتف</th>
@@ -1075,9 +1112,6 @@ export default function ReportsModule({ user }: { user: User }) {
                 {roomingFilteredBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-2 py-3 font-mono text-gold">{b.regId || '---'}</td>
-                    <td className="px-2 py-3 text-white/40 font-mono">
-                      {getTripNumber(b)}
-                    </td>
                     <td className="px-2 py-3 text-white/60">
                       {getTripName(b)}
                     </td>
@@ -1124,7 +1158,6 @@ export default function ReportsModule({ user }: { user: User }) {
                   <th className="px-4 py-4">اسم المعتمر</th>
                   <th className="px-4 py-4">رقم الجواز</th>
                   <th className="px-4 py-4">رقم القيد</th>
-                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">رقم المجموعة</th>
                   <th className="px-4 py-4">الحالة</th>
@@ -1136,9 +1169,6 @@ export default function ReportsModule({ user }: { user: User }) {
                     <td className="px-4 py-4 font-medium">{p.name || '---'}</td>
                     <td className="px-4 py-4 font-mono text-white/60">{p.passportNo || '---'}</td>
                     <td className="px-4 py-4 text-xs text-gold">{p.regId || '---'}</td>
-                    <td className="px-4 py-4 text-white/40 font-mono">
-                      {getTripNumber(p.bookingId)}
-                    </td>
                     <td className="px-4 py-4 text-white/40">
                       {p.tripName || '---'}
                     </td>
@@ -1162,7 +1192,6 @@ export default function ReportsModule({ user }: { user: User }) {
               <thead className="bg-white/5 uppercase text-white/40">
                 <tr>
                   <th className="px-4 py-4">رقم القيد</th>
-                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">رب الأسرة</th>
                   <th className="px-4 py-4">رقم الهاتف</th>
@@ -1182,9 +1211,6 @@ export default function ReportsModule({ user }: { user: User }) {
                   return (
                     <tr key={idx} className="hover:bg-white/5 transition-colors">
                       <td className="px-4 py-4 font-mono text-gold font-bold">{b.regId || '---'}</td>
-                      <td className="px-4 py-4 text-white/40 font-mono">
-                        {getTripNumber(b)}
-                      </td>
                       <td className="px-4 py-4 text-white/60">
                         {getTripName(b)}
                       </td>
@@ -1220,6 +1246,68 @@ export default function ReportsModule({ user }: { user: User }) {
                 })}
               </tbody>
             </table>
+          ) : activeTab === 'reminders' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-4 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                <div className="flex items-center gap-2 text-rose-500">
+                  <DollarSign className="w-4 h-4" />
+                  <span className="text-sm font-bold">تنبيهات الدفع المستحقة (الرحلات القريبة)</span>
+                </div>
+                <span className="text-xs text-rose-500/60">يتم عرض الحجوزات غير المسددة بالكامل للرحلات التي تبدأ خلال 15 يوماً</span>
+              </div>
+              <table className="w-full text-right text-xs">
+                <thead className="bg-white/5 uppercase text-white/40">
+                  <tr>
+                    <th className="px-4 py-4 text-right">المعتمر</th>
+                    <th className="px-4 py-4 text-right">الرحلة</th>
+                    <th className="px-4 py-4 text-right">المبلغ المتبقي</th>
+                    <th className="px-4 py-4 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {getPaymentReminders().map((b, idx) => {
+                    const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
+                    const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+                    return (
+                      <tr key={idx} className="hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-4">
+                          <div className="font-bold">{b.headName}</div>
+                          <div className="text-[10px] text-white/40 font-mono">{b.phone}</div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="text-gold">{getTripName(b)}</div>
+                          <div className="text-[10px] text-white/40">
+                            {trips.find(t => String(t.id) === String(b.tripId))?.startDate || '---'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="space-y-1">
+                            {remainingLYD > 0 && <div className="text-red-400 font-bold">{remainingLYD.toLocaleString()} د.ل</div>}
+                            {remainingUSD > 0 && <div className="text-red-400 font-bold">{remainingUSD.toLocaleString()} $</div>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <button 
+                            onClick={() => sendPaymentReminder(b)}
+                            className="btn-gold py-1.5 px-3 text-[10px] flex items-center gap-2 mx-auto"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            إرسال تذكير
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {getPaymentReminders().length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-12 text-center text-white/40 italic">
+                        لا توجد تنبيهات دفع حالياً
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <table className="w-full text-right text-xs">
               <thead className="bg-white/5 uppercase text-white/40">
@@ -1230,7 +1318,6 @@ export default function ReportsModule({ user }: { user: User }) {
                   <th className="px-4 py-4">الصلة</th>
                   <th className="px-4 py-4">نوع الغرفة</th>
                   <th className="px-4 py-4">رب الأسرة</th>
-                  <th className="px-4 py-4">رقم الرحلة</th>
                   <th className="px-4 py-4">الرحلة</th>
                   <th className="px-4 py-4">حالة التأشيرة</th>
                   <th className="px-4 py-4">إجراءات</th>
@@ -1274,9 +1361,6 @@ export default function ReportsModule({ user }: { user: User }) {
                        p.roomType === 'Quint' ? 'خماسية' : 'تأشيرة فقط'}
                     </td>
                     <td className="px-4 py-4 text-white/60">{p.bookingHead || '---'}</td>
-                    <td className="px-4 py-4 text-white/40 font-mono">
-                      {getTripNumber(p.bookingId)}
-                    </td>
                     <td className="px-4 py-4 text-gold">{p.tripName || '---'}</td>
                     <td className="px-4 py-4">
                       <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
@@ -1285,6 +1369,20 @@ export default function ReportsModule({ user }: { user: User }) {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex gap-2 justify-end">
+                        <button 
+                          onClick={() => {
+                            const booking = bookings.find(b => b.id === p.bookingId);
+                            const trip = trips.find(t => t.name === p.tripName);
+                            if (booking?.phone && trip) {
+                              const msg = generateTripDetailsMessage(booking, trip);
+                              sendWhatsAppMessage(booking.phone, msg);
+                            }
+                          }}
+                          className="p-1.5 text-emerald-400 hover:bg-emerald-400/10 rounded-lg"
+                          title="إرسال تفاصيل الرحلة عبر واتساب"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                        </button>
                         {editingPilgrim?.bookingId === p.bookingId && editingPilgrim?.pilgrimIdx === p.pilgrimIdx ? (
                           <>
                             <button onClick={handleSaveEdit} className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded-lg">

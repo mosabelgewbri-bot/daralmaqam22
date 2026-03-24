@@ -51,8 +51,33 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
 
       // 1. Finance Check (Accountants, Admins, Managers)
       if (['admin', 'manager', 'accountant'].includes(user.role)) {
+        const [trips] = await Promise.all([api.getTrips()]);
         const unpaidBookings = bookings.filter(b => (b.totals.totalLYD > (b.paidLYD || 0)) || (b.totals.totalUSD > (b.paidUSD || 0)));
+        
         for (const booking of unpaidBookings) {
+          const trip = trips.find(t => t.id === booking.tripId);
+          if (trip && trip.startDate) {
+            const startDate = new Date(trip.startDate);
+            const today = new Date();
+            const diffTime = startDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays <= 10 && diffDays > 0) {
+              const title = 'تنبيه دفع عاجل';
+              const message = `الحجز الخاص بـ ${booking.headName} لديه مبالغ متبقية، والرحلة بعد ${diffDays} أيام.`;
+              
+              const exists = allNotifications.find(n => n.title === title && n.message === message && !n.read);
+              if (!exists) {
+                newNotifications.push({
+                  title,
+                  message,
+                  type: 'error',
+                  ...(user.role !== 'admin' && { userId: user.id })
+                });
+              }
+            }
+          }
+
           const title = 'فاتورة غير مكتملة الدفع';
           const message = `الحجز الخاص بـ ${booking.headName} لديه مبالغ متبقية.`;
           

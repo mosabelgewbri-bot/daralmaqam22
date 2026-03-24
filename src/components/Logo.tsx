@@ -58,23 +58,30 @@ export default function Logo({
 
   const DefaultLogo = ({ size }: { size: number }) => (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M50 10L15 40V90H85V40L50 10Z" fill="#D4AF37" fillOpacity="0.2" stroke="#D4AF37" strokeWidth="2"/>
-      <path d="M50 30L30 50V80H70V50L50 30Z" fill="#D4AF37" stroke="#D4AF37" strokeWidth="2"/>
-      <circle cx="50" cy="20" r="5" fill="#D4AF37"/>
+      <rect width="100" height="100" rx="20" fill="#1a1a1a"/>
+      <path d="M50 20L80 50L50 80L20 50L50 20Z" stroke="#D4AF37" strokeWidth="2" fill="none"/>
+      <path d="M50 30L70 50L50 70L30 50L50 30Z" stroke="#D4AF37" strokeWidth="1" fill="rgba(212, 175, 55, 0.1)"/>
+      <circle cx="50" cy="50" r="5" fill="#D4AF37"/>
+      <path d="M20 20L40 40M80 20L60 40M20 80L40 60M80 80L60 60" stroke="#D4AF37" strokeWidth="1" strokeOpacity="0.5"/>
     </svg>
   );
 
   return (
     <div className={clsx("flex items-center gap-4", className)}>
       <div className="relative group">
-        {!transparent && <div className="absolute -inset-1 bg-gradient-to-r from-gold/50 to-gold/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>}
+        {!transparent && <div className="absolute -inset-1 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" style={{ background: 'linear-gradient(to right, rgba(212, 175, 55, 0.5), rgba(212, 175, 55, 0.2))' }}></div>}
         <div 
           className={clsx(
             "relative p-2 rounded-2xl flex items-center justify-center overflow-hidden transition-all duration-500",
-            transparent ? "bg-transparent border-none shadow-none" : 
-            dark ? "bg-white border-2 border-gold/60 shadow-md" : "bg-matte-black/40 border-2 border-gold/20 shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+            transparent ? "border-none shadow-none" : "border-2"
           )}
-          style={{ width: iconSize, height: iconSize }}
+          style={{ 
+            width: iconSize, 
+            height: iconSize,
+            borderColor: transparent ? 'transparent' : (dark ? 'rgba(212, 175, 55, 0.6)' : 'rgba(212, 175, 55, 0.2)'),
+            backgroundColor: transparent ? 'transparent' : (dark ? '#ffffff' : 'rgba(26, 26, 26, 0.4)'),
+            boxShadow: transparent ? 'none' : (dark ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' : '0 0 20px rgba(212, 175, 55, 0.2)')
+          }}
         >
           {!imgError ? (
             <img 
@@ -93,19 +100,19 @@ export default function Logo({
       {!hideText && (
         <div className="flex flex-col">
           <h1 className={clsx(
-            "font-serif font-bold leading-none tracking-tight", 
+            "font-serif font-bold leading-none", 
             textSize,
-            dark ? "text-matte-black" : "gold-text-gradient"
+            dark ? "text-[#1a1a1a]" : "gold-text-gradient"
           )}>
             {companyName}
           </h1>
           {showSubtitle && (
             <div className="flex items-center gap-2 mt-1.5">
-              <div className={clsx("h-px w-4", dark ? "bg-black/20" : "bg-gold/30")} />
-              <p className={clsx("text-[9px] uppercase tracking-[0.3em] font-bold", dark ? "text-black/40" : "text-white/50")}>
+              <div className="h-px w-4" style={{ backgroundColor: dark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(212, 175, 55, 0.3)' }} />
+              <p className="text-[9px] uppercase font-bold" style={{ color: dark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.5)' }}>
                 لإدارة العمرة
               </p>
-              <div className={clsx("h-px w-4", dark ? "bg-black/20" : "bg-gold/30")} />
+              <div className="h-px w-4" style={{ backgroundColor: dark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(212, 175, 55, 0.3)' }} />
             </div>
           )}
         </div>

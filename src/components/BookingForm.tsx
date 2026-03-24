@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Pilgrim } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X } from 'lucide-react';
+import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare } from 'lucide-react';
 import Logo from './Logo';
 import PassportScanner from './PassportScanner';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -13,6 +13,7 @@ import { deduplicateBookings, getRolePermissions } from '../utils/dataUtils';
 import { api } from '../services/api';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { sendWhatsAppMessage, generateWelcomeMessage } from '../utils/whatsapp';
 
 export default function BookingForm({ user }: { user: User }) {
   const navigate = useNavigate();
@@ -540,6 +541,15 @@ export default function BookingForm({ user }: { user: User }) {
             </button>
             <button 
               onClick={() => {
+                const message = generateWelcomeMessage(savedBooking.headName, selectedTrip?.name || '');
+                sendWhatsAppMessage(savedBooking.phone, message);
+              }}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
+            >
+              <MessageSquare className="w-5 h-5" /> رسالة ترحيب (WhatsApp)
+            </button>
+            <button 
+              onClick={() => {
                 setShowSuccess(false);
                 setSavedBooking(null);
                 if (id) {
@@ -680,6 +690,19 @@ export default function BookingForm({ user }: { user: User }) {
       // 2. Save Booking to API
       await api.saveBooking(bookingData);
       console.log('Booking saved successfully');
+
+      // 3. Save/Update Customer for Marketing
+      try {
+        await api.saveCustomer({
+          name: bookingData.headName,
+          phone: bookingData.phone,
+          lastBookingDate: new Date().toISOString()
+        });
+        console.log('Customer info saved/updated');
+      } catch (custError) {
+        console.error('Error saving customer info:', custError);
+        // Don't block the booking flow if customer save fails
+      }
 
       // Refresh trips to get updated available seats from server
       console.log('Refreshing trips...');

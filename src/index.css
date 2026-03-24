@@ -39,7 +39,7 @@
     background-color: var(--color-matte-black);
     background-image: 
       radial-gradient(circle at 50% 50%, var(--primary-gold-glow) 0%, transparent 80%),
-      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l5 20h20l-15 10 5 20-15-10-15 10 5-20-15-10h20z' fill='%23d4af37' fill-opacity='0.03' fill-rule='evenodd'/%3E%3C/svg%3E");
+      url("data:image/svg+xml,%3Csvg width='30' height='30' viewBox='0 0 30 30' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d4af37' fill-opacity='0.03'%3E%3Crect x='9' y='9' width='12' height='12' /%3E%3Crect x='9' y='9' width='12' height='12' transform='rotate(45 15 15)' /%3E%3Ccircle cx='15' cy='15' r='1' fill-opacity='0.05' /%3E%3C/g%3E%3C/svg%3E");
     color: white;
     font-family: var(--font-sans);
     direction: rtl;

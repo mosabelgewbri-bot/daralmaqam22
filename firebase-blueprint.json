@@ -121,6 +121,20 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "userName", "action", "timestamp"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer contact information for marketing",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Customer name" },
+        "phone": { "type": "string", "description": "Customer phone number" },
+        "email": { "type": "string", "format": "email", "description": "Customer email" },
+        "lastBookingDate": { "type": "string", "format": "date-time", "description": "Date of last booking" },
+        "totalBookings": { "type": "integer", "description": "Total number of bookings" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Customer since" }
+      },
+      "required": ["name", "phone"]
     }
   },
   "firestore": {
@@ -131,6 +145,7 @@
     "/permissions": { "schema": "Permission", "description": "Collection of role permissions" },
     "/settings": { "schema": "Setting", "description": "Collection of app settings" },
     "/notifications": { "schema": "Notification", "description": "Collection of system notifications" },
-    "/logs": { "schema": "Log", "description": "Collection of audit logs" }
+    "/logs": { "schema": "Log", "description": "Collection of audit logs" },
+    "/customers": { "schema": "Customer", "description": "Collection of customer contacts" }
   }
 }

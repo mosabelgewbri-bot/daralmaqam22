@@ -36,6 +36,17 @@ export default function PrayerTimes() {
         }
       } catch (error) {
         console.error('Error fetching prayer times:', error);
+        // Fallback to approximate times for Tripoli if API fails
+        const fallbackTimings = {
+          Fajr: '05:30',
+          Sunrise: '07:00',
+          Dhuhr: '13:00',
+          Asr: '16:30',
+          Maghrib: '19:15',
+          Isha: '20:45',
+        };
+        setTimes(fallbackTimings);
+        calculateNextPrayer(fallbackTimings);
       } finally {
         setLoading(false);
       }

@@ -1,4 +1,4 @@
-import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim } from '../types';
+import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer } from '../types';
 import { 
   collection, 
   getDocs, 
@@ -136,6 +136,8 @@ export const api = {
           console.warn('Anonymous auth is disabled in Firebase Console. Please enable it or use Google Sign-in.');
         } else if (error.code === 'auth/too-many-requests') {
           console.warn('Too many auth requests. Waiting for cooldown...');
+        } else if (error.code === 'auth/network-request-failed') {
+          console.error('Network error during authentication. This may be due to a blocked domain or unstable connection.');
         } else {
           console.error('Error signing in anonymously:', error);
         }
@@ -579,6 +581,126 @@ export const api = {
       await updateDoc(doc(db, path, id), { read: true });
     } catch (error) {
       console.error('Error marking notification as read:', error);
+    }
+  },
+  
+  // Umrah Offers
+  async getUmrahOffers(): Promise<UmrahOffer[]> {
+    const path = 'umrahOffers';
+    try {
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as UmrahOffer;
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+  async saveUmrahOffer(offer: UmrahOffer): Promise<void> {
+    const path = 'umrahOffers';
+    const { id, ...data } = offer;
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+
+    try {
+      await this.ensureAuth();
+      if (id && id !== 'new') {
+        const docRef = doc(db, path, id);
+        const docSnap = await getDocFromServer(docRef);
+        if (docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+        }
+      } else {
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
+  },
+  async deleteUmrahOffer(id: string): Promise<void> {
+    const path = 'umrahOffers';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  // Customers
+  async getCustomers(): Promise<Customer[]> {
+    const path = 'customers';
+    try {
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          lastBookingDate: data.lastBookingDate?.toDate?.()?.toISOString() || data.lastBookingDate
+        } as unknown as Customer;
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+  async saveCustomer(customer: Partial<Customer>): Promise<void> {
+    const path = 'customers';
+    const { id, ...data } = customer;
+    
+    // Remove undefined fields to avoid Firestore errors
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+
+    try {
+      await this.ensureAuth();
+      if (id && id !== 'new') {
+        const docRef = doc(db, path, id);
+        const docSnap = await getDocFromServer(docRef);
+        if (docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+        }
+      } else {
+        // Check if customer with this phone already exists
+        const q = query(collection(db, path), where("phone", "==", data.phone));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const existingId = snapshot.docs[0].id;
+          await updateDoc(doc(db, path, existingId), { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
+  },
+  async deleteCustomer(id: string): Promise<void> {
+    const path = 'customers';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
     }
   }
 };

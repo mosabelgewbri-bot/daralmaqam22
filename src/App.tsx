@@ -17,6 +17,8 @@ import { FinanceAnalytics } from './components/FinanceAnalytics';
 import ProfitLossModule from './components/ProfitLossModule';
 import PilgrimCardsModule from './components/PilgrimCardsModule';
 import LogsModule from './components/LogsModule';
+import UmrahOffersModule from './components/UmrahOffersModule';
+import MarketingModule from './components/MarketingModule';
 import Sidebar from './components/Sidebar';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBell from './components/NotificationBell';
@@ -68,6 +70,8 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
               <Route path="/analytics" element={<FinanceAnalytics />} />
               <Route path="/profit-loss" element={<ProfitLossModule user={user} />} />
               <Route path="/reports" element={<ReportsModule user={user} />} />
+              <Route path="/offers" element={<UmrahOffersModule user={user} />} />
+              <Route path="/marketing" element={<MarketingModule user={user} />} />
               <Route path="/visa" element={<VisaModule user={user} />} />
               <Route path="/users" element={<UsersManagement user={user} />} />
               <Route path="/trips" element={<TripForm user={user} />} />
