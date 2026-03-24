@@ -128,7 +128,16 @@ async function initializeDatabase() {
       // We only do this if NOT on Vercel
       const nodeModule = await import("node:module");
       const requireFunc = nodeModule.createRequire(import.meta.url);
-      const Database = requireFunc("better-sqlite3");
+      
+      let Database;
+      try {
+        Database = requireFunc("better-sqlite3");
+      } catch (e) {
+        console.warn("better-sqlite3 module not found, using MockDatabase.");
+        db = new MockDatabase();
+        return;
+      }
+      
       db = new Database(actualDbPath);
       db.pragma('foreign_keys = ON');
       console.log("Database initialized successfully with better-sqlite3.");
