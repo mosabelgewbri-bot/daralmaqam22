@@ -61,7 +61,13 @@ export default function Login({ onLogin }: LoginProps) {
       const { user } = await api.login(username, password);
       onLogin(user);
     } catch (err: any) {
-      setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة');
+      let msg = err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة';
+      if (msg.includes('network-request-failed')) {
+        msg = 'خطأ في الاتصال بالخادم. يرجى التأكد من اتصال الإنترنت أو إضافة النطاق الحالي إلى Authorized Domains في Firebase.';
+      } else if (msg.includes('admin-restricted-operation')) {
+        msg = '⚠️ خاصية Anonymous Auth معطلة في Firebase Console. يرجى تفعيلها من (Authentication > Sign-in method > Anonymous) ليعمل النظام.';
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

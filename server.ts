@@ -837,6 +837,66 @@ app.post("/api/change-password", (req, res) => {
   }
 });
 
+// Customers & Marketing
+app.get("/api/customers", (req, res) => {
+  try {
+    // 1. Get existing customers
+    const existingCustomers = db.prepare("SELECT * FROM customers").all();
+    
+    // 2. Get unique phone numbers from bookings and pilgrims
+    // We look for phones in bookings (headName/phone) and pilgrims
+    const bookingContacts = db.prepare(`
+      SELECT DISTINCT headName as name, phone 
+      FROM bookings 
+      WHERE phone IS NOT NULL AND phone != ''
+      UNION
+      SELECT DISTINCT name, phone 
+      FROM pilgrims 
+      WHERE phone IS NOT NULL AND phone != ''
+    `).all();
+
+    // 3. Insert missing ones into customers table
+    const insertStmt = db.prepare("INSERT OR IGNORE INTO customers (id, name, phone, email, totalBookings, lastBookingDate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    
+    bookingContacts.forEach((contact: any) => {
+      const exists = existingCustomers.some((c: any) => c.phone === contact.phone);
+      if (!exists) {
+        const id = 'cust_' + Date.now().toString() + Math.random().toString(36).substring(2, 5);
+        insertStmt.run(id, contact.name, contact.phone, '', 1, new Date().toISOString(), new Date().toISOString());
+      }
+    });
+
+    // 4. Return the updated list
+    const updatedCustomers = db.prepare("SELECT * FROM customers ORDER BY createdAt DESC").all();
+    res.json(updatedCustomers);
+  } catch (error: any) {
+    console.error("Error fetching customers:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/customers/:id", (req, res) => {
+  try {
+    db.prepare("DELETE FROM customers WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/umrah-offers", (req, res) => {
+  try {
+    const offers = db.prepare("SELECT * FROM umrah_offers ORDER BY createdAt DESC").all();
+    const parsed = offers.map((o: any) => ({
+      ...o,
+      rows: o.rows ? JSON.parse(o.rows) : []
+    }));
+    res.json(parsed);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/settings", (req, res) => {
   const settings = db.prepare("SELECT * FROM settings").all();
   const result = settings.reduce((acc: any, s: any) => {

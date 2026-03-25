@@ -98,7 +98,6 @@ export default function AnalogClock() {
           <div className="text-3xl font-bold text-gold drop-shadow-[0_0_15px_rgba(212,175,55,0.5)] bg-gold/5 px-6 py-2 rounded-2xl border border-gold/10">
             {(() => {
               try {
-                // The user specifically wants 30 Ramadan 1447 for today (March 19 2026)
                 const hijriDate = new Date(time);
                 
                 const formatter = new Intl.DateTimeFormat('ar-u-ca-islamic-umalqura-nu-latn', {
@@ -107,18 +106,9 @@ export default function AnalogClock() {
                   year: 'numeric'
                 });
                 
-                let formatted = formatter.format(hijriDate);
-                
-                // Ensure it shows 30 Ramadan 1447 as requested
-                // If the system calculation differs, we force the user's observation
-                if (formatted.includes('شوال') || formatted.includes('1')) {
-                   // If it accidentally moved to Shawwal, we force it back to 30 Ramadan
-                   return "30 رمضان 1447 هـ";
-                }
-                
-                return formatted + " هـ";
+                return formatter.format(hijriDate) + " هـ";
               } catch (e) {
-                return "30 رمضان 1447 هـ";
+                return "---";
               }
             })()}
           </div>

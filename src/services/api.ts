@@ -131,13 +131,16 @@ export const api = {
       this.lastAuthAttempt = Date.now();
       try {
         await signInAnonymously(auth);
+        console.log('Anonymous authentication successful');
       } catch (error: any) {
+        console.error('Auth Error Details:', error.code, error.message);
         if (error.code === 'auth/admin-restricted-operation') {
-          console.warn('Anonymous auth is disabled in Firebase Console. Please enable it or use Google Sign-in.');
-        } else if (error.code === 'auth/too-many-requests') {
-          console.warn('Too many auth requests. Waiting for cooldown...');
+          const msg = '⚠️ تنبيه: خاصية Anonymous Auth معطلة في Firebase Console. يرجى تفعيلها من (Authentication > Sign-in method > Anonymous) لضمان عمل النظام بشكل صحيح.';
+          console.warn(msg);
+          // We don't throw here to allow the app to at least try to load, 
+          // though Firestore might block requests depending on rules.
         } else if (error.code === 'auth/network-request-failed') {
-          console.error('Network error during authentication. This may be due to a blocked domain or unstable connection.');
+          console.error('Network error during authentication. Check your connection or Firebase authorized domains.');
         } else {
           console.error('Error signing in anonymously:', error);
         }
