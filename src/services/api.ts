@@ -11,7 +11,8 @@ import {
   getDoc,
   setDoc,
   serverTimestamp,
-  getDocFromServer
+  getDocFromServer,
+  writeBatch
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -768,6 +769,46 @@ export const api = {
       await deleteDoc(doc(db, path, id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+  async bulkSaveCustomers(customers: Partial<Customer>[]): Promise<void> {
+    const path = 'customers';
+    try {
+      await this.ensureAuth();
+      
+      // 1. Get all existing customers to check for duplicates
+      const querySnapshot = await getDocs(collection(db, path));
+      const existingCustomersMap = new Map<string, string>(); // phone -> id
+      querySnapshot.docs.forEach(doc => {
+        const phone = doc.data().phone;
+        if (phone) existingCustomersMap.set(phone, doc.id);
+      });
+
+      // 2. Process in batches of 500
+      const chunkSize = 500;
+      for (let i = 0; i < customers.length; i += chunkSize) {
+        const chunk = customers.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(customer => {
+          const { id, ...data } = customer;
+          const cleanData = Object.fromEntries(
+            Object.entries(data).filter(([_, v]) => v !== undefined)
+          );
+
+          const existingId = existingCustomersMap.get(data.phone!);
+          if (existingId) {
+            batch.update(doc(db, path, existingId), { ...cleanData, updatedAt: serverTimestamp() });
+          } else {
+            const newDocRef = doc(collection(db, path));
+            batch.set(newDocRef, { ...cleanData, createdAt: serverTimestamp() });
+          }
+        });
+
+        await batch.commit();
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
 

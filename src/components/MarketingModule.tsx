@@ -128,12 +128,16 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         return { name, phone };
       });
 
-      // Batch save in chunks to avoid overwhelming the server
-      const chunkSize = 20;
-      for (let i = 0; i < newCustomers.length; i += chunkSize) {
-        const chunk = newCustomers.slice(i, i + chunkSize);
-        await Promise.all(chunk.map(cust => api.saveCustomer(cust)));
-      }
+      // Deduplicate by phone number locally before sending to API
+      const uniqueCustomers = Array.from(
+        newCustomers.reduce((map, cust) => {
+          map.set(cust.phone, cust);
+          return map;
+        }, new Map<string, { name: string, phone: string }>()).values()
+      );
+
+      // Bulk save using the new API method
+      await api.bulkSaveCustomers(uniqueCustomers);
       
       await fetchData();
       setShowBulkImport(false);
