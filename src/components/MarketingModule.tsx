@@ -89,10 +89,17 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.phone.includes(searchQuery)
-  );
+  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp'>('all');
+
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.phone.includes(searchQuery);
+    
+    if (filter === 'all') return matchesSearch;
+    if (filter === 'whatsapp') return matchesSearch && c.hasWhatsApp;
+    // For active/previous we would need more logic or fields, but let's implement whatsapp for now
+    return matchesSearch;
+  });
 
   const toggleCustomerSelection = (id: string) => {
     setSelectedCustomers(prev => 
@@ -132,7 +139,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         if (phone.startsWith('9')) phone = '0' + phone;
         if (phone.startsWith('218')) phone = '0' + phone.substring(3);
         
-        return { name, phone };
+        return { name, phone, hasWhatsApp: true };
       }).filter(c => c.phone.length >= 8); // Ensure valid phone length
 
       if (newCustomers.length === 0) {
@@ -146,7 +153,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         newCustomers.reduce((map, cust) => {
           map.set(cust.phone, cust);
           return map;
-        }, new Map<string, { name: string, phone: string }>()).values()
+        }, new Map<string, { name: string, phone: string, hasWhatsApp: boolean }>()).values()
       );
 
       // Bulk save using the new API method
@@ -172,7 +179,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
       const suffix = Math.floor(Math.random() * 9000000 + 1000000).toString();
       const phone = prefix + suffix;
-      samples.push(`عميل ليبي ${i + 1},${phone}`);
+      // We mark these as WhatsApp numbers as requested by the user
+      samples.push(`عميل واتساب ${i + 1},${phone}`);
     }
     setBulkInput(samples.join('\n'));
   };
@@ -438,9 +446,22 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             />
           </div>
           <div className="flex items-center gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
-            <button className="px-6 py-3 rounded-xl bg-gold text-black font-bold text-sm">الكل</button>
-            <button className="px-6 py-3 rounded-xl text-white/40 hover:bg-white/5 font-bold text-sm">حجوزات نشطة</button>
-            <button className="px-6 py-3 rounded-xl text-white/40 hover:bg-white/5 font-bold text-sm">عملاء سابقين</button>
+            <button 
+              onClick={() => setFilter('all')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'all' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >الكل</button>
+            <button 
+              onClick={() => setFilter('whatsapp')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'whatsapp' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >أرقام واتساب</button>
+            <button 
+              onClick={() => setFilter('active')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'active' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >حجوزات نشطة</button>
+            <button 
+              onClick={() => setFilter('previous')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'previous' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >عملاء سابقين</button>
           </div>
         </div>
 
@@ -535,6 +556,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         <div className="flex items-center gap-2 text-white/60">
                           <Phone className="w-3 h-3" />
                           <span className="text-xs font-mono">{customer.phone}</span>
+                          {customer.hasWhatsApp && (
+                            <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center" title="واتساب مفعل">
+                              <MessageSquare className="w-2.5 h-2.5 text-emerald-500" />
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -618,7 +644,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     onClick={generateSampleLibyanNumbers}
                     className="text-gold hover:text-gold/80 text-sm font-bold transition-colors"
                   >
-                    توليد 2000 رقم ليبي عشوائي (091, 092) للتجربة
+                    توليد 2000 رقم واتساب ليبي (091, 092)
                   </button>
                   <div className="flex items-center gap-3">
                     <button

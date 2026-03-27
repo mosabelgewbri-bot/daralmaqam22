@@ -162,4 +162,6 @@ export interface Customer {
   lastBookingDate?: string;
   totalBookings: number;
   createdAt: string;
+  hasWhatsApp?: boolean;
+  lastContact?: string;
 }

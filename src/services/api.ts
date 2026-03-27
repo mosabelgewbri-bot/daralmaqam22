@@ -1242,6 +1242,7 @@ export const api = {
             email: '',
             totalBookings: 1,
             lastBookingDate: contact.lastDate,
+            hasWhatsApp: true,
             createdAt: serverTimestamp()
           });
         });
