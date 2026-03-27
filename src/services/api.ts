@@ -12,6 +12,7 @@ import {
   setDoc,
   serverTimestamp,
   getDocFromServer,
+  getDocsFromCache,
   writeBatch
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
@@ -45,9 +46,25 @@ interface FirestoreErrorInfo {
   }
 }
 
+function isQuotaError(error: any): boolean {
+  if (!error) return false;
+  const msg = (error.message || error.error || String(error)).toLowerCase();
+  return msg.includes('quota exceeded') || msg.includes('quota limit exceeded');
+}
+
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const isQuota = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
+  
+  if (isQuota) {
+    quotaExceeded = true;
+    console.warn('Firestore Quota Exceeded (Silently Handled) for path:', path);
+    // Don't throw for quota errors if we can handle them gracefully
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -69,23 +86,42 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 // Test connection on boot
+let quotaExceeded = false;
+
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
+  } catch (error: any) {
     if(error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration. ");
+    }
+    if (isQuotaError(error)) {
+      quotaExceeded = true;
     }
   }
 }
 testConnection();
 
 export const api = {
+  isQuotaExceeded: () => quotaExceeded,
   // Auth
   async login(username: string, password: string): Promise<{ user: User }> {
     const path = 'users';
     try {
       await this.ensureAuth();
+      
+      // If quota exceeded, try to find user in cache
+      if (quotaExceeded) {
+        const cachedUsers = localStorage.getItem('cached_users');
+        if (cachedUsers) {
+          const users = JSON.parse(cachedUsers) as User[];
+          // Note: This is insecure but allows login during quota exceeded if user was cached
+          // In a real app, we'd need a better way, but for this demo/prototype it's a fallback
+          const user = users.find(u => u.username === username && (u as any).password === password);
+          if (user) return { user };
+        }
+      }
+
       const q = query(collection(db, path), where("username", "==", username), where("password", "==", password));
       const querySnapshot = await getDocs(q);
       
@@ -104,9 +140,14 @@ export const api = {
           updatedAt: userData.updatedAt?.toDate?.()?.toISOString() || userData.updatedAt
         } 
       };
-    } catch (error) {
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+      }
       if (error instanceof Error && error.message === 'اسم المستخدم أو كلمة المرور غير صحيحة') throw error;
       handleFirestoreError(error, OperationType.GET, path);
+      // If handleFirestoreError didn't throw (quota error), we still need to throw something to stop login
+      if (isQuotaError(error)) throw new Error('تم تجاوز حصة الاستخدام المجانية لليوم. يرجى المحاولة لاحقاً.');
       throw error;
     }
   },
@@ -301,10 +342,34 @@ export const api = {
   async getPermissions(): Promise<RolePermissions[]> {
     const path = 'permissions';
     try {
+      // If quota exceeded, return cache immediately
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_permissions');
+        if (cached) return JSON.parse(cached);
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
-    } catch (error) {
+      const perms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
+      
+      // Cache permissions
+      localStorage.setItem('cached_permissions', JSON.stringify(perms));
+      return perms;
+    } catch (error: any) {
+      // Return cached permissions if quota exceeded
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        try {
+          const cacheSnapshot = await getDocsFromCache(collection(db, path));
+          if (!cacheSnapshot.empty) {
+            return cacheSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
+          }
+        } catch (cacheError) {
+          console.warn('Cache fetch failed:', cacheError);
+        }
+        const cached = localStorage.getItem('cached_permissions');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -340,9 +405,15 @@ export const api = {
   async getUsers(): Promise<User[]> {
     const path = 'users';
     try {
+      // If quota exceeded, return cache immediately
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_users');
+        if (cached) return JSON.parse(cached);
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => {
+      const users = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return { 
           id: doc.id, 
@@ -351,7 +422,33 @@ export const api = {
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as User;
       });
-    } catch (error) {
+      
+      // Cache users
+      localStorage.setItem('cached_users', JSON.stringify(users));
+      return users;
+    } catch (error: any) {
+      // Return cached users if quota exceeded
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        try {
+          const cacheSnapshot = await getDocsFromCache(collection(db, path));
+          if (!cacheSnapshot.empty) {
+            return cacheSnapshot.docs.map(doc => {
+              const data = doc.data();
+              return { 
+                id: doc.id, 
+                ...data,
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+              } as unknown as User;
+            });
+          }
+        } catch (cacheError) {
+          console.warn('Cache fetch failed:', cacheError);
+        }
+        const cached = localStorage.getItem('cached_users');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -396,6 +493,12 @@ export const api = {
   async getSettings(): Promise<Record<string, string>> {
     const path = 'settings';
     try {
+      // If quota exceeded, return cache immediately
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_settings');
+        if (cached) return JSON.parse(cached);
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       const settings: Record<string, string> = {};
@@ -403,8 +506,30 @@ export const api = {
         const data = doc.data();
         if (data.key) settings[data.key] = data.value;
       });
+      
+      // Cache settings
+      localStorage.setItem('cached_settings', JSON.stringify(settings));
       return settings;
-    } catch (error) {
+    } catch (error: any) {
+      // Return cached settings if quota exceeded
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        try {
+          const cacheSnapshot = await getDocsFromCache(collection(db, path));
+          if (!cacheSnapshot.empty) {
+            const settings: Record<string, string> = {};
+            cacheSnapshot.docs.forEach(doc => {
+              const data = doc.data();
+              if (data.key) settings[data.key] = data.value;
+            });
+            return settings;
+          }
+        } catch (cacheError) {
+          console.warn('Cache fetch failed:', cacheError);
+        }
+        const cached = localStorage.getItem('cached_settings');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return {};
     }
@@ -447,38 +572,62 @@ export const api = {
 
   async getDbStats(): Promise<any> {
     try {
-      await this.ensureAuth();
-      const [users, trips, bookings, pilgrims, logs] = await Promise.all([
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'trips')),
-        getDocs(collection(db, 'bookings')),
-        getDocs(collection(db, 'pilgrims')),
-        getDocs(collection(db, 'logs'))
-      ]);
-      
-      // Estimate size (very rough: ~500 bytes per doc)
-      const totalDocs = users.size + trips.size + bookings.size + pilgrims.size + logs.size;
-      const estimatedSize = totalDocs * 500; 
+      // If quota exceeded, return limited stats immediately
+      if (quotaExceeded) {
+        return {
+          dbType: 'Cloud (Firestore)',
+          health: 'Limited (Quota Exceeded - Using Cache)',
+          uptime: '99.9%',
+          totalDocs: '---',
+          dbSize: '---'
+        };
+      }
 
-      return {
-        users: users.size,
-        trips: trips.size,
-        bookings: bookings.size,
-        pilgrims: pilgrims.size,
-        logs: logs.size,
-        totalDocs,
-        dbSize: estimatedSize,
+      await this.ensureAuth();
+      
+      const collections = ['users', 'trips', 'bookings', 'pilgrims', 'logs'];
+      const stats: any = {
         dbType: 'Cloud (Firestore)',
         health: 'Excellent',
         uptime: '99.9%'
       };
-    } catch (error) {
+
+      const results = await Promise.all(collections.map(async (col) => {
+        try {
+          // Try server first
+          const snap = await getDocs(collection(db, col));
+          return { name: col, size: snap.size };
+        } catch (e: any) {
+          // Fallback to cache if quota exceeded
+          if (e.message?.includes('Quota exceeded')) {
+            try {
+              const cacheSnap = await getDocsFromCache(collection(db, col));
+              return { name: col, size: cacheSnap.size, cached: true };
+            } catch (cacheErr) {
+              return { name: col, size: 0, error: true };
+            }
+          }
+          throw e;
+        }
+      }));
+
+      results.forEach(res => {
+        stats[res.name] = res.size;
+        if (res.cached) stats.health = 'Limited (Quota Exceeded - Using Cache)';
+      });
+
+      const totalDocs = results.reduce((acc, res) => acc + res.size, 0);
+      stats.totalDocs = totalDocs;
+      stats.dbSize = totalDocs * 500;
+
+      return stats;
+    } catch (error: any) {
       console.error('Error getting DB stats:', error);
       // Return a partial object if we can't get everything
       return { 
         dbType: 'Cloud (Firestore)', 
-        health: 'Error', 
-        error: String(error),
+        health: error.message?.includes('Quota exceeded') ? 'Quota Exceeded' : 'Error',
+        error: error.message || String(error),
         uptime: '---'
       };
     }

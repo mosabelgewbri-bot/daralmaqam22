@@ -80,6 +80,8 @@ export default function Login({ onLogin }: LoginProps) {
         msg = 'خطأ في الاتصال بالخادم. يرجى التأكد من اتصال الإنترنت أو إضافة النطاق الحالي إلى Authorized Domains في Firebase.';
       } else if (msg.includes('admin-restricted-operation')) {
         msg = '⚠️ خاصية Anonymous Auth معطلة في Firebase Console. يرجى تفعيلها من (Authentication > Sign-in method > Anonymous) أو استخدم تسجيل الدخول عبر Google أدناه.';
+      } else if (msg.includes('Quota exceeded')) {
+        msg = '⚠️ تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). يرجى المحاولة مرة أخرى غداً أو التواصل مع الإدارة.';
       }
       setError(msg);
     } finally {

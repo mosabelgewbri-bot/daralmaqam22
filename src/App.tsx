@@ -115,9 +115,24 @@ export default function App() {
                         window.location.pathname.startsWith('/img/');
 
   useEffect(() => {
+    const checkQuota = () => {
+      if (api.isQuotaExceeded()) {
+        setConnectionError('تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). ستتم إعادة تعيين الحصة تلقائياً غداً.');
+      }
+    };
+    checkQuota();
+    const interval = setInterval(checkQuota, 5000);
+    window.addEventListener('focus', checkQuota);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', checkQuota);
+    };
+  }, []);
+
+  useEffect(() => {
     // Sync permissions from API to localStorage for components that still use it
     const syncPermissions = async () => {
-      if (!user) return;
+      if (!user || api.isQuotaExceeded()) return;
       try {
         const perms = await api.getPermissions();
         if (perms && perms.length > 0) {
@@ -146,22 +161,14 @@ export default function App() {
     };
 
     const bootstrapData = async () => {
+      if (api.isQuotaExceeded()) return;
       try {
         await api.ensureAuth();
         
-        // Test connection
-        try {
-          await api.getDbStats();
-          setConnectionError(null);
-        } catch (e: any) {
-          console.error('Connection test failed:', e);
-          if (e.message.includes('offline') || e.message.includes('network')) {
-            setConnectionError('تعذر الاتصال بقاعدة البيانات. يرجى التأكد من إعدادات Firebase أو المحاولة مرة أخرى.');
-          }
-        }
-
         // 1. Bootstrap Users if empty
         const users = await api.getUsers();
+        if (api.isQuotaExceeded()) return;
+        
         if (users.length === 0) {
           console.log('Bootstrapping initial admin user...');
           await api.saveUser({
@@ -175,6 +182,8 @@ export default function App() {
 
         // 2. Bootstrap Permissions if missing for any role
         const perms = await api.getPermissions();
+        if (api.isQuotaExceeded()) return;
+        
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
@@ -226,8 +235,11 @@ export default function App() {
           localStorage.setItem('role_permissions', JSON.stringify(updatedPerms));
           window.dispatchEvent(new Event('permissions_updated'));
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error bootstrapping data:', error);
+        if (error.message.includes('Quota exceeded')) {
+          setConnectionError('تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). ستتم إعادة تعيين الحصة تلقائياً غداً.');
+        }
       }
     };
 
