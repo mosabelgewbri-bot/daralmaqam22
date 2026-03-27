@@ -59,8 +59,7 @@ export default function BookingForm({ user }: { user: User }) {
     const checkDuplicate = async () => {
       if (regId) {
         try {
-          const savedBookings = await api.getBookings();
-          const duplicate = savedBookings.some((b: any) => String(b.regId).trim() === String(regId).trim() && b.id !== id);
+          const duplicate = await api.checkDuplicateRegId(regId, id);
           setIsDuplicateRegId(duplicate);
         } catch (error) {
           console.error('Error checking duplicate regId:', error);
@@ -79,8 +78,7 @@ export default function BookingForm({ user }: { user: User }) {
         setTrips(tripsData);
 
         if (id) {
-          const bookingsData = await api.getBookings();
-          const bookingToEdit = bookingsData.find((b: any) => b.id === id);
+          const bookingToEdit = await api.getBookingById(id);
           if (bookingToEdit) {
             setSelectedTripId(bookingToEdit.tripId);
             setPassengerCount(bookingToEdit.passengerCount);

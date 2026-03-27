@@ -13,7 +13,9 @@ import {
   serverTimestamp,
   getDocFromServer,
   getDocsFromCache,
-  writeBatch
+  writeBatch,
+  orderBy,
+  limit
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -230,9 +232,14 @@ export const api = {
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_trips');
+        if (cached) return JSON.parse(cached);
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => {
+      const trips = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return { 
           id: doc.id, 
@@ -241,7 +248,15 @@ export const api = {
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as Trip;
       });
-    } catch (error) {
+      
+      localStorage.setItem('cached_trips', JSON.stringify(trips));
+      return trips;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_trips');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -283,12 +298,25 @@ export const api = {
   },
 
   // Bookings
-  async getBookings(): Promise<Booking[]> {
+  async getBookings(limitCount?: number): Promise<Booking[]> {
     const path = 'bookings';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          return limitCount ? all.slice(0, limitCount) : all;
+        }
+      }
+
       await this.ensureAuth();
-      const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => {
+      let q = query(collection(db, path), orderBy("createdAt", "desc"));
+      if (limitCount) {
+        q = query(q, limit(limitCount));
+      }
+      
+      const querySnapshot = await getDocs(q);
+      const bookings = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return { 
           id: doc.id, 
@@ -297,9 +325,68 @@ export const api = {
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as Booking;
       });
-    } catch (error) {
+
+      if (!limitCount) {
+        localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+      }
+      return bookings;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          return limitCount ? all.slice(0, limitCount) : all;
+        }
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
+    }
+  },
+  async getBookingById(id: string): Promise<Booking | null> {
+    const path = 'bookings';
+    try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          return all.find(b => b.id === id) || null;
+        }
+      }
+
+      await this.ensureAuth();
+      const docRef = doc(db, path, id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Booking;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
+  },
+  async checkDuplicateRegId(regId: string, excludeId?: string): Promise<boolean> {
+    const path = 'bookings';
+    try {
+      await this.ensureAuth();
+      const q = query(collection(db, path), where("regId", "==", regId));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return false;
+      
+      if (excludeId) {
+        return snapshot.docs.some(doc => doc.id !== excludeId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error checking duplicate regId:', error);
+      return false;
     }
   },
   async saveBooking(booking: Booking): Promise<void> {
@@ -674,11 +761,16 @@ export const api = {
     }
   },
 
-  async getLogs(): Promise<AuditLog[]> {
+  async getLogs(limitCount: number = 100): Promise<AuditLog[]> {
     const path = 'logs';
     try {
       await this.ensureAuth();
-      const querySnapshot = await getDocs(collection(db, path));
+      const q = query(
+        collection(db, path), 
+        orderBy("timestamp", "desc"), 
+        limit(limitCount)
+      );
+      const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -686,7 +778,7 @@ export const api = {
           ...data,
           timestamp: data.timestamp?.toDate?.()?.toISOString() || data.timestamp
         } as unknown as AuditLog;
-      }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -696,13 +788,21 @@ export const api = {
   async getPilgrims(bookingId?: string): Promise<Pilgrim[]> {
     const path = 'pilgrims';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_pilgrims');
+        if (cached) {
+          const all = JSON.parse(cached) as Pilgrim[];
+          return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
+        }
+      }
+
       await this.ensureAuth();
       let q = query(collection(db, path));
       if (bookingId) {
         q = query(collection(db, path), where("bookingId", "==", bookingId));
       }
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => {
+      const pilgrims = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -711,7 +811,20 @@ export const api = {
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as Pilgrim;
       });
-    } catch (error) {
+
+      if (!bookingId) {
+        localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
+      }
+      return pilgrims;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_pilgrims');
+        if (cached) {
+          const all = JSON.parse(cached) as Pilgrim[];
+          return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
+        }
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -720,13 +833,21 @@ export const api = {
   async getNotifications(userId?: string): Promise<Notification[]> {
     const path = 'notifications';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_notifications');
+        if (cached) {
+          const all = JSON.parse(cached) as Notification[];
+          return userId ? all.filter(n => n.userId === userId) : all;
+        }
+      }
+
       await this.ensureAuth();
       let q = query(collection(db, path));
       if (userId) {
         q = query(collection(db, path), where("userId", "==", userId));
       }
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => {
+      const notifications = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -734,7 +855,20 @@ export const api = {
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt
         } as unknown as Notification;
       }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } catch (error) {
+
+      if (!userId) {
+        localStorage.setItem('cached_notifications', JSON.stringify(notifications));
+      }
+      return notifications;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_notifications');
+        if (cached) {
+          const all = JSON.parse(cached) as Notification[];
+          return userId ? all.filter(n => n.userId === userId) : all;
+        }
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -774,9 +908,14 @@ export const api = {
   async getUmrahOffers(): Promise<UmrahOffer[]> {
     const path = 'umrahOffers';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_umrah_offers');
+        if (cached) return JSON.parse(cached);
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => {
+      const offers = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -785,7 +924,15 @@ export const api = {
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as UmrahOffer;
       });
-    } catch (error) {
+
+      localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
+      return offers;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_umrah_offers');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
@@ -793,6 +940,14 @@ export const api = {
   async getUmrahOfferById(id: string): Promise<UmrahOffer | null> {
     const path = 'umrahOffers';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_umrah_offers');
+        if (cached) {
+          const all = JSON.parse(cached) as UmrahOffer[];
+          return all.find(o => o.id === id) || null;
+        }
+      }
+
       await this.ensureAuth();
       const docRef = doc(db, path, id);
       const docSnap = await getDoc(docRef);
@@ -804,6 +959,35 @@ export const api = {
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as UmrahOffer;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
+  },
+  async getTripById(id: string): Promise<Trip | null> {
+    const path = 'trips';
+    try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_trips');
+        if (cached) {
+          const all = JSON.parse(cached) as Trip[];
+          return all.find(t => t.id === id) || null;
+        }
+      }
+
+      await this.ensureAuth();
+      const docRef = doc(db, path, id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Trip;
       }
       return null;
     } catch (error) {

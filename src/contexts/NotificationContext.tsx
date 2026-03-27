@@ -37,15 +37,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
   };
 
   const scanForTasks = useCallback(async () => {
-    if (!user || (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'accountant' && user.role !== 'visa_specialist' && user.role !== 'staff')) return;
+    if (!user || api.isQuotaExceeded() || (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'accountant' && user.role !== 'visa_specialist' && user.role !== 'staff')) return;
 
     try {
       setLoading(true);
+      // Use cached data if possible to reduce reads
       const [bookings, pilgrims, allNotifications] = await Promise.all([
         api.getBookings(),
         api.getPilgrims(),
         api.getNotifications()
       ]);
+
+      if (api.isQuotaExceeded()) return;
 
       const newNotifications: Partial<Notification>[] = [];
 
@@ -215,11 +218,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
       // Initial scan
       scanForTasks();
       
-      // Periodic refresh every 5 minutes
+      // Periodic refresh every 15 minutes (increased from 5 to save quota)
       const interval = setInterval(() => {
-        refreshNotifications();
-        scanForTasks();
-      }, 5 * 60 * 1000);
+        if (!api.isQuotaExceeded()) {
+          refreshNotifications();
+          scanForTasks();
+        }
+      }, 15 * 60 * 1000);
       
       return () => clearInterval(interval);
     }

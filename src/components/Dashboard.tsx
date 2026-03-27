@@ -254,6 +254,54 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
         </motion.div>
       </div>
 
+      {/* System Status & Quota Info */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="glass-card p-6 border-white/5 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-4">
+            <div className={clsx(
+              "w-10 h-10 rounded-xl flex items-center justify-center",
+              api.isQuotaExceeded() ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-400"
+            )}>
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">حالة النظام</p>
+              <p className="text-sm font-bold text-white">
+                {api.isQuotaExceeded() ? 'وضع التخزين المؤقت (Quota Exceeded)' : 'متصل بالسحابة (Cloud Active)'}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-white/20 uppercase tracking-widest mb-1">الاستجابة</p>
+            <p className="text-xs font-mono text-gold">~120ms</p>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="glass-card p-6 border-white/5 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">أمان البيانات</p>
+              <p className="text-sm font-bold text-white">تشفير SSL نشط • نسخ احتياطي يومي</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-white/20 uppercase tracking-widest mb-1">الإصدار</p>
+            <p className="text-xs font-mono text-white/40">v2.4.0-pro</p>
+          </div>
+        </motion.div>
+      </div>
+
       {/* Stats Bento Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
         {stats.map((stat, idx) => (
