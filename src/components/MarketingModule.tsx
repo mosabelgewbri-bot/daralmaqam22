@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ChevronLeft,
   UserPlus,
+  PlusCircle,
   Download,
   Image as ImageIcon,
   X,
@@ -52,6 +53,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [imageUrl, setImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isCopyingNumbers, setIsCopyingNumbers] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkInput, setBulkInput] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -95,6 +99,64 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     } else {
       setSelectedCustomers(filteredCustomers.map(c => c.id));
     }
+  };
+
+  const handleBulkImport = async () => {
+    if (!bulkInput.trim()) return;
+    
+    setIsImporting(true);
+    try {
+      const lines = bulkInput.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const newCustomers = lines.map(line => {
+        // Simple parsing: name,phone or just phone
+        const parts = line.split(/[,|\t]/);
+        let name = '';
+        let phone = '';
+        
+        if (parts.length >= 2) {
+          name = parts[0].trim();
+          phone = parts[1].trim();
+        } else {
+          phone = parts[0].trim();
+          name = `عميل ${phone}`;
+        }
+        
+        // Basic phone normalization for Libya
+        if (phone.startsWith('9')) phone = '0' + phone;
+        if (phone.startsWith('218')) phone = '0' + phone.substring(3);
+        
+        return { name, phone };
+      });
+
+      // Batch save in chunks to avoid overwhelming the server
+      const chunkSize = 20;
+      for (let i = 0; i < newCustomers.length; i += chunkSize) {
+        const chunk = newCustomers.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(cust => api.saveCustomer(cust)));
+      }
+      
+      await fetchData();
+      setShowBulkImport(false);
+      setBulkInput('');
+      alert(`تم استيراد ${newCustomers.length} عميل بنجاح`);
+    } catch (error) {
+      console.error('Error importing customers:', error);
+      alert('حدث خطأ أثناء الاستيراد');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const generateSampleLibyanNumbers = () => {
+    const prefixes = ['091', '092', '094', '095'];
+    const samples = [];
+    for (let i = 0; i < 2000; i++) {
+      const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+      const suffix = Math.floor(Math.random() * 9000000 + 1000000).toString();
+      const phone = prefix + suffix;
+      samples.push(`عميل ليبي ${i + 1},${phone}`);
+    }
+    setBulkInput(samples.join('\n'));
   };
 
   const handleTranslateOffer = async (offer: UmrahOffer) => {
@@ -290,6 +352,13 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         </div>
         <div className="flex items-center gap-3">
           <button 
+            onClick={() => setShowBulkImport(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-all font-bold border border-white/10"
+          >
+            <PlusCircle className="w-5 h-5" />
+            <span>استيراد أرقام</span>
+          </button>
+          <button 
             onClick={() => {
               const numbers = customers
                 .filter(c => selectedCustomers.includes(c.id))
@@ -482,6 +551,81 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           </div>
         </div>
       </div>
+
+      {/* Bulk Import Modal */}
+      <AnimatePresence>
+        {showBulkImport && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gold/10 flex items-center justify-center border border-gold/20">
+                    <Users className="w-6 h-6 text-gold" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white">استيراد أرقام هواتف</h2>
+                    <p className="text-white/40 text-xs font-medium">أضف قائمة من الأرقام دفعة واحدة</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowBulkImport(false)}
+                  className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">قائمة الأرقام (الاسم,الهاتف أو الهاتف فقط)</label>
+                  <textarea
+                    value={bulkInput}
+                    onChange={(e) => setBulkInput(e.target.value)}
+                    placeholder="مثال:&#10;محمد علي,0912345678&#10;0923456789"
+                    className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-4 text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all resize-none font-mono text-sm"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={generateSampleLibyanNumbers}
+                    className="text-gold hover:text-gold/80 text-sm font-bold transition-colors"
+                  >
+                    توليد 50 رقم ليبي عشوائي للتجربة
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowBulkImport(false)}
+                      className="px-6 py-3 text-white/40 hover:text-white font-bold transition-all"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      onClick={handleBulkImport}
+                      disabled={isImporting || !bulkInput.trim()}
+                      className="px-8 py-3 bg-gold text-matte-dark rounded-2xl font-black hover:bg-gold/90 transition-all shadow-lg shadow-gold/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isImporting ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-matte-dark/30 border-t-matte-dark rounded-full animate-spin" />
+                          <span>جاري الاستيراد...</span>
+                        </>
+                      ) : (
+                        <span>بدء الاستيراد</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Offer Selector Modal */}
       <AnimatePresence>
