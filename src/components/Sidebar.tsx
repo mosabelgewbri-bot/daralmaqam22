@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { User, Role } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import Logo from './Logo';
+import { useLanguage } from '../contexts/LanguageContext';
 import { 
   LayoutDashboard, 
   PlusCircle, 
@@ -18,7 +19,8 @@ import {
   Calculator,
   IdCard,
   Plane,
-  Megaphone
+  Megaphone,
+  Globe
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -31,6 +33,7 @@ interface SidebarProps {
 
 export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProps) {
   const [refreshKey, setRefreshKey] = useState(0);
+  const { language, setLanguage, t, isRTL } = useLanguage();
 
   useEffect(() => {
     const handleUpdate = () => setRefreshKey(prev => prev + 1);
@@ -39,21 +42,21 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
   }, []);
 
   const menuItems = [
-    { icon: LayoutDashboard, label: 'لوحة التحكم', path: '/', id: 'dashboard' },
-    { icon: PlusCircle, label: 'حجز جديد', path: '/booking', id: 'booking' },
-    { icon: Plane, label: 'إدارة الرحلات', path: '/trips', id: 'trips' },
+    { icon: LayoutDashboard, label: t('nav.dashboard'), path: '/', id: 'dashboard' },
+    { icon: PlusCircle, label: t('bookings.add_new'), path: '/booking', id: 'booking' },
+    { icon: Plane, label: t('nav.trips'), path: '/trips', id: 'trips' },
     { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/visa', id: 'visa' },
-    { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming' },
-    { icon: CreditCard, label: 'المالية', path: '/finance', id: 'finance' },
-    { icon: BarChart3, label: 'التحليلات', path: '/analytics', id: 'analytics' },
-    { icon: Calculator, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss' },
-    { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
-    { icon: Megaphone, label: 'عروض العمرة', path: '/offers', id: 'offers' },
-    { icon: Users, label: 'التسويق والعملاء', path: '/marketing', id: 'marketing' },
-    { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
-    { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
-    { icon: History, label: 'سجل العمليات', path: '/logs', id: 'logs' },
-    { icon: Settings, label: 'الإعدادات', path: '/settings', id: 'settings' },
+    { icon: Bed, label: t('nav.rooming') || 'تسكين الفنادق', path: '/rooming', id: 'rooming' },
+    { icon: CreditCard, label: t('nav.finance') || 'المالية', path: '/finance', id: 'finance' },
+    { icon: BarChart3, label: t('nav.analytics') || 'التحليلات', path: '/analytics', id: 'analytics' },
+    { icon: Calculator, label: t('nav.profit_loss') || 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss' },
+    { icon: FileText, label: t('nav.reports') || 'التقرير الشامل', path: '/reports', id: 'reports' },
+    { icon: Megaphone, label: t('nav.offers'), path: '/offers', id: 'offers' },
+    { icon: Users, label: t('nav.marketing'), path: '/marketing', id: 'marketing' },
+    { icon: IdCard, label: t('nav.pilgrims'), path: '/cards', id: 'cards' },
+    { icon: Users, label: t('nav.users') || 'المستخدمين', path: '/users', id: 'users' },
+    { icon: History, label: t('nav.logs') || 'سجل العمليات', path: '/logs', id: 'logs' },
+    { icon: Settings, label: t('nav.settings'), path: '/settings', id: 'settings' },
   ];
 
   const filteredItems = menuItems.filter(item => {
@@ -97,8 +100,9 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
       </AnimatePresence>
 
       <aside className={clsx(
-        "fixed inset-y-0 right-0 z-50 w-72 bg-matte-dark border-l border-white/10 flex flex-col transition-transform duration-500 lg:relative lg:translate-x-0 shadow-2xl",
-        isOpen ? "translate-x-0" : "translate-x-full"
+        "fixed inset-y-0 z-50 w-72 bg-matte-dark border-white/10 flex flex-col transition-transform duration-500 lg:relative lg:translate-x-0 shadow-2xl",
+        isRTL ? "right-0 border-l" : "left-0 border-r",
+        isOpen ? "translate-x-0" : (isRTL ? "translate-x-full" : "-translate-x-full")
       )}>
         <div className="p-8 border-b border-white/10 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gold/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
@@ -153,15 +157,25 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
           ))}
         </nav>
 
-        <div className="p-6 border-t border-white/10 bg-white/[0.01]">
+        <div className="p-6 border-t border-white/10 bg-white/[0.01] space-y-2">
+          <button
+            onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+            className="flex items-center gap-4 px-4 py-3 w-full text-white/60 hover:text-gold hover:bg-gold/5 rounded-2xl transition-all group border border-transparent hover:border-gold/10"
+          >
+            <div className="p-2 rounded-lg bg-white/5 group-hover:bg-gold/10 transition-colors">
+              <Globe className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-sm">{language === 'ar' ? 'English' : 'العربية'}</span>
+          </button>
+
           <button
             onClick={onLogout}
-            className="flex items-center gap-4 px-4 py-4 w-full text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-2xl transition-all group border border-transparent hover:border-red-400/10"
+            className="flex items-center gap-4 px-4 py-3 w-full text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-2xl transition-all group border border-transparent hover:border-red-400/10"
           >
             <div className="p-2 rounded-lg bg-red-400/10 group-hover:bg-red-400/20 transition-colors">
               <LogOut className="w-4 h-4" />
             </div>
-            <span className="font-bold text-sm">تسجيل الخروج</span>
+            <span className="font-bold text-sm">{t('nav.logout')}</span>
           </button>
         </div>
       </aside>

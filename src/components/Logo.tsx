@@ -109,7 +109,7 @@ export default function Logo({
           {showSubtitle && (
             <div className="flex items-center gap-2 mt-1.5">
               <div className="h-px w-4" style={{ backgroundColor: dark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(212, 175, 55, 0.3)' }} />
-              <p className="text-[9px] uppercase font-bold" style={{ color: dark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.5)' }}>
+              <p className="text-[9px] font-bold" style={{ color: dark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.5)' }}>
                 لإدارة العمرة
               </p>
               <div className="h-px w-4" style={{ backgroundColor: dark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(212, 175, 55, 0.3)' }} />

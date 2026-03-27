@@ -117,9 +117,9 @@ export const api = {
   async ensureAuth(): Promise<void> {
     if (auth.currentUser) return;
     
-    // Cooldown of 5 seconds between attempts if it failed before
     const now = Date.now();
-    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 5000) {
+    // Don't retry auth too frequently if it's failing
+    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 30000) {
       return;
     }
 
@@ -130,17 +130,17 @@ export const api = {
     this.authPromise = (async () => {
       this.lastAuthAttempt = Date.now();
       try {
-        await signInAnonymously(auth);
-        console.log('Anonymous authentication successful');
+        // Only attempt anonymous auth if we are not already in a login flow
+        // and if it hasn't explicitly failed before with admin-restricted-operation
+        const authDisabled = localStorage.getItem('fb_auth_disabled') === 'true';
+        if (!authDisabled) {
+          await signInAnonymously(auth);
+          console.log('Anonymous authentication successful');
+        }
       } catch (error: any) {
-        console.error('Auth Error Details:', error.code, error.message);
         if (error.code === 'auth/admin-restricted-operation') {
-          const msg = '⚠️ تنبيه: خاصية Anonymous Auth معطلة في Firebase Console. يرجى تفعيلها من (Authentication > Sign-in method > Anonymous) لضمان عمل النظام بشكل صحيح.';
-          console.warn(msg);
-          // We don't throw here to allow the app to at least try to load, 
-          // though Firestore might block requests depending on rules.
-        } else if (error.code === 'auth/network-request-failed') {
-          console.error('Network error during authentication. Check your connection or Firebase authorized domains.');
+          console.warn('Anonymous auth is disabled in Firebase Console.');
+          localStorage.setItem('fb_auth_disabled', 'true');
         } else {
           console.error('Error signing in anonymously:', error);
         }
@@ -150,6 +150,39 @@ export const api = {
     })();
 
     return this.authPromise;
+  },
+
+  async loginWithGoogle(): Promise<{ user: User }> {
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+      
+      // Check if user exists in our 'users' collection or create a new one
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const userSnap = await getDoc(userRef);
+      
+      let userData: User;
+      if (userSnap.exists()) {
+        userData = { id: userSnap.id, ...userSnap.data() } as User;
+      } else {
+        // Create a basic user record for the first-time Google login
+        userData = {
+          id: firebaseUser.uid,
+          username: firebaseUser.email?.split('@')[0] || 'user',
+          name: firebaseUser.displayName || 'مستخدم جديد',
+          role: 'admin', // Default to admin for the first user or based on your logic
+          status: 'active',
+          email: firebaseUser.email || ''
+        };
+        await setDoc(userRef, { ...userData, createdAt: serverTimestamp() });
+      }
+      
+      return { user: userData };
+    } catch (error: any) {
+      handleFirestoreError(error, OperationType.GET, 'auth');
+      throw error;
+    }
   },
 
   async getTrips(): Promise<Trip[]> {
@@ -607,7 +640,28 @@ export const api = {
       return [];
     }
   },
-  async saveUmrahOffer(offer: UmrahOffer): Promise<void> {
+  async getUmrahOfferById(id: string): Promise<UmrahOffer | null> {
+    const path = 'umrahOffers';
+    try {
+      await this.ensureAuth();
+      const docRef = doc(db, path, id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as UmrahOffer;
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
+  },
+  async saveUmrahOffer(offer: UmrahOffer): Promise<string> {
     const path = 'umrahOffers';
     const { id, ...data } = offer;
     
@@ -623,14 +677,18 @@ export const api = {
         const docSnap = await getDocFromServer(docRef);
         if (docSnap.exists()) {
           await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+          return id;
         } else {
           await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+          return id;
         }
       } else {
-        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        const docRef = await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        return docRef.id;
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+      throw error;
     }
   },
   async deleteUmrahOffer(id: string): Promise<void> {
@@ -641,6 +699,12 @@ export const api = {
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
+  },
+  async updateOffer(id: string, offer: UmrahOffer): Promise<void> {
+    await this.saveUmrahOffer({ ...offer, id });
+  },
+  async deleteOffer(id: string): Promise<void> {
+    await this.deleteUmrahOffer(id);
   },
 
   // Customers
@@ -704,6 +768,107 @@ export const api = {
       await deleteDoc(doc(db, path, id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  // Image Hosting
+  async uploadImage(base64Data: string, fileName: string): Promise<string> {
+    const path = 'hosted_images';
+    try {
+      // Check data size (Firestore limit is 1MB per document)
+      // 1MB is 1,048,576 bytes. Base64 is ~1.33x original size.
+      // 750KB original -> ~1,000,000 characters.
+      if (base64Data.length > 1048000) {
+        throw new Error('حجم الصورة كبير جداً (أكثر من 1 ميجابايت بعد التشفير). يرجى ضغط الصورة قبل الرفع.');
+      }
+
+      await this.ensureAuth();
+      const docRef = await addDoc(collection(db, path), {
+        data: base64Data,
+        name: fileName,
+        createdAt: serverTimestamp()
+      });
+      return docRef.id;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      throw error;
+    }
+  },
+
+  async getHostedImage(id: string): Promise<{ data: string, name: string } | null> {
+    const path = 'hosted_images';
+    try {
+      await this.ensureAuth();
+      const docSnap = await getDoc(doc(db, path, id));
+      if (docSnap.exists()) {
+        return docSnap.data() as { data: string, name: string };
+      }
+      return null;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, path);
+      return null;
+    }
+  },
+
+  async syncCustomersFromBookings(): Promise<Customer[]> {
+    try {
+      await this.ensureAuth();
+      
+      // 1. Get all bookings and pilgrims
+      const [bookingsSnap, pilgrimsSnap, customersSnap] = await Promise.all([
+        getDocs(collection(db, 'bookings')),
+        getDocs(collection(db, 'pilgrims')),
+        getDocs(collection(db, 'customers'))
+      ]);
+
+      const existingPhones = new Set(customersSnap.docs.map(d => d.data().phone));
+      const newContacts: Map<string, { name: string, phone: string, lastDate: string }> = new Map();
+
+      // Process bookings
+      bookingsSnap.docs.forEach(d => {
+        const data = d.data();
+        if (data.phone && !existingPhones.has(data.phone)) {
+          newContacts.set(data.phone, {
+            name: data.contactName || data.name || 'عميل من الحجوزات',
+            phone: data.phone,
+            lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
+          });
+        }
+      });
+
+      // Process pilgrims
+      pilgrimsSnap.docs.forEach(d => {
+        const data = d.data();
+        if (data.phone && !existingPhones.has(data.phone) && !newContacts.has(data.phone)) {
+          newContacts.set(data.phone, {
+            name: data.name || 'معتمر من الحجوزات',
+            phone: data.phone,
+            lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
+          });
+        }
+      });
+
+      // 2. Add new contacts to customers collection
+      const promises = Array.from(newContacts.values()).map(contact => {
+        return addDoc(collection(db, 'customers'), {
+          name: contact.name,
+          phone: contact.phone,
+          email: '',
+          totalBookings: 1,
+          lastBookingDate: contact.lastDate,
+          createdAt: serverTimestamp()
+        });
+      });
+
+      if (promises.length > 0) {
+        await Promise.all(promises);
+      }
+
+      // 3. Return updated customers list
+      return this.getCustomers();
+    } catch (error) {
+      console.error('Error syncing customers:', error);
+      throw error;
     }
   }
 };

@@ -19,16 +19,31 @@ import PilgrimCardsModule from './components/PilgrimCardsModule';
 import LogsModule from './components/LogsModule';
 import UmrahOffersModule from './components/UmrahOffersModule';
 import MarketingModule from './components/MarketingModule';
+import PublicOffer from './components/PublicOffer';
+import PublicImage from './components/PublicImage';
 import Sidebar from './components/Sidebar';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBell from './components/NotificationBell';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu } from 'lucide-react';
 
+import { LanguageProvider } from './contexts/LanguageContext';
+
 function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
   const location = useLocation();
   const isLoginPage = location.pathname === '/login';
+  const isPublicOffer = location.pathname.startsWith('/offer/');
+  const isPublicImage = location.pathname.startsWith('/img/');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  if (isPublicOffer || isPublicImage) {
+    return (
+      <Routes>
+        <Route path="/offer/:id" element={<PublicOffer />} />
+        <Route path="/img/:id" element={<PublicImage />} />
+      </Routes>
+    );
+  }
 
   return (
     <NotificationProvider user={user}>
@@ -94,9 +109,14 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Check for public routes first
+  const isPublicRoute = window.location.pathname.startsWith('/offer/') || 
+                        window.location.pathname.startsWith('/img/');
+
   useEffect(() => {
     // Sync permissions from API to localStorage for components that still use it
     const syncPermissions = async () => {
+      if (!user) return;
       try {
         const perms = await api.getPermissions();
         if (perms && perms.length > 0) {
@@ -222,13 +242,32 @@ export default function App() {
     localStorage.removeItem('user');
   };
 
+  if (isPublicRoute) {
+    return (
+      <LanguageProvider>
+        <Router>
+          <Routes>
+            <Route path="/offer/:id" element={<PublicOffer />} />
+            <Route path="/img/:id" element={<PublicImage />} />
+          </Routes>
+        </Router>
+      </LanguageProvider>
+    );
+  }
+
   if (!user) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <LanguageProvider>
+        <Login onLogin={handleLogin} />
+      </LanguageProvider>
+    );
   }
 
   return (
-    <Router>
-      <AppContent user={user} onLogout={handleLogout} />
-    </Router>
+    <LanguageProvider>
+      <Router>
+        <AppContent user={user} onLogout={handleLogout} />
+      </Router>
+    </LanguageProvider>
   );
 }

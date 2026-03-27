@@ -135,6 +135,32 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "Customer since" }
       },
       "required": ["name", "phone"]
+    },
+    "UmrahOffer": {
+      "title": "UmrahOffer",
+      "description": "Customizable Umrah offers for marketing",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "documentTitle": { "type": "string" },
+        "rows": { "type": "array" },
+        "fixedText": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "rows"]
+    },
+    "HostedImage": {
+      "title": "HostedImage",
+      "description": "Images hosted in Firestore as base64",
+      "type": "object",
+      "properties": {
+        "data": { "type": "string", "description": "Base64 image data" },
+        "name": { "type": "string", "description": "Original file name" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["data", "name"]
     }
   },
   "firestore": {
@@ -146,6 +172,8 @@
     "/settings": { "schema": "Setting", "description": "Collection of app settings" },
     "/notifications": { "schema": "Notification", "description": "Collection of system notifications" },
     "/logs": { "schema": "Log", "description": "Collection of audit logs" },
-    "/customers": { "schema": "Customer", "description": "Collection of customer contacts" }
+    "/customers": { "schema": "Customer", "description": "Collection of customer contacts" },
+    "/umrah_offers": { "schema": "UmrahOffer", "description": "Collection of Umrah offers" },
+    "/hosted_images": { "schema": "HostedImage", "description": "Collection of hosted images" }
   }
 }

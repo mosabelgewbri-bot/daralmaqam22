@@ -149,6 +149,7 @@ export interface UmrahOffer {
   documentTitle?: string;
   rows: UmrahOfferRow[];
   fixedText?: string;
+  imageUrl?: string;
   createdAt: string;
   updatedAt?: string;
 }

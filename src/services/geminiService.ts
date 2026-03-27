@@ -1,5 +1,59 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+export async function translateOffer(offerData: any) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Translate this Umrah offer from Arabic to English. 
+      Maintain the structure and return ONLY a JSON object with these exact keys:
+      - name: (translated name)
+      - category: (translated category)
+      - rows: (array of objects with translated 'makkah', 'madinah', 'offer', 'meals')
+      - fixedText: (translated fixed text)
+      
+      Original Data: ${JSON.stringify(offerData)}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            category: { type: Type.STRING },
+            rows: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  makkah: { type: Type.STRING },
+                  madinah: { type: Type.STRING },
+                  offer: { type: Type.STRING },
+                  meals: { type: Type.STRING },
+                  double: { type: Type.STRING },
+                  triple: { type: Type.STRING },
+                  quad: { type: Type.STRING },
+                  quint: { type: Type.STRING },
+                  currency: { type: Type.STRING }
+                }
+              }
+            },
+            fixedText: { type: Type.STRING }
+          }
+        }
+      }
+    });
+
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error("Translation Error:", error);
+    throw error;
+  }
+}
+
 export async function extractPassportData(base64Image: string) {
   try {
     console.log("OCR Service: Initializing Gemini on frontend...");

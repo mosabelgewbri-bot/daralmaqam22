@@ -45,6 +45,8 @@ import {
 import { saveAs } from 'file-saver';
 import Logo from './Logo';
 
+import { resizeImage } from '../utils/image';
+
 interface UmrahOffersModuleProps {
   user: User;
 }
@@ -53,12 +55,10 @@ const DEFAULT_FIXED_TEXT = `
 كافة البرامج أعلاه للفرد الواحد وتشمل الآتي:
 • التأشيرة والمواصلات والسكن حسب البرنامج أعلاه
 • المستندات المطلوبة – جواز سفر إلكتروني بصلاحية 6 أشهر على الأقل- صورة خلفية بيضاء
-• الأسعار خاصة برحلات 1 رمضان / 3 رمضان أسبوعين
+
 • الشركة غير مسؤولة على تغيير مواعيد الطيران
 • هذا الأسعار لا تشمل تذاكر الطيران
 
-• فندق النخبة في شارع اجياد مسافة 1000 م علي الحرم مشي علي الاقدام مع توافر حافلات خاصة بفنذق علي مدار 24 ساعة ذهاب و عودة مجانا
-• فندق مدن الخير في منطقة العزيزية مسافة 2500 م بالقرب من جميع الخدامات و توافر حافلات خاصة بفنذق علي مدار 24 ساعة ذهاب و عودة مجانا
 
 زاوية الدهماني بالقرب من سوق الشط - طرابلس - ليبيا
 0948470011 – 0947470010 - 0918470011 - 0919470011
@@ -92,6 +92,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -175,7 +176,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
     }
   };
 
-  const exportToPDF = async (offer: UmrahOffer) => {
+  const exportToImage = async (offer: UmrahOffer) => {
     if (!previewRef.current) return;
     
     try {
@@ -188,31 +189,110 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const canvas = await html2canvas(previewRef.current, {
-        scale: 4, 
+        scale: 3, // High quality
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        windowWidth: previewRef.current.scrollWidth,
-        windowHeight: previewRef.current.scrollHeight,
         onclone: (clonedDoc) => {
-          const element = clonedDoc.getElementById('umrah-offer-preview');
-          if (element instanceof HTMLElement) {
-            element.style.fontFamily = '"Cairo", "Amiri", serif';
-            element.style.backgroundImage = 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' stroke=\'%23d4af37\' stroke-width=\'0.8\' stroke-opacity=\'0.15\'%3E%3Cpath d=\'M30 0 L40 20 L60 30 L40 40 L30 60 L20 40 L0 30 L20 20 Z\'/%3E%3Cpath d=\'M0 0 L20 10 L30 30 L10 20 Z\'/%3E%3Cpath d=\'M60 0 L40 10 L30 30 L50 20 Z\'/%3E%3Cpath d=\'M60 60 L40 50 L30 30 L50 40 Z\'/%3E%3Cpath d=\'M0 60 L20 50 L30 30 L10 40 Z\'/%3E%3C/g%3E%3C/svg%3E")';
+          const clonedElement = clonedDoc.getElementById('umrah-offer-preview');
+          if (clonedElement) {
+            clonedElement.style.letterSpacing = '0';
+            clonedElement.style.wordSpacing = '0';
+          }
+        }
+      });
+      
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const link = document.createElement('a');
+      link.download = `عرض_عمرة_${offer.name}.png`;
+      link.href = imgData;
+      link.click();
+    } catch (error) {
+      console.error('Error exporting Image:', error);
+      alert('حدث خطأ أثناء تصدير الصورة. يرجى المحاولة مرة أخرى.');
+    }
+  };
+
+  const exportToPDF = async (offer: UmrahOffer) => {
+    if (!previewRef.current) return;
+    
+    try {
+      // Ensure fonts are loaded
+      if (document.fonts) {
+        await document.fonts.ready;
+      }
+
+      // Small delay to ensure layout is stable
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Scroll to top to avoid capture issues
+      window.scrollTo(0, 0);
+
+      const element = previewRef.current;
+      
+      // Use onclone to prepare the element for perfect A4 capture
+      const canvas = await html2canvas(element, {
+        scale: 3, // Higher quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.getElementById('umrah-offer-preview');
+          if (clonedElement) {
+            // Force A4-friendly width for consistent layout
+            clonedElement.style.width = '850px';
+            clonedElement.style.height = 'auto';
+            clonedElement.style.maxHeight = 'none';
+            clonedElement.style.overflow = 'visible';
+            
+            // Add extra padding at bottom to prevent cutting
+            clonedElement.style.paddingBottom = '100px';
+            clonedElement.style.letterSpacing = '0';
+            clonedElement.style.wordSpacing = '0';
+            
+            // Calculate height to fill A4 pages
+            const actualHeight = clonedElement.scrollHeight;
+            const a4Ratio = 1.4142;
+            const a4PageHeight = 850 * a4Ratio;
+            const totalPages = Math.ceil(actualHeight / a4PageHeight);
+            const targetHeight = totalPages * a4PageHeight;
+            
+            // Set height to exactly match multiple of A4 pages
+            // This ensures the background pattern fills the entire page
+            clonedElement.style.height = `${targetHeight}px`;
+            clonedElement.style.minHeight = `${targetHeight}px`;
           }
         }
       });
       
       const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      // Calculate image dimensions to fit A4 width
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
+      
+      // Add pages
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight;
+      
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
       pdf.save(`عرض_عمرة_${offer.name}.pdf`);
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      alert('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.');
+      alert('حدث خطأ أثناء تصدير PDF. يرجى المحاولة مرة أخرى.');
     }
   };
 
@@ -596,7 +676,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
           <div className="p-8 border-b border-white/10 flex flex-col md:flex-row md:items-center gap-6 bg-white/[0.02]">
             <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 mr-1">اسم العرض (داخلي)</label>
+                <label className="block text-[10px] text-white/40 font-bold mb-2 mr-1">اسم العرض (داخلي)</label>
                 <input 
                   type="text" 
                   value={currentOffer.name}
@@ -606,7 +686,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                 />
               </div>
               <div>
-                <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 mr-1">عنوان الوثيقة (يظهر في PDF)</label>
+                <label className="block text-[10px] text-white/40 font-bold mb-2 mr-1">عنوان الوثيقة (يظهر في PDF)</label>
                 <input 
                   type="text" 
                   value={currentOffer.documentTitle}
@@ -616,7 +696,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                 />
               </div>
               <div>
-                <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 mr-1">الفئة</label>
+                <label className="block text-[10px] text-white/40 font-bold mb-2 mr-1">الفئة</label>
                 <select 
                   value={currentOffer.category}
                   onChange={e => setCurrentOffer(prev => ({ ...prev, category: e.target.value }))}
@@ -649,7 +729,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
           <div className="p-8 space-y-6 overflow-x-auto">
             <table className="w-full text-right">
               <thead>
-                <tr className="text-[10px] text-white/20 uppercase tracking-widest font-bold border-b border-white/5">
+                <tr className="text-[10px] text-white/20 font-bold border-b border-white/5">
                   <th className="pb-4 px-2">مكة</th>
                   <th className="pb-4 px-2">المدينة</th>
                   <th className="pb-4 px-2">العرض (اختياري)</th>
@@ -764,8 +844,84 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
             </button>
           </div>
 
-          <div className="p-8 bg-white/[0.01] border-t border-white/5">
-            <h3 className="text-sm font-bold text-white/60 mb-4">البيانات الثابتة (قابلة للتعديل)</h3>
+          <div className="p-8 bg-white/[0.01] border-t border-white/5 space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white/60">رابط صورة العرض (اختياري)</h3>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      
+                      setIsUploadingImage(true);
+                      const reader = new FileReader();
+                      reader.onload = async (event) => {
+                        try {
+                          let base64 = event.target?.result as string;
+                          
+                          // Resize if larger than ~500KB to ensure it fits in Firestore
+                          if (file.size > 500 * 1024) {
+                            base64 = await resizeImage(base64, 1200, 1200, 0.7);
+                          }
+
+                          const imageId = await api.uploadImage(base64, file.name);
+                          const link = `${window.location.origin}/img/${imageId}`;
+                          setCurrentOffer(prev => ({ ...prev, imageUrl: link }));
+                          alert('تم رفع الصورة وتوليد الرابط بنجاح!');
+                        } catch (error: any) {
+                          console.error('Upload failed:', error);
+                          const errorMessage = error.message || 'فشل رفع الصورة. يرجى المحاولة بصورة أصغر.';
+                          alert(errorMessage);
+                        } finally {
+                          setIsUploadingImage(false);
+                        }
+                      };
+                      reader.onerror = () => {
+                        console.error('FileReader error');
+                        setIsUploadingImage(false);
+                        alert('حدث خطأ أثناء قراءة الملف');
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    disabled={isUploadingImage}
+                  />
+                  <button className={clsx(
+                    "text-[10px] font-bold px-4 py-2 rounded-xl border transition-all",
+                    isUploadingImage ? "bg-white/5 border-white/5 text-white/20" : "bg-gold/10 border-gold/20 text-gold hover:bg-gold/20"
+                  )}>
+                    {isUploadingImage ? 'جاري الرفع...' : 'رفع صورة وتوليد رابط'}
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <input 
+                  type="url" 
+                  value={currentOffer.imageUrl || ''}
+                  onChange={e => setCurrentOffer(prev => ({ ...prev, imageUrl: e.target.value }))}
+                  className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl px-6 py-4 text-white/80 text-xs outline-none focus:border-gold/50 transition-all"
+                  placeholder="https://example.com/image.jpg"
+                />
+                {currentOffer.imageUrl && (
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentOffer.imageUrl || '');
+                      alert('تم نسخ الرابط!');
+                    }}
+                    className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white/60 hover:bg-white/10 transition-colors"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-white/20 italic">* إذا تم توفير رابط، سيظهر كصورة رئيسية في صفحة العرض العامة</p>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold text-white/60">البيانات الثابتة (قابلة للتعديل)</h3>
               <textarea 
                 value={currentOffer.fixedText}
                 onChange={e => setCurrentOffer(prev => ({ ...prev, fixedText: e.target.value }))}
@@ -773,7 +929,8 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                 className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-6 text-white/80 text-xs leading-relaxed outline-none focus:border-gold/50 transition-all resize-none"
                 placeholder="أدخل الملاحظات والبيانات الثابتة هنا..."
               />
-            <p className="mt-4 text-[10px] text-white/20 italic">* هذه البيانات تظهر أسفل الجدول في العرض النهائي</p>
+              <p className="text-[10px] text-white/20 italic">* هذه البيانات تظهر أسفل الجدول في العرض النهائي</p>
+            </div>
           </div>
         </motion.div>
       ) : (
@@ -789,12 +946,24 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
               <div className="relative z-10 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="px-2 py-1 bg-gold/10 text-gold text-[10px] font-bold rounded-lg border border-gold/20 uppercase tracking-widest mb-2 inline-block">
+                    <span className="px-2 py-1 bg-gold/10 text-gold text-[10px] font-bold rounded-lg border border-gold/20 mb-2 inline-block">
                       {offer.category}
                     </span>
                     <h3 className="text-xl font-bold text-white group-hover:text-gold transition-colors">{offer.name}</h3>
                   </div>
                   <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => {
+                        const link = `${window.location.origin}/offer/${offer.id}`;
+                        navigator.clipboard.writeText(link);
+                        setCopySuccess(offer.id);
+                        setTimeout(() => setCopySuccess(null), 2000);
+                      }}
+                      className="p-2 text-white/20 hover:text-gold hover:bg-gold/10 rounded-xl transition-all"
+                      title="نسخ رابط العرض"
+                    >
+                      {copySuccess === offer.id ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                    </button>
                     <button 
                       onClick={() => {
                         setCurrentOffer(offer);
@@ -906,10 +1075,17 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   </button>
                   <button 
                     onClick={() => exportToPDF(selectedOfferForShare)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gold text-matte-black rounded-xl text-xs font-bold hover:bg-gold/90 transition-all"
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition-all"
                   >
                     <Download className="w-4 h-4" />
                     تحميل PDF
+                  </button>
+                  <button 
+                    onClick={() => exportToImage(selectedOfferForShare)}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all"
+                  >
+                    <Download className="w-4 h-4" />
+                    حفظ كصورة للواتساب
                   </button>
                   <button 
                     onClick={() => setShowPreview(false)}
@@ -954,7 +1130,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                     <div className="inline-flex items-center gap-4">
                       <div className="h-px w-12 bg-[#d4af37] opacity-30" />
                       <div className="px-8 py-2 rounded-full" style={{ backgroundColor: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.4)' }}>
-                        <span className="text-[#d4af37] font-black text-sm uppercase tracking-widest">{selectedOfferForShare.category}</span>
+                        <span className="text-[#d4af37] font-black text-sm">{selectedOfferForShare.category}</span>
                       </div>
                       <div className="h-px w-12 bg-[#d4af37] opacity-30" />
                     </div>
@@ -1005,23 +1181,21 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   {/* Footer Section */}
                   <div className="grid grid-cols-2 gap-16 pt-8" style={{ borderTop: '3px double rgba(212, 175, 55, 0.2)' }}>
                     <div className="space-y-6">
-                      <h4 className="text-[#1a1a1a] font-black text-lg uppercase pr-4" style={{ borderRight: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>ملاحظة:</h4>
+                      <h4 className="text-[#1a1a1a] font-black text-lg pr-4" style={{ borderRight: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>ملاحظة:</h4>
                       <div className="text-xs leading-relaxed whitespace-pre-wrap font-medium" style={{ color: '#4b5563' }}>
                         {selectedOfferForShare.fixedText || DEFAULT_FIXED_TEXT}
                       </div>
                     </div>
                     <div className="flex flex-col items-end justify-between">
                       <div className="text-right space-y-4">
-                        <h4 className="text-[#1a1a1a] font-black text-lg uppercase pl-4 mb-6" style={{ borderLeft: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>تواصل معنا</h4>
+                        <h4 className="text-[#1a1a1a] font-black text-lg pl-4 mb-6" style={{ borderLeft: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>تواصل معنا</h4>
                         <div className="space-y-1">
                           <p className="text-sm font-bold" style={{ color: '#6b7280' }}>زاوية الدهماني بالقرب من سوق الشط</p>
                           <p className="text-sm font-bold" style={{ color: '#6b7280' }}>طرابلس - ليبيا</p>
                         </div>
-                        <div className="pt-6 grid grid-cols-2 gap-x-8 gap-y-2 text-[#d4af37] font-black text-lg">
+                        <div className="pt-6 flex gap-8 text-[#d4af37] font-black text-lg">
                           <span>0948470011</span>
                           <span>0947470010</span>
-                          <span>0918470011</span>
-                          <span>0919470011</span>
                         </div>
                       </div>
                       <div className="text-xs font-bold italic mt-12" style={{ color: 'rgba(212, 175, 55, 0.4)', fontFamily: '"Amiri", serif' }}>
@@ -1060,7 +1234,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   </div>
                   <div>
                     <h3 className="font-bold text-white">مشاركة العرض</h3>
-                    <p className="text-[10px] text-white/40 uppercase tracking-widest">إرسال عبر واتساب للمعتمرين</p>
+                    <p className="text-[10px] text-white/40 font-bold">إرسال عبر واتساب للمعتمرين</p>
                   </div>
                 </div>
                 <button 

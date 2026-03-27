@@ -141,6 +141,13 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
 
+    // Hosted Images
+    match /hosted_images/{imageId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
     // Permissive rules for troubleshooting and unblocking the user
     match /{path=**} {
       allow read, write: if true;
