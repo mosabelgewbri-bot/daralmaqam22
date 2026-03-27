@@ -108,6 +108,7 @@ export default function App() {
     const saved = localStorage.getItem('user');
     return saved ? JSON.parse(saved) : null;
   });
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Check for public routes first
   const isPublicRoute = window.location.pathname.startsWith('/offer/') || 
@@ -148,6 +149,17 @@ export default function App() {
       try {
         await api.ensureAuth();
         
+        // Test connection
+        try {
+          await api.getDbStats();
+          setConnectionError(null);
+        } catch (e: any) {
+          console.error('Connection test failed:', e);
+          if (e.message.includes('offline') || e.message.includes('network')) {
+            setConnectionError('تعذر الاتصال بقاعدة البيانات. يرجى التأكد من إعدادات Firebase أو المحاولة مرة أخرى.');
+          }
+        }
+
         // 1. Bootstrap Users if empty
         const users = await api.getUsers();
         if (users.length === 0) {
@@ -258,6 +270,11 @@ export default function App() {
   if (!user) {
     return (
       <LanguageProvider>
+        {connectionError && (
+          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold">
+            ⚠️ {connectionError}
+          </div>
+        )}
         <Login onLogin={handleLogin} />
       </LanguageProvider>
     );
@@ -265,6 +282,11 @@ export default function App() {
 
   return (
     <LanguageProvider>
+      {connectionError && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold">
+          ⚠️ {connectionError}
+        </div>
+      )}
       <Router>
         <AppContent user={user} onLogout={handleLogout} />
       </Router>

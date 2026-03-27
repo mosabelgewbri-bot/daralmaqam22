@@ -10,8 +10,7 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore with standard settings first, fallback to long polling if needed
 export const db = initializeFirestore(app, {
-  // We remove force long polling by default as it can cause issues in some environments
-  // but keep it as a reference if we need to re-enable it
+  experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
 // Initialize Auth

@@ -792,11 +792,13 @@ export const api = {
         
         chunk.forEach(customer => {
           const { id, ...data } = customer;
+          if (!data.phone) return; // Skip if no phone
+
           const cleanData = Object.fromEntries(
             Object.entries(data).filter(([_, v]) => v !== undefined)
           );
 
-          const existingId = existingCustomersMap.get(data.phone!);
+          const existingId = existingCustomersMap.get(data.phone);
           if (existingId) {
             batch.update(doc(db, path, existingId), { ...cleanData, updatedAt: serverTimestamp() });
           } else {
@@ -808,6 +810,7 @@ export const api = {
         await batch.commit();
       }
     } catch (error) {
+      console.error('Error in bulkSaveCustomers:', error);
       handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
@@ -852,14 +855,15 @@ export const api = {
   },
 
   async syncCustomersFromBookings(): Promise<Customer[]> {
+    const path = 'customers';
     try {
       await this.ensureAuth();
       
-      // 1. Get all bookings and pilgrims
+      // 1. Get all bookings, pilgrims, and existing customers
       const [bookingsSnap, pilgrimsSnap, customersSnap] = await Promise.all([
         getDocs(collection(db, 'bookings')),
         getDocs(collection(db, 'pilgrims')),
-        getDocs(collection(db, 'customers'))
+        getDocs(collection(db, path))
       ]);
 
       const existingPhones = new Set(customersSnap.docs.map(d => d.data().phone));
@@ -889,27 +893,35 @@ export const api = {
         }
       });
 
-      // 2. Add new contacts to customers collection
-      const promises = Array.from(newContacts.values()).map(contact => {
-        return addDoc(collection(db, 'customers'), {
-          name: contact.name,
-          phone: contact.phone,
-          email: '',
-          totalBookings: 1,
-          lastBookingDate: contact.lastDate,
-          createdAt: serverTimestamp()
+      // 2. Add new contacts to customers collection in batches
+      const contactsArray = Array.from(newContacts.values());
+      const chunkSize = 500;
+      
+      for (let i = 0; i < contactsArray.length; i += chunkSize) {
+        const chunk = contactsArray.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(contact => {
+          const newDocRef = doc(collection(db, path));
+          batch.set(newDocRef, {
+            name: contact.name,
+            phone: contact.phone,
+            email: '',
+            totalBookings: 1,
+            lastBookingDate: contact.lastDate,
+            createdAt: serverTimestamp()
+          });
         });
-      });
-
-      if (promises.length > 0) {
-        await Promise.all(promises);
+        
+        await batch.commit();
       }
 
       // 3. Return updated customers list
       return this.getCustomers();
     } catch (error) {
       console.error('Error syncing customers:', error);
-      throw error;
+      handleFirestoreError(error, OperationType.WRITE, 'customers');
+      return [];
     }
   }
 };

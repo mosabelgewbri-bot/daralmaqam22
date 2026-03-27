@@ -61,12 +61,17 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     fetchData();
   }, []);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const fetchData = async (sync = false) => {
-    setIsLoading(true);
+    if (sync) setIsSyncing(true);
+    else setIsLoading(true);
+    
     try {
       if (sync) {
         const custData = await api.syncCustomersFromBookings();
         setCustomers(custData);
+        alert('تم تحديث قائمة العملاء من الحجوزات بنجاح');
       } else {
         const [custData, offerData] = await Promise.all([
           api.getCustomers(),
@@ -77,8 +82,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
+      if (sync) alert('حدث خطأ أثناء تحديث البيانات من الحجوزات');
     } finally {
       setIsLoading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -126,7 +133,13 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         if (phone.startsWith('218')) phone = '0' + phone.substring(3);
         
         return { name, phone };
-      });
+      }).filter(c => c.phone.length >= 8); // Ensure valid phone length
+
+      if (newCustomers.length === 0) {
+        alert('لم يتم العثور على أرقام هواتف صالحة للاستيراد');
+        setIsImporting(false);
+        return;
+      }
 
       // Deduplicate by phone number locally before sending to API
       const uniqueCustomers = Array.from(
@@ -143,16 +156,17 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       setShowBulkImport(false);
       setBulkInput('');
       alert(`تم استيراد ${newCustomers.length} عميل بنجاح`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error importing customers:', error);
-      alert('حدث خطأ أثناء الاستيراد');
+      const errorMessage = error?.message || 'حدث خطأ غير متوقع';
+      alert(`حدث خطأ أثناء الاستيراد: ${errorMessage}`);
     } finally {
       setIsImporting(false);
     }
   };
 
   const generateSampleLibyanNumbers = () => {
-    const prefixes = ['091', '092', '094', '095'];
+    const prefixes = ['091', '092'];
     const samples = [];
     for (let i = 0; i < 2000; i++) {
       const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
@@ -385,10 +399,14 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           </button>
           <button 
             onClick={() => fetchData(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white text-sm font-bold transition-all"
+            disabled={isSyncing}
+            className={clsx(
+              "flex items-center gap-2 px-6 py-3 border border-white/10 rounded-xl text-white text-sm font-bold transition-all",
+              isSyncing ? "bg-white/10 opacity-50 cursor-not-allowed" : "bg-white/5 hover:bg-white/10"
+            )}
           >
-            <Users className="w-4 h-4" />
-            تحديث من الحجوزات
+            <Users className={clsx("w-4 h-4", isSyncing && "animate-spin")} />
+            {isSyncing ? 'جاري التحديث...' : 'تحديث من الحجوزات'}
           </button>
           <button 
             onClick={() => setShowOfferSelector(true)}
@@ -600,7 +618,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     onClick={generateSampleLibyanNumbers}
                     className="text-gold hover:text-gold/80 text-sm font-bold transition-colors"
                   >
-                    توليد 50 رقم ليبي عشوائي للتجربة
+                    توليد 2000 رقم ليبي عشوائي (091, 092) للتجربة
                   </button>
                   <div className="flex items-center gap-3">
                     <button
