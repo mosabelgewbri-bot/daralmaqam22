@@ -107,11 +107,15 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
         api.getPilgrims(),
         api.getBookings()
       ]);
-      setOffers(offersData);
-      setPilgrims(pilgrimsData);
-      setBookings(bookingsData);
+      setOffers(Array.isArray(offersData) ? offersData : []);
+      setPilgrims(Array.isArray(pilgrimsData) ? pilgrimsData : []);
+      setBookings(Array.isArray(bookingsData) ? bookingsData : []);
     } catch (error) {
       console.error('Error fetching data:', error);
+      // Ensure we don't have undefined state
+      setOffers(prev => Array.isArray(prev) ? prev : []);
+      setPilgrims(prev => Array.isArray(prev) ? prev : []);
+      setBookings(prev => Array.isArray(prev) ? prev : []);
     } finally {
       setIsLoading(false);
     }
@@ -483,7 +487,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
                     },
                   })),
                 }),
-                ...offer.rows.map(row => new TableRow({
+                ...(offer.rows || []).map(row => new TableRow({
                   children: [
                     row.makkah, row.madinah, row.meals, 
                     `${row.double} ${row.currency}`, 
@@ -573,19 +577,20 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   };
 
   const generateWhatsAppMessage = (offer: UmrahOffer) => {
+    if (!offer) return '';
     return `
 *عرض عمرة من شركة دار المقام*
-*${offer.category} / ${offer.name}*
+*${offer.category || ''} / ${offer.name || ''}*
 
-${offer.rows.map(row => `
-• مكة: ${row.makkah}
-• المدينة: ${row.madinah}
+${(offer.rows || []).map(row => `
+• مكة: ${row.makkah || ''}
+• المدينة: ${row.madinah || ''}
 ${row.offer ? `• العرض: ${row.offer}` : ''}
-• الوجبات: ${row.meals}
-• ثنائية: ${row.double} ${row.currency}
-• ثلاثية: ${row.triple} ${row.currency}
-• رباعية: ${row.quad} ${row.currency}
-${row.quint ? `• خماسية: ${row.quint} ${row.currency}` : ''}
+• الوجبات: ${row.meals || ''}
+• ثنائية: ${row.double || 0} ${row.currency || 'USD'}
+• ثلاثية: ${row.triple || 0} ${row.currency || 'USD'}
+• رباعية: ${row.quad || 0} ${row.currency || 'USD'}
+${row.quint ? `• خماسية: ${row.quint} ${row.currency || 'USD'}` : ''}
 `).join('\n')}
 
 ${offer.fixedText || DEFAULT_FIXED_TEXT}
@@ -1149,25 +1154,25 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                         <tr style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>
                           <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>مكة المكرمة</th>
                           <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>المدينة المنورة</th>
-                          {selectedOfferForShare.rows.some(r => r.offer) && <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>العرض</th>}
+                          {(selectedOfferForShare.rows || []).some(r => r.offer) && <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>العرض</th>}
                           <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>الوجبات</th>
                           <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>ثنائية</th>
                           <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>ثلاثية</th>
                           <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>رباعية</th>
-                          {selectedOfferForShare.rows.some(r => r.quint) && <th className="p-6 font-black text-sm" style={{ fontFamily: '"Amiri", serif' }}>خماسية</th>}
+                          {(selectedOfferForShare.rows || []).some(r => r.quint) && <th className="p-6 font-black text-sm" style={{ fontFamily: '"Amiri", serif' }}>خماسية</th>}
                         </tr>
                       </thead>
                       <tbody style={{ color: '#374151' }}>
-                        {selectedOfferForShare.rows.map((row, idx) => (
+                        {(selectedOfferForShare.rows || []).map((row, idx) => (
                           <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? "#ffffff" : "rgba(212, 175, 55, 0.02)", borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
                             <td className="p-6 font-bold text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.makkah}</td>
                             <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.madinah}</td>
-                            {selectedOfferForShare.rows.some(r => r.offer) && <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.offer || '-'}</td>}
+                            {(selectedOfferForShare.rows || []).some(r => r.offer) && <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.offer || '-'}</td>}
                             <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.meals}</td>
                             <td className="p-6 font-black text-[#d4af37] text-lg" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.currency === 'USD' ? '$' : ''}{row.double.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
                             <td className="p-6 font-black text-[#d4af37] text-lg" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.currency === 'USD' ? '$' : ''}{row.triple.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
                             <td className="p-6 font-black text-[#d4af37] text-lg" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.currency === 'USD' ? '$' : ''}{row.quad.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
-                            {selectedOfferForShare.rows.some(r => r.quint) && (
+                            {(selectedOfferForShare.rows || []).some(r => r.quint) && (
                               <td className="p-6 font-black text-[#d4af37] text-lg">
                                 {row.currency === 'USD' ? '$' : ''}{(row.quint || 0).toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}
                               </td>

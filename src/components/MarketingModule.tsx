@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   Search, 
@@ -20,7 +20,13 @@ import {
   X,
   Copy,
   Globe,
-  Edit2
+  Edit2,
+  RefreshCw,
+  Upload,
+  Smartphone,
+  AlertCircle,
+  Plus,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
@@ -48,7 +54,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [selectedOffer, setSelectedOffer] = useState<UmrahOffer | null>(null);
   const [showOfferSelector, setShowOfferSelector] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+  const [sendProgress, setSendProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [showBulkSender, setShowBulkSender] = useState(false);
   const [customMessage, setCustomMessage] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -56,33 +63,174 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   useEffect(() => {
     fetchData();
   }, []);
 
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showVerificationWizard, setShowVerificationWizard] = useState(false);
+  const [verificationIndex, setVerificationIndex] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const fetchData = async (sync = false) => {
+  const handleVerificationDelete = async () => {
+    const currentId = selectedCustomers[verificationIndex];
+    if (!currentId || isProcessing) return;
+
+    try {
+      setIsProcessing(true);
+      await api.deleteCustomer(currentId);
+      
+      // Update customers list
+      setCustomers(prev => prev.filter(c => c.id !== currentId));
+      
+      // Update selection list and index together using functional updates
+      setSelectedCustomers(prevSelected => {
+        const newSelected = prevSelected.filter(id => id !== currentId);
+        
+        if (newSelected.length === 0) {
+          setShowVerificationWizard(false);
+          setVerificationIndex(0);
+          setTimeout(() => alert('تم الانتهاء من فحص القائمة المختارة'), 100);
+          return [];
+        }
+
+        // Calculate next index before updating state
+        setVerificationIndex(prevIndex => {
+          const nextIndex = prevIndex >= newSelected.length ? newSelected.length - 1 : prevIndex;
+          return nextIndex;
+        });
+
+        return newSelected;
+      });
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert('حدث خطأ أثناء الحذف');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleVerificationSkip = () => {
+    if (isProcessing) return;
+    if (verificationIndex < selectedCustomers.length - 1) {
+      setVerificationIndex(prev => prev + 1);
+    } else {
+      setShowVerificationWizard(false);
+      setVerificationIndex(0);
+      alert('تم الانتهاء من فحص القائمة المختارة');
+    }
+  };
+
+  const handleVerificationPrev = () => {
+    if (isProcessing) return;
+    if (verificationIndex > 0) {
+      setVerificationIndex(prev => prev - 1);
+    }
+  };
+
+  const handleVerificationValid = async () => {
+    const currentId = selectedCustomers[verificationIndex];
+    const customer = customers.find(c => c.id === currentId);
+    if (!customer || isProcessing) return;
+
+    try {
+      setIsProcessing(true);
+      const updated = { ...customer, hasWhatsApp: true };
+      await api.saveCustomer(updated);
+      setCustomers(prev => prev.map(c => c.id === currentId ? updated : c));
+      
+      // Move to next automatically after marking as valid
+      if (verificationIndex < selectedCustomers.length - 1) {
+        setVerificationIndex(prev => prev + 1);
+      } else {
+        setShowVerificationWizard(false);
+        setVerificationIndex(0);
+        setTimeout(() => alert('تم الانتهاء من فحص القائمة المختارة'), 100);
+      }
+    } catch (error) {
+      console.error('Update failed:', error);
+      alert('حدث خطأ أثناء التحديث');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const currentVerificationCustomer = useMemo(() => {
+    if (!showVerificationWizard || !selectedCustomers[verificationIndex]) return null;
+    return customers.find(c => c.id === selectedCustomers[verificationIndex]);
+  }, [showVerificationWizard, selectedCustomers, verificationIndex, customers]);
+
+  const handleSmartCleanup = async () => {
+    if (customers.length === 0) return;
+    
+    const libyanPrefixes = ['091', '092', '094', '095', '093', '096', '91', '92', '94', '95', '93', '96', '21891', '21892', '21894', '21895', '21893', '21896'];
+    
+    const toDelete: string[] = [];
+    const updatedCustomers = [...customers];
+    
+    customers.forEach(customer => {
+      const cleanPhone = customer.phone.replace(/\D/g, '');
+      const isValidPrefix = libyanPrefixes.some(p => cleanPhone.startsWith(p));
+      const isValidLength = (cleanPhone.length >= 9 && cleanPhone.length <= 12);
+      
+      if (!isValidPrefix || !isValidLength) {
+        toDelete.push(customer.id);
+      }
+    });
+
+    if (toDelete.length === 0) {
+      alert('جميع الأرقام تبدو صحيحة حسب التنسيق الليبي');
+      return;
+    }
+
+    if (window.confirm(`تم العثور على ${toDelete.length} رقم غير صحيح أو وهمي. هل تريد حذفهم نهائياً؟`)) {
+      try {
+        setIsLoading(true);
+        await Promise.all(toDelete.map(id => api.deleteCustomer(id)));
+        setCustomers(prev => prev.filter(c => !toDelete.includes(c.id)));
+        setSelectedCustomers(prev => prev.filter(id => !toDelete.includes(id)));
+        alert(`تم تنظيف القائمة وحذف ${toDelete.length} رقم غير صالح`);
+      } catch (error) {
+        console.error('Error during smart cleanup:', error);
+        alert('حدث خطأ أثناء التنظيف');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const fetchData = async (sync = false, forceRefresh = false) => {
     if (sync) setIsSyncing(true);
     else setIsLoading(true);
     
     try {
+      if (forceRefresh) {
+        localStorage.removeItem('cached_customers');
+        localStorage.removeItem('cached_umrah_offers');
+      }
+
       if (sync) {
         const custData = await api.syncCustomersFromBookings();
-        setCustomers(custData);
+        setCustomers(Array.isArray(custData) ? custData : []);
         alert('تم تحديث قائمة العملاء من الحجوزات بنجاح');
       } else {
         const [custData, offerData] = await Promise.all([
           api.getCustomers(),
           api.getUmrahOffers()
         ]);
-        setCustomers(custData);
-        setOffers(offerData);
+        setCustomers(Array.isArray(custData) ? custData : []);
+        setOffers(Array.isArray(offerData) ? offerData : []);
       }
+      setCurrentPage(1);
     } catch (error) {
       console.error('Error fetching data:', error);
       if (sync) alert('حدث خطأ أثناء تحديث البيانات من الحجوزات');
+      // Ensure we don't have undefined state
+      setCustomers(prev => Array.isArray(prev) ? prev : []);
+      setOffers(prev => Array.isArray(prev) ? prev : []);
     } finally {
       setIsLoading(false);
       setIsSyncing(false);
@@ -91,15 +239,28 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
   const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp'>('all');
 
-  const filteredCustomers = customers.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery);
-    
-    if (filter === 'all') return matchesSearch;
-    if (filter === 'whatsapp') return matchesSearch && c.hasWhatsApp;
-    // For active/previous we would need more logic or fields, but let's implement whatsapp for now
-    return matchesSearch;
-  });
+  const filteredCustomers = useMemo(() => {
+    return (customers || []).filter(c => {
+      if (!c) return false;
+      const name = String(c.name || '').toLowerCase();
+      const phone = String(c.phone || '');
+      const query = (searchQuery || '').toLowerCase();
+      
+      const matchesSearch = name.includes(query) || phone.includes(query);
+      
+      if (!matchesSearch) return false;
+      if (filter === 'all') return true;
+      if (filter === 'whatsapp') return !!c.hasWhatsApp;
+      return true;
+    });
+  }, [customers, searchQuery, filter]);
+
+  const paginatedCustomers = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredCustomers.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredCustomers, currentPage]);
+
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
 
   const toggleCustomerSelection = (id: string) => {
     setSelectedCustomers(prev => 
@@ -226,10 +387,22 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     if (selectedCustomers.length === 0) return;
     if (!selectedOffer && !customMessage && !imageUrl) return;
 
-    setIsSending(true);
-    setSendProgress({ current: 0, total: selectedCustomers.length });
-
     const selectedCustData = customers.filter(c => selectedCustomers.includes(c.id));
+    
+    // Filter out customers without WhatsApp
+    // Also validate phone numbers
+    const isValidLibyanPhone = (phone: string) => {
+      const clean = phone.replace(/\D/g, '');
+      return clean.length >= 9 && (clean.startsWith('9') || clean.startsWith('2189') || clean.startsWith('09'));
+    };
+
+    const validWhatsAppCustomers = selectedCustData.filter(c => c.hasWhatsApp && isValidLibyanPhone(c.phone));
+
+    if (validWhatsAppCustomers.length === 0) {
+      setShowOfferSelector(false);
+      alert('لا توجد أرقام واتساب صالحة في القائمة المختارة');
+      return;
+    }
 
     // Format offer message
     let message = customMessage ? `${customMessage}\n\n` : '';
@@ -238,7 +411,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       message += `*${selectedOffer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
       message += `*الفئة:* ${selectedOffer.category}\n\n`;
       
-      selectedOffer.rows.forEach(row => {
+      (selectedOffer.rows || []).forEach(row => {
         message += `📍 *${row.makkah} / ${row.madinah}*\n`;
         message += `🏨 ${row.offer}\n`;
         message += `🍽️ ${row.meals}\n`;
@@ -272,22 +445,31 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       console.error('Failed to copy to clipboard:', e);
     }
 
+    setIsSending(true);
+    setShowOfferSelector(false);
+    setShowBulkSender(true);
+
     // Send messages one by one (opening WhatsApp web/app)
-    for (let i = 0; i < selectedCustData.length; i++) {
-      const customer = selectedCustData[i];
-      setSendProgress(prev => ({ ...prev, current: i + 1 }));
+    for (let i = 0; i < validWhatsAppCustomers.length; i++) {
+      const customer = validWhatsAppCustomers[i];
+      setSendProgress({ 
+        current: i + 1, 
+        total: validWhatsAppCustomers.length,
+        currentName: customer.name 
+      });
       
       // We use the utility to open WhatsApp
       sendWhatsAppMessage(customer.phone, message);
       
       // Small delay to allow the browser to handle the window opening
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
 
     setIsSending(false);
-    setShowOfferSelector(false);
+    setShowBulkSender(false);
     setSelectedCustomers([]);
     setSelectedOffer(null);
+    alert('تم الانتهاء من عملية الإرسال بنجاح');
   };
 
   const renderOfferDesign = (offer: UmrahOffer) => {
@@ -308,7 +490,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            {offer.rows.map((row, idx) => (
+            {(offer.rows || []).map((row, idx) => (
               <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-6 flex flex-col gap-3 text-right">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center gap-2 text-gold font-bold">
@@ -365,6 +547,58 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
   return (
     <div className="space-y-8">
+      {/* Bulk Sending Progress Modal */}
+      <AnimatePresence>
+        {showBulkSender && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 text-center"
+            >
+              <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
+                <Send className="w-10 h-10 text-emerald-500 animate-pulse" />
+              </div>
+              
+              <h2 className="text-2xl font-black text-white mb-2">جاري الإرسال التلقائي...</h2>
+              <p className="text-white/40 text-sm mb-8">يرجى السماح بفتح النوافذ المنبثقة لإتمام العملية</p>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-white/40">التقدم الحالي</span>
+                  <span className="text-emerald-500">{sendProgress.current} / {sendProgress.total}</span>
+                </div>
+                
+                <div className="h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                  <motion.div 
+                    className="h-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(sendProgress.current / sendProgress.total) * 100}%` }}
+                  />
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-[10px] text-white/20 font-bold mb-1">يتم الإرسال الآن إلى:</p>
+                  <p className="text-sm font-bold text-white">{sendProgress.currentName || 'جاري التحميل...'}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (window.confirm('هل أنت متأكد من إيقاف عملية الإرسال؟')) {
+                    window.location.reload(); // Hard stop
+                  }
+                }}
+                className="mt-8 w-full py-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl font-bold text-sm transition-all border border-red-500/20"
+              >
+                إيقاف العملية
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/5 p-8 rounded-[2rem] border border-white/10">
         <div className="flex items-center gap-4">
@@ -378,11 +612,108 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         </div>
         <div className="flex items-center gap-3">
           <button 
+            onClick={async () => {
+              if (customers.length === 0) return;
+              if (!window.confirm('هل أنت متأكد من مسح جميع العملاء؟ لا يمكن التراجع عن هذه الخطوة.')) return;
+              try {
+                setIsLoading(true);
+                await Promise.all(customers.map(c => api.deleteCustomer(c.id)));
+                setCustomers([]);
+                localStorage.removeItem('cached_customers');
+                alert('تم مسح جميع العملاء بنجاح');
+              } catch (error) {
+                console.error('Error clearing customers:', error);
+                alert('حدث خطأ أثناء مسح البيانات');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            className="p-3 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all border border-red-500/20"
+            title="مسح جميع العملاء نهائياً"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => {
+              fetchData(false, true);
+              alert('تم إفراغ التخزين المؤقت وجاري تحديث البيانات...');
+            }}
+            className="p-3 rounded-2xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-all border border-white/10"
+            title="تحديث البيانات وإفراغ التخزين المؤقت"
+          >
+            <RefreshCw className={clsx("w-5 h-5", isLoading && "animate-spin")} />
+          </button>
+          <button 
+            onClick={handleSmartCleanup}
+            className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all border border-emerald-500/20"
+            title="تنظيف ذكي للأرقام الوهمية"
+          >
+            <Filter className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => {
+              if (selectedCustomers.length === 0) {
+                alert('يرجى اختيار أرقام لفحصها أولاً');
+                return;
+              }
+              setVerificationIndex(0);
+              setShowVerificationWizard(true);
+            }}
+            className="p-3 rounded-2xl bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all border border-blue-500/20"
+            title="بدء فحص يدوي سريع"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => {
+              const whatsappOnly = customers.filter(c => c.hasWhatsApp).map(c => c.id);
+              if (whatsappOnly.length === 0) {
+                alert('لا يوجد عملاء لديهم واتساب مفعل حالياً');
+                return;
+              }
+              setSelectedCustomers(whatsappOnly);
+              setShowOfferSelector(true);
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-2xl hover:bg-emerald-600 transition-all font-bold shadow-lg shadow-emerald-500/20"
+            title="إرسال عرض لجميع أرقام الواتساب المتاحة بضغطة واحدة"
+          >
+            <Zap className="w-5 h-5" />
+            <span>إرسال ذكي للكل</span>
+          </button>
+          <button 
             onClick={() => setShowBulkImport(true)}
             className="flex items-center gap-2 px-6 py-3 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-all font-bold border border-white/10"
           >
             <PlusCircle className="w-5 h-5" />
             <span>استيراد أرقام</span>
+          </button>
+          <button 
+            onClick={async () => {
+              if (selectedCustomers.length === 0) return;
+              if (!window.confirm(`هل أنت متأكد من حذف ${selectedCustomers.length} عميل؟`)) return;
+              try {
+                setIsLoading(true);
+                await Promise.all(selectedCustomers.map(id => api.deleteCustomer(id)));
+                setCustomers(prev => prev.filter(c => !selectedCustomers.includes(c.id)));
+                setSelectedCustomers([]);
+                alert('تم حذف العملاء المحددين بنجاح');
+              } catch (error) {
+                console.error('Error deleting customers:', error);
+                alert('حدث خطأ أثناء الحذف');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={selectedCustomers.length === 0 || isLoading}
+            className={clsx(
+              "flex items-center gap-2 px-6 py-3 border rounded-xl text-sm font-bold transition-all",
+              selectedCustomers.length > 0
+                ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20"
+                : "bg-white/5 border-white/5 text-white/20 cursor-not-allowed"
+            )}
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>حذف المختارين</span>
           </button>
           <button 
             onClick={() => {
@@ -512,7 +843,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                       </div>
                     </td>
                   </tr>
-                ) : filteredCustomers.length === 0 ? (
+                ) : paginatedCustomers.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center gap-4">
@@ -524,7 +855,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((customer) => (
+                  paginatedCustomers.map((customer) => (
                     <tr 
                       key={customer.id} 
                       className={clsx(
@@ -544,7 +875,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-gold font-bold border border-white/10 group-hover:border-gold/30 transition-colors">
-                            {customer.name.charAt(0)}
+                            {(customer.name || 'ع').charAt(0)}
                           </div>
                           <div>
                             <p className="text-sm font-bold text-white">{customer.name}</p>
@@ -556,11 +887,22 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         <div className="flex items-center gap-2 text-white/60">
                           <Phone className="w-3 h-3" />
                           <span className="text-xs font-mono">{customer.phone}</span>
-                          {customer.hasWhatsApp && (
-                            <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center" title="واتساب مفعل">
-                              <MessageSquare className="w-2.5 h-2.5 text-emerald-500" />
-                            </div>
-                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const updated = { ...customer, hasWhatsApp: !customer.hasWhatsApp };
+                              api.saveCustomer(updated).then(() => {
+                                setCustomers(prev => prev.map(c => c.id === customer.id ? updated : c));
+                              });
+                            }}
+                            className={clsx(
+                              "w-6 h-6 rounded-full flex items-center justify-center transition-all",
+                              customer.hasWhatsApp ? "bg-emerald-500/20 text-emerald-500" : "bg-red-500/20 text-red-500"
+                            )}
+                            title={customer.hasWhatsApp ? "واتساب مفعل - انقر للإلغاء" : "واتساب غير مفعل - انقر للتفعيل"}
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -597,10 +939,176 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6 px-6 py-4 bg-white/5 rounded-2xl border border-white/10">
+              <p className="text-xs text-white/40 font-medium">
+                عرض {paginatedCustomers.length} من أصل {filteredCustomers.length} عميل
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-xl bg-white/5 text-white/60 hover:bg-white/10 disabled:opacity-30 transition-all"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    let pageNum = 1;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else {
+                      if (currentPage <= 3) pageNum = i + 1;
+                      else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                      else pageNum = currentPage - 2 + i;
+                    }
+
+                    if (pageNum <= 0 || pageNum > totalPages) return null;
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={clsx(
+                          "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                          currentPage === pageNum 
+                            ? "bg-gold text-black" 
+                            : "bg-white/5 text-white/60 hover:bg-white/10"
+                        )}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-xl bg-white/5 text-white/60 hover:bg-white/10 disabled:opacity-30 transition-all"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Bulk Import Modal */}
+      {/* Verification Wizard Modal */}
+      <AnimatePresence>
+        {showVerificationWizard && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
+            {selectedCustomers.length > 0 ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-slate-900 border border-white/10 rounded-[3rem] w-full max-w-lg overflow-hidden shadow-2xl p-10 text-center space-y-8"
+              >
+              <div className="flex justify-center">
+                <div className="w-20 h-20 rounded-3xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                  <MessageSquare className="w-10 h-10 text-blue-500" />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <h2 className="text-2xl font-black text-white">مساعد الفحص السريع</h2>
+                <div className="flex items-center justify-center gap-4">
+                  <button 
+                    onClick={handleVerificationPrev}
+                    disabled={verificationIndex === 0 || isProcessing}
+                    className="p-2 rounded-full bg-white/5 text-white/40 hover:bg-white/10 disabled:opacity-20 transition-all"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                  <p className="text-white/40 font-medium">الرقم {verificationIndex + 1} من {selectedCustomers.length}</p>
+                  <button 
+                    onClick={handleVerificationSkip}
+                    disabled={verificationIndex === selectedCustomers.length - 1 || isProcessing}
+                    className="p-2 rounded-full bg-white/5 text-white/40 hover:bg-white/10 disabled:opacity-20 transition-all"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {currentVerificationCustomer ? (
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                  <p className="text-xl font-bold text-white mb-1">
+                    {currentVerificationCustomer.name}
+                  </p>
+                  <p className="text-gold font-mono text-lg">
+                    {currentVerificationCustomer.phone}
+                  </p>
+                  {currentVerificationCustomer.hasWhatsApp && (
+                    <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold">
+                      <CheckCircle2 className="w-3 h-3" />
+                      مشترك في واتساب
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 italic text-white/20">
+                  جاري تحميل بيانات العميل...
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    if (currentVerificationCustomer) {
+                      sendWhatsAppMessage(currentVerificationCustomer.phone, 'فحص');
+                    }
+                  }}
+                  disabled={!currentVerificationCustomer || isProcessing}
+                  className="col-span-2 py-4 bg-blue-500 text-white rounded-2xl font-bold hover:bg-blue-600 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  <Smartphone className="w-5 h-5" />
+                  فتح في واتساب للفحص
+                </button>
+                
+                <button
+                  onClick={handleVerificationValid}
+                  disabled={!currentVerificationCustomer || isProcessing}
+                  className="py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50"
+                >
+                  تأكيد (مشترك)
+                </button>
+
+                <button
+                  onClick={handleVerificationDelete}
+                  disabled={!currentVerificationCustomer || isProcessing}
+                  className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl font-bold hover:bg-red-500/20 transition-all disabled:opacity-50"
+                >
+                  حذف (غير مشترك)
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <button
+                  onClick={handleVerificationSkip}
+                  disabled={isProcessing}
+                  className="text-white/40 hover:text-white transition-colors text-sm font-bold"
+                >
+                  تخطي للرقم التالي
+                </button>
+
+                <button
+                  onClick={() => setShowVerificationWizard(false)}
+                  className="text-white/20 hover:text-white transition-colors text-xs font-bold"
+                >
+                  إغلاق المساعد
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <div className="text-white/40 font-bold">جاري تحديث القائمة...</div>
+          )}
+          </div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {showBulkImport && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -734,13 +1242,13 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                           stroke="#D4AF37"
                           strokeWidth="8"
                           strokeDasharray={283}
-                          strokeDashoffset={283 - (283 * sendProgress.current) / sendProgress.total}
+                          strokeDashoffset={sendProgress.total > 0 ? 283 - (283 * sendProgress.current) / sendProgress.total : 283}
                           className="transition-all duration-500"
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <span className="text-2xl font-bold text-white">
-                          {Math.round((sendProgress.current / sendProgress.total) * 100)}%
+                          {sendProgress.total > 0 ? Math.round((sendProgress.current / sendProgress.total) * 100) : 0}%
                         </span>
                       </div>
                     </div>
@@ -796,7 +1304,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                   </span>
                                 </div>
                                 <p className="text-[10px] text-white/40 line-clamp-1">
-                                  {offer.rows.map(r => `${r.makkah}/${r.madinah}`).join(' - ')}
+                                  {(offer.rows || []).map(r => `${r.makkah}/${r.madinah}`).join(' - ')}
                                 </p>
                               </button>
                               
@@ -843,7 +1351,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                 let msg = customMessage ? `${customMessage}\n\n` : '';
                                 msg += `*${selectedOffer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
                                 msg += `*الفئة:* ${selectedOffer.category}\n\n`;
-                                selectedOffer.rows.forEach(row => {
+                                (selectedOffer.rows || []).forEach(row => {
                                   msg += `📍 *${row.makkah} / ${row.madinah}*\n`;
                                   msg += `🏨 ${row.offer}\n`;
                                   msg += `🍽️ ${row.meals}\n`;

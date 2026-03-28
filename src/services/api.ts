@@ -51,7 +51,7 @@ interface FirestoreErrorInfo {
 function isQuotaError(error: any): boolean {
   if (!error) return false;
   const msg = (error.message || error.error || String(error)).toLowerCase();
-  return msg.includes('quota exceeded') || msg.includes('quota limit exceeded');
+  return msg.includes('quota') || msg.includes('exhausted') || msg.includes('limit exceeded') || msg.includes('offline') || msg.includes('insufficient permissions');
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -321,6 +321,9 @@ export const api = {
         return { 
           id: doc.id, 
           ...data,
+          name: String(data.name || ''),
+          phone: String(data.phone || ''),
+          contactName: String(data.contactName || ''),
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as Booking;
@@ -331,15 +334,20 @@ export const api = {
       }
       return bookings;
     } catch (error: any) {
+      console.error('Error fetching bookings:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        const cached = localStorage.getItem('cached_bookings');
-        if (cached) {
-          const all = JSON.parse(cached) as Booking[];
-          return limitCount ? all.slice(0, limitCount) : all;
-        }
       }
-      handleFirestoreError(error, OperationType.LIST, path);
+      
+      const cached = localStorage.getItem('cached_bookings');
+      if (cached) {
+        try {
+          const all = JSON.parse(cached) as Booking[];
+          if (Array.isArray(all)) {
+            return limitCount ? all.slice(0, limitCount) : all;
+          }
+        } catch (e) {}
+      }
       return [];
     }
   },
@@ -807,6 +815,8 @@ export const api = {
         return {
           id: doc.id,
           ...data,
+          name: String(data.name || ''),
+          phone: String(data.phone || ''),
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as Pilgrim;
@@ -817,15 +827,20 @@ export const api = {
       }
       return pilgrims;
     } catch (error: any) {
+      console.error('Error fetching pilgrims:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        const cached = localStorage.getItem('cached_pilgrims');
-        if (cached) {
-          const all = JSON.parse(cached) as Pilgrim[];
-          return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
-        }
       }
-      handleFirestoreError(error, OperationType.LIST, path);
+      
+      const cached = localStorage.getItem('cached_pilgrims');
+      if (cached) {
+        try {
+          const all = JSON.parse(cached) as Pilgrim[];
+          if (Array.isArray(all)) {
+            return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
+          }
+        } catch (e) {}
+      }
       return [];
     }
   },
@@ -910,7 +925,10 @@ export const api = {
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_umrah_offers');
-        if (cached) return JSON.parse(cached);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
       }
 
       await this.ensureAuth();
@@ -920,6 +938,9 @@ export const api = {
         return {
           id: doc.id,
           ...data,
+          rows: Array.isArray(data.rows) ? data.rows : [],
+          name: String(data.name || ''),
+          category: String(data.category || 'الاقتصادي'),
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as UmrahOffer;
@@ -928,12 +949,26 @@ export const api = {
       localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
       return offers;
     } catch (error: any) {
+      console.error('Error in getUmrahOffers:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        const cached = localStorage.getItem('cached_umrah_offers');
-        if (cached) return JSON.parse(cached);
       }
-      handleFirestoreError(error, OperationType.LIST, path);
+      
+      const cached = localStorage.getItem('cached_umrah_offers');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {
+          console.error('Error parsing cached offers:', e);
+        }
+      }
+      
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (e) {
+        console.warn('Silencing error in getUmrahOffers to prevent crash');
+      }
       return [];
     }
   },
@@ -1045,19 +1080,51 @@ export const api = {
   async getCustomers(): Promise<Customer[]> {
     const path = 'customers';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_customers');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => {
+      const customers = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           ...data,
+          name: String(data.name || 'عميل غير معروف'),
+          phone: String(data.phone || ''),
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           lastBookingDate: data.lastBookingDate?.toDate?.()?.toISOString() || data.lastBookingDate
         } as unknown as Customer;
       });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+
+      localStorage.setItem('cached_customers', JSON.stringify(customers));
+      return customers;
+    } catch (error: any) {
+      console.error('Error in getCustomers:', error);
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+      }
+      
+      const cached = localStorage.getItem('cached_customers');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {
+          console.error('Error parsing cached customers:', e);
+        }
+      }
+
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (e) {
+        console.warn('Silencing error in getCustomers to prevent crash');
+      }
       return [];
     }
   },
@@ -1192,36 +1259,34 @@ export const api = {
     try {
       await this.ensureAuth();
       
-      // 1. Get all bookings, pilgrims, and existing customers
-      const [bookingsSnap, pilgrimsSnap, customersSnap] = await Promise.all([
-        getDocs(collection(db, 'bookings')),
-        getDocs(collection(db, 'pilgrims')),
-        getDocs(collection(db, path))
+      // 1. Get all bookings, pilgrims, and existing customers using resilient methods
+      const [bookings, pilgrims, customers] = await Promise.all([
+        this.getBookings(),
+        this.getPilgrims(),
+        this.getCustomers()
       ]);
 
-      const existingPhones = new Set(customersSnap.docs.map(d => d.data().phone));
+      const existingPhones = new Set(customers.map(d => d.phone));
       const newContacts: Map<string, { name: string, phone: string, lastDate: string }> = new Map();
 
       // Process bookings
-      bookingsSnap.docs.forEach(d => {
-        const data = d.data();
+      bookings.forEach(data => {
         if (data.phone && !existingPhones.has(data.phone)) {
           newContacts.set(data.phone, {
             name: data.contactName || data.name || 'عميل من الحجوزات',
             phone: data.phone,
-            lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
+            lastDate: data.createdAt || new Date().toISOString()
           });
         }
       });
 
       // Process pilgrims
-      pilgrimsSnap.docs.forEach(d => {
-        const data = d.data();
+      pilgrims.forEach(data => {
         if (data.phone && !existingPhones.has(data.phone) && !newContacts.has(data.phone)) {
           newContacts.set(data.phone, {
             name: data.name || 'معتمر من الحجوزات',
             phone: data.phone,
-            lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
+            lastDate: data.createdAt || new Date().toISOString()
           });
         }
       });

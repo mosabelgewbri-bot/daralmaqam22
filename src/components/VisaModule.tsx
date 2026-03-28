@@ -35,7 +35,7 @@ export default function VisaModule({ user }: { user: User }) {
 
     const message = `السلام عليكم سيد/ة ${pilgrim.name}%0A%0Aنحيطكم علماً بأن حالة التأشيرة الخاصة بكم هي: *${statusMap[pilgrim.visaStatus] || pilgrim.visaStatus}*%0A%0Aشكراً لاختياركم شركتنا.`;
     
-    const whatsappUrl = `https://wa.me/${phone.startsWith('+') ? phone : '+' + phone}?text=${message}`;
+    const whatsappUrl = `https://wa.me/${phone.replace(/\+/g, '')}?text=${message}`;
     window.open(whatsappUrl, '_blank');
   };
 
