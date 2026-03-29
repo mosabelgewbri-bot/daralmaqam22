@@ -3,7 +3,114 @@ import { User, Trip, Booking } from '../types';
 import { api } from '../services/api';
 import { getRolePermissions } from '../utils/dataUtils';
 import { motion } from 'motion/react';
-import { Search, MapPin, Trash2, FileSpreadsheet, FileText, Download, X, Save, CheckCircle2, Loader2 } from 'lucide-react';
+import { Search, MapPin, Trash2, FileSpreadsheet, FileText, Download, X, Save, CheckCircle2, Loader2, AlertCircle, CheckCircle, Info, XCircle } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+
+// Toast Component
+const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info' | 'warning', onClose: () => void }) => {
+  const icons = {
+    success: <CheckCircle className="w-5 h-5 text-emerald-400" />,
+    error: <XCircle className="w-5 h-5 text-red-400" />,
+    warning: <AlertCircle className="w-5 h-5 text-amber-400" />,
+    info: <Info className="w-5 h-5 text-blue-400" />
+  };
+
+  const colors = {
+    success: 'border-emerald-500/50 bg-emerald-500/10',
+    error: 'border-red-500/50 bg-red-500/10',
+    warning: 'border-amber-500/50 bg-amber-500/10',
+    info: 'border-blue-500/50 bg-blue-500/10'
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 50, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+      className={clsx(
+        "fixed bottom-8 left-8 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl border backdrop-blur-xl shadow-2xl min-w-[320px]",
+        colors[type]
+      )}
+    >
+      {icons[type]}
+      <p className="text-white font-medium flex-1">{message}</p>
+      <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+        <X className="w-4 h-4" />
+      </button>
+    </motion.div>
+  );
+};
+
+// Confirmation Modal Component
+const ConfirmModal = ({ 
+  show, 
+  title, 
+  message, 
+  onConfirm, 
+  onCancel, 
+  type = 'danger' 
+}: { 
+  show: boolean, 
+  title: string, 
+  message: string, 
+  onConfirm: () => void, 
+  onCancel: () => void,
+  type?: 'danger' | 'warning' | 'info'
+}) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="relative w-full max-w-md bg-matte-black border border-white/10 rounded-3xl p-8 shadow-2xl"
+      >
+        <div className={clsx(
+          "w-16 h-16 rounded-2xl flex items-center justify-center mb-6",
+          type === 'danger' ? "bg-red-500/20 text-red-500" : 
+          type === 'warning' ? "bg-amber-500/20 text-amber-500" : "bg-blue-500/20 text-blue-500"
+        )}>
+          {type === 'danger' ? <Trash2 className="w-8 h-8" /> : 
+           type === 'warning' ? <AlertCircle className="w-8 h-8" /> : <Info className="w-8 h-8" />}
+        </div>
+        
+        <h3 className="text-2xl font-bold text-white mb-2">{title}</h3>
+        <p className="text-white/60 mb-8 leading-relaxed">{message}</p>
+        
+        <div className="flex gap-4">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-6 py-3 rounded-xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={() => {
+              onConfirm();
+              onCancel();
+            }}
+            className={clsx(
+              "flex-1 px-6 py-3 rounded-xl text-white font-bold transition-all shadow-lg",
+              type === 'danger' ? "bg-red-600 hover:bg-red-500 shadow-red-500/20" : 
+              type === 'warning' ? "bg-amber-600 hover:bg-amber-500 shadow-amber-500/20" : "bg-blue-600 hover:bg-blue-500 shadow-blue-500/20"
+            )}
+          >
+            تأكيد
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 import jsPDF from 'jspdf';
 import domtoimage from 'dom-to-image-more';
 import * as XLSX from 'xlsx';
@@ -22,6 +129,18 @@ export default function RoomingModule({ user }: { user: User }) {
   const [pendingSaveIds, setPendingSaveIds] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState<string | null>(null); // ID of booking being saved or 'all'
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ show: boolean, title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning' | 'info' }>({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -67,7 +186,7 @@ export default function RoomingModule({ user }: { user: User }) {
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
       console.error('Error saving booking:', error);
-      alert('حدث خطأ أثناء حفظ التعديلات');
+      showToast('حدث خطأ أثناء حفظ التعديلات', 'error');
     } finally {
       setIsSaving(null);
     }
@@ -81,10 +200,10 @@ export default function RoomingModule({ user }: { user: User }) {
       const bookingsToSave = bookings.filter(b => pendingSaveIds.has(b.id));
       await Promise.all(bookingsToSave.map(b => api.saveBooking(b)));
       setPendingSaveIds(new Set());
-      alert('تم حفظ جميع التعديلات بنجاح');
+      showToast('تم حفظ جميع التعديلات بنجاح', 'success');
     } catch (error) {
       console.error('Error saving all bookings:', error);
-      alert('حدث خطأ أثناء حفظ بعض التعديلات');
+      showToast('حدث خطأ أثناء حفظ بعض التعديلات', 'error');
     } finally {
       setIsSaving(null);
     }
@@ -105,10 +224,10 @@ export default function RoomingModule({ user }: { user: User }) {
 
       setBookings(prev => prev.filter(b => b.id !== bookingId));
       setConfirmDeleteBookingId(null);
-      alert('تم حذف الحجز بنجاح');
+      showToast('تم حذف الحجز بنجاح', 'success');
     } catch (error: any) {
       console.error('Error deleting booking:', error);
-      alert(error.message || 'حدث خطأ أثناء حذف الحجز');
+      showToast(error.message || 'حدث خطأ أثناء حذف الحجز', 'error');
       setConfirmDeleteBookingId(null);
     }
   };
@@ -153,7 +272,7 @@ export default function RoomingModule({ user }: { user: User }) {
 
   const exportExcel = () => {
     if (!selectedTripId) {
-      alert('يرجى اختيار رحلة أولاً لتصدير البيانات');
+      showToast('يرجى اختيار رحلة أولاً لتصدير البيانات', 'warning');
       return;
     }
     const tripName = trips.find(t => String(t.id).trim() === String(selectedTripId).trim())?.name || 'رحلة';
@@ -182,7 +301,7 @@ export default function RoomingModule({ user }: { user: User }) {
 
   const exportPDF = async () => {
     if (!selectedTripId) {
-      alert('يرجى اختيار رحلة أولاً لتصدير التقرير');
+      showToast('يرجى اختيار رحلة أولاً لتصدير التقرير', 'warning');
       return;
     }
     
@@ -337,7 +456,7 @@ export default function RoomingModule({ user }: { user: User }) {
       pdf.save(`تسكين_${tripName}_${new Date().toLocaleDateString('ar-LY')}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
-      alert('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       document.body.removeChild(printWindow);
     }
@@ -553,34 +672,21 @@ export default function RoomingModule({ user }: { user: User }) {
                           <CheckCircle2 className="w-4 h-4 text-emerald-500 animate-bounce" />
                         )}
                         {permissions.canDelete && (
-                          <div className="flex items-center gap-1">
-                            {confirmDeleteBookingId === b.id ? (
-                              <div className="flex items-center gap-1 bg-red-500/20 p-1 rounded border border-red-500/30">
-                                <button 
-                                  onClick={() => handleDeleteBooking(b.id)}
-                                  className="p-1 hover:bg-red-500 text-white rounded transition-colors"
-                                  title="Confirm Delete"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                                <button 
-                                  onClick={() => setConfirmDeleteBookingId(null)}
-                                  className="p-1 hover:bg-gray-500 text-white rounded transition-colors"
-                                  title="Cancel"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button 
-                                onClick={() => setConfirmDeleteBookingId(b.id)}
-                                className="p-1 text-red-400 hover:bg-red-400/10 rounded"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
+                          <button 
+                            onClick={() => {
+                              setConfirmModal({
+                                show: true,
+                                title: 'حذف حجز',
+                                message: `هل أنت متأكد من حذف حجز ${b.headName}؟ سيتم حذف جميع المعتمرين التابعين لهذا الحجز.`,
+                                type: 'danger',
+                                onConfirm: () => handleDeleteBooking(b.id)
+                              });
+                            }}
+                            className="p-1 text-red-400 hover:bg-red-400/10 rounded"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         )}
                       </div>
                     </td>
@@ -591,6 +697,25 @@ export default function RoomingModule({ user }: { user: User }) {
           </table>
         </div>
       </div>
+
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <ConfirmModal
+        show={confirmModal.show}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        type={confirmModal.type}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, show: false }))}
+      />
     </motion.div>
   );
 }

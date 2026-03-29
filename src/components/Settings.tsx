@@ -2,9 +2,116 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { api } from '../services/api';
 import { motion } from 'motion/react';
-import { Upload, Trash2, Save, CheckCircle, AlertCircle, Image as ImageIcon, Lock, Database as DbIcon, RefreshCw, Settings as SettingsIcon } from 'lucide-react';
+import { Upload, Trash2, Save, CheckCircle, AlertCircle, Image as ImageIcon, Lock, Database as DbIcon, RefreshCw, Settings as SettingsIcon, Info, CheckCircle as CheckCircleIcon, XCircle, X } from 'lucide-react';
 import Logo from './Logo';
 import { clsx } from 'clsx';
+import { AnimatePresence } from 'framer-motion';
+
+// Toast Component
+const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info' | 'warning', onClose: () => void }) => {
+  const icons = {
+    success: <CheckCircleIcon className="w-5 h-5 text-emerald-400" />,
+    error: <XCircle className="w-5 h-5 text-red-400" />,
+    warning: <AlertCircle className="w-5 h-5 text-amber-400" />,
+    info: <Info className="w-5 h-5 text-blue-400" />
+  };
+
+  const colors = {
+    success: 'border-emerald-500/50 bg-emerald-500/10',
+    error: 'border-red-500/50 bg-red-500/10',
+    warning: 'border-amber-500/50 bg-amber-500/10',
+    info: 'border-blue-500/50 bg-blue-500/10'
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 50, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+      className={clsx(
+        "fixed bottom-8 left-8 z-[100] flex items-center gap-3 px-6 py-4 rounded-2xl border backdrop-blur-xl shadow-2xl min-w-[320px]",
+        colors[type]
+      )}
+    >
+      {icons[type]}
+      <p className="text-white font-medium flex-1">{message}</p>
+      <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+        <X className="w-4 h-4" />
+      </button>
+    </motion.div>
+  );
+};
+
+// Confirmation Modal Component
+const ConfirmModal = ({ 
+  show, 
+  title, 
+  message, 
+  onConfirm, 
+  onCancel, 
+  type = 'danger' 
+}: { 
+  show: boolean, 
+  title: string, 
+  message: string, 
+  onConfirm: () => void, 
+  onCancel: () => void,
+  type?: 'danger' | 'warning' | 'info'
+}) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="relative w-full max-w-md bg-matte-black border border-white/10 rounded-3xl p-8 shadow-2xl"
+      >
+        <div className={clsx(
+          "w-16 h-16 rounded-2xl flex items-center justify-center mb-6",
+          type === 'danger' ? "bg-red-500/20 text-red-500" : 
+          type === 'warning' ? "bg-amber-500/20 text-amber-500" : "bg-blue-500/20 text-blue-500"
+        )}>
+          {type === 'danger' ? <Trash2 className="w-8 h-8" /> : 
+           type === 'warning' ? <AlertCircle className="w-8 h-8" /> : <Info className="w-8 h-8" />}
+        </div>
+        
+        <h3 className="text-2xl font-bold text-white mb-2">{title}</h3>
+        <p className="text-white/60 mb-8 leading-relaxed text-right">{message}</p>
+        
+        <div className="flex gap-4">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-6 py-3 rounded-xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={() => {
+              onConfirm();
+              onCancel();
+            }}
+            className={clsx(
+              "flex-1 px-6 py-3 rounded-xl text-white font-bold transition-all shadow-lg",
+              type === 'danger' ? "bg-red-600 hover:bg-red-500 shadow-red-500/20" : 
+              type === 'warning' ? "bg-amber-600 hover:bg-amber-500 shadow-amber-500/20" : "bg-blue-600 hover:bg-blue-500 shadow-blue-500/20"
+            )}
+          >
+            تأكيد
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 export default function Settings({ user }: { user: User }) {
   const [logo, setLogo] = useState<string | null>(null);
@@ -34,6 +141,18 @@ export default function Settings({ user }: { user: User }) {
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState(false);
   const [passLoading, setPassLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ show: boolean, title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning' | 'info' }>({ 
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
 
   const loadDbStats = async () => {
     setDbLoading(true);
@@ -108,7 +227,7 @@ export default function Settings({ user }: { user: User }) {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        alert('حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 5 ميجابايت.');
+        showToast('حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 5 ميجابايت.', 'warning');
         return;
       }
 
@@ -144,7 +263,7 @@ export default function Settings({ user }: { user: User }) {
       window.dispatchEvent(new Event('settings_updated'));
     } catch (error) {
       console.error('Error saving settings:', error);
-      alert('حدث خطأ أثناء الحفظ.');
+      showToast('حدث خطأ أثناء الحفظ.', 'error');
     } finally {
       setSaving(false);
     }
@@ -159,7 +278,13 @@ export default function Settings({ user }: { user: User }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setPendingFile(file);
-    setShowRestoreConfirm(true);
+    setConfirmModal({
+      show: true,
+      title: 'استعادة قاعدة البيانات',
+      message: 'هل أنت متأكد من استعادة قاعدة البيانات من هذا الملف؟ سيتم استبدال جميع البيانات الحالية ولا يمكن التراجع عن هذا الإجراء.',
+      type: 'warning',
+      onConfirm: confirmRestore
+    });
     // Reset input so same file can be selected again
     e.target.value = '';
   };
@@ -708,6 +833,25 @@ export default function Settings({ user }: { user: User }) {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <ConfirmModal
+        show={confirmModal.show}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        type={confirmModal.type}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, show: false }))}
+      />
     </motion.div>
   );
 }

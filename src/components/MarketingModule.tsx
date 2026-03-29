@@ -26,7 +26,9 @@ import {
   Smartphone,
   AlertCircle,
   Plus,
-  Zap
+  Zap,
+  Settings as SettingsIcon,
+  Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
@@ -54,8 +56,22 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [selectedOffer, setSelectedOffer] = useState<UmrahOffer | null>(null);
   const [showOfferSelector, setShowOfferSelector] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [sendProgress, setSendProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [sendProgress, setSendProgress] = useState({ current: 0, total: 0, currentName: '', currentPhone: '' });
   const [showBulkSender, setShowBulkSender] = useState(false);
+  const [sendingQueue, setSendingQueue] = useState<Customer[]>([]);
+  const [currentSendIndex, setCurrentSendIndex] = useState(0);
+  const [lastSentMessage, setLastSentMessage] = useState('');
+
+  const [showBulkVerifier, setShowBulkVerifier] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [whatsappApiKey, setWhatsappApiKey] = useState(localStorage.getItem('whatsapp_api_key') || '');
+  const [whatsappService, setWhatsappService] = useState(localStorage.getItem('whatsapp_service') || 'whapi');
+  const [whatsappInstanceId, setWhatsappInstanceId] = useState(localStorage.getItem('whatsapp_instance_id') || '');
+  const [whatsappApiUrl, setWhatsappApiUrl] = useState(localStorage.getItem('whatsapp_api_url') || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud/v1' : 'https://api.ultramsg.com'));
+  const [showToken, setShowToken] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [verificationStats, setVerificationStats] = useState({ valid: 0, invalid: 0, total: 0, current: 0 });
   const [customMessage, setCustomMessage] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -63,6 +79,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ message: string, onConfirm: () => void } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
@@ -74,6 +91,18 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [showVerificationWizard, setShowVerificationWizard] = useState(false);
   const [verificationIndex, setVerificationIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    setToast({ message, type });
+  };
 
   const handleVerificationDelete = async () => {
     const currentId = selectedCustomers[verificationIndex];
@@ -93,7 +122,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         if (newSelected.length === 0) {
           setShowVerificationWizard(false);
           setVerificationIndex(0);
-          setTimeout(() => alert('تم الانتهاء من فحص القائمة المختارة'), 100);
+          showToast('تم الانتهاء من فحص القائمة المختارة', 'success');
           return [];
         }
 
@@ -107,7 +136,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       });
     } catch (error) {
       console.error('Delete failed:', error);
-      alert('حدث خطأ أثناء الحذف');
+      showToast('حدث خطأ أثناء الحذف', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -120,7 +149,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     } else {
       setShowVerificationWizard(false);
       setVerificationIndex(0);
-      alert('تم الانتهاء من فحص القائمة المختارة');
+      showToast('تم الانتهاء من فحص القائمة المختارة', 'success');
     }
   };
 
@@ -148,11 +177,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       } else {
         setShowVerificationWizard(false);
         setVerificationIndex(0);
-        setTimeout(() => alert('تم الانتهاء من فحص القائمة المختارة'), 100);
+        showToast('تم الانتهاء من فحص القائمة المختارة', 'success');
       }
     } catch (error) {
       console.error('Update failed:', error);
-      alert('حدث خطأ أثناء التحديث');
+      showToast('حدث خطأ أثناء التحديث', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -163,42 +192,144 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     return customers.find(c => c.id === selectedCustomers[verificationIndex]);
   }, [showVerificationWizard, selectedCustomers, verificationIndex, customers]);
 
-  const handleSmartCleanup = async () => {
-    if (customers.length === 0) return;
+  const handleBulkVerify = async () => {
+    if (selectedCustomers.length === 0) return;
+    
+    setIsVerifying(true);
+    setVerificationStats({ valid: 0, invalid: 0, total: selectedCustomers.length, current: 0 });
     
     const libyanPrefixes = ['091', '092', '094', '095', '093', '096', '91', '92', '94', '95', '93', '96', '21891', '21892', '21894', '21895', '21893', '21896'];
-    
-    const toDelete: string[] = [];
-    const updatedCustomers = [...customers];
-    
-    customers.forEach(customer => {
-      const cleanPhone = customer.phone.replace(/\D/g, '');
-      const isValidPrefix = libyanPrefixes.some(p => cleanPhone.startsWith(p));
-      const isValidLength = (cleanPhone.length >= 9 && cleanPhone.length <= 12);
-      
-      if (!isValidPrefix || !isValidLength) {
-        toDelete.push(customer.id);
-      }
-    });
+    const validIds: string[] = [];
+    const invalidIds: string[] = [];
 
-    if (toDelete.length === 0) {
-      alert('جميع الأرقام تبدو صحيحة حسب التنسيق الليبي');
-      return;
+    const trimmedToken = whatsappApiKey.trim();
+    const trimmedInstance = whatsappInstanceId.trim();
+    const baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+
+    for (let i = 0; i < selectedCustomers.length; i++) {
+      const id = selectedCustomers[i];
+      const customer = customers.find(c => c.id === id);
+      if (!customer) continue;
+
+      setVerificationStats(prev => ({ ...prev, current: i + 1 }));
+
+      let cleanPhone = customer.phone.replace(/\D/g, '');
+      // Handle leading 00
+      if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
+      
+      const isValidPrefix = libyanPrefixes.some(p => cleanPhone.startsWith(p));
+      const isValidLength = (cleanPhone.length >= 9 && cleanPhone.length <= 14);
+      
+      let isDeepValid = !trimmedToken; // Default to true if no API key, false if API key is present to force deep check
+
+      // Deep check if API is configured
+      if (trimmedToken && isValidPrefix && isValidLength) {
+        try {
+          let formatted = cleanPhone;
+          if (cleanPhone.startsWith('0')) formatted = '218' + cleanPhone.substring(1);
+          else if (!cleanPhone.startsWith('218')) formatted = '218' + cleanPhone;
+          
+          console.log(`Verifying number: ${formatted} via ${whatsappService}`);
+          
+          let response;
+          if (whatsappService === 'whapi') {
+            response = await fetch(`${baseUrl}/contacts/check`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${trimmedToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ numbers: [formatted] })
+            });
+          } else {
+            // UltraMsg
+            response = await fetch(`${baseUrl}/${trimmedInstance}/contacts/check?token=${trimmedToken}&chatId=${formatted}@c.us`);
+          }
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`Verification response for ${formatted}:`, data);
+            
+            if (whatsappService === 'whapi') {
+              const results = Array.isArray(data) ? data : (data.contacts || []);
+              if (results.length > 0) {
+                const res = results[0];
+                // Whapi status can be 'valid', 'invalid', or sometimes it returns boolean fields
+                // Be very strict here to improve accuracy
+                isDeepValid = res.status === 'valid' || res.valid === true || res.is_whatsapp === true || res.exists === true;
+                
+                if (!isDeepValid) {
+                  console.log(`Number ${formatted} is NOT on WhatsApp according to Whapi. Status: ${res.status}`);
+                }
+              } else {
+                isDeepValid = false;
+              }
+            } else {
+              // UltraMsg
+              isDeepValid = data.status === 'valid' || data.result === 'valid' || data.exists === true;
+            }
+          } else if (response.status === 401) {
+            console.error('WhatsApp API Token is invalid (401)');
+            showToast('عذراً، يبدو أن مفتاح الـ API غير صالح. يرجى التحقق من الإعدادات.', 'error');
+            isDeepValid = false; // Mark as invalid if token is wrong to be safe
+          } else {
+            console.warn('API Error, marking as invalid for safety:', response.status);
+            isDeepValid = false; 
+          }
+        } catch (e) {
+          console.error('Deep check failed:', e);
+          isDeepValid = false;
+        }
+      }
+
+      if (isValidPrefix && isValidLength && isDeepValid) {
+        validIds.push(id);
+        setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+      } else {
+        invalidIds.push(id);
+        setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+      }
+
+      // Small delay to prevent rate limiting if using API
+      await new Promise(resolve => setTimeout(resolve, whatsappApiKey ? 300 : 50));
     }
 
-    if (window.confirm(`تم العثور على ${toDelete.length} رقم غير صحيح أو وهمي. هل تريد حذفهم نهائياً؟`)) {
-      try {
-        setIsLoading(true);
-        await Promise.all(toDelete.map(id => api.deleteCustomer(id)));
-        setCustomers(prev => prev.filter(c => !toDelete.includes(c.id)));
-        setSelectedCustomers(prev => prev.filter(id => !toDelete.includes(id)));
-        alert(`تم تنظيف القائمة وحذف ${toDelete.length} رقم غير صالح`);
-      } catch (error) {
-        console.error('Error during smart cleanup:', error);
-        alert('حدث خطأ أثناء التنظيف');
-      } finally {
-        setIsLoading(false);
+    // Update customers in bulk
+    try {
+      if (validIds.length > 0) {
+        const customersToUpdate = customers
+          .filter(c => validIds.includes(c.id))
+          .map(c => ({ ...c, hasWhatsApp: true }));
+        
+        await api.bulkSaveCustomers(customersToUpdate);
+        
+        setCustomers(prev => prev.map(c => 
+          validIds.includes(c.id) ? { ...c, hasWhatsApp: true } : c
+        ));
       }
+
+      if (invalidIds.length > 0) {
+        setConfirmModal({
+          message: `تم العثور على ${invalidIds.length} رقم غير صالح. هل تريد حذفهم الآن؟`,
+          onConfirm: async () => {
+            try {
+              await api.bulkDeleteCustomers(invalidIds);
+              setCustomers(prev => prev.filter(c => !invalidIds.includes(c.id)));
+              setSelectedCustomers(prev => prev.filter(id => !invalidIds.includes(id)));
+              showToast('تم حذف الأرقام غير الصالحة بنجاح', 'success');
+            } catch (e) {
+              showToast('فشل حذف الأرقام غير الصالحة', 'error');
+            }
+          }
+        });
+      }
+
+      showToast(`اكتمل الفحص الذكي بنجاح. أرقام صالحة: ${validIds.length}، أرقام غير صالحة: ${invalidIds.length}`, 'success');
+    } catch (error) {
+      console.error('Error in bulk verification:', error);
+    } finally {
+      setIsVerifying(false);
+      setShowBulkVerifier(false);
     }
   };
 
@@ -215,7 +346,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       if (sync) {
         const custData = await api.syncCustomersFromBookings();
         setCustomers(Array.isArray(custData) ? custData : []);
-        alert('تم تحديث قائمة العملاء من الحجوزات بنجاح');
+        showToast('تم تحديث قائمة العملاء من الحجوزات بنجاح', 'success');
       } else {
         const [custData, offerData] = await Promise.all([
           api.getCustomers(),
@@ -227,7 +358,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       setCurrentPage(1);
     } catch (error) {
       console.error('Error fetching data:', error);
-      if (sync) alert('حدث خطأ أثناء تحديث البيانات من الحجوزات');
+      if (sync) showToast('حدث خطأ أثناء تحديث البيانات من الحجوزات', 'error');
       // Ensure we don't have undefined state
       setCustomers(prev => Array.isArray(prev) ? prev : []);
       setOffers(prev => Array.isArray(prev) ? prev : []);
@@ -304,7 +435,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       }).filter(c => c.phone.length >= 8); // Ensure valid phone length
 
       if (newCustomers.length === 0) {
-        alert('لم يتم العثور على أرقام هواتف صالحة للاستيراد');
+        showToast('لم يتم العثور على أرقام هواتف صالحة للاستيراد', 'error');
         setIsImporting(false);
         return;
       }
@@ -323,11 +454,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       await fetchData();
       setShowBulkImport(false);
       setBulkInput('');
-      alert(`تم استيراد ${newCustomers.length} عميل بنجاح`);
+      showToast(`تم استيراد ${newCustomers.length} عميل بنجاح`, 'success');
     } catch (error: any) {
       console.error('Error importing customers:', error);
       const errorMessage = error?.message || 'حدث خطأ غير متوقع';
-      alert(`حدث خطأ أثناء الاستيراد: ${errorMessage}`);
+      showToast(`حدث خطأ أثناء الاستيراد: ${errorMessage}`, 'error');
     } finally {
       setIsImporting(false);
     }
@@ -361,26 +492,32 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       
       await api.updateOffer(offer.id, updatedOffer);
       setOffers(prev => prev.map(o => o.id === offer.id ? updatedOffer : o));
-      alert(language === 'ar' ? 'تمت الترجمة بنجاح' : 'Translated successfully');
+      showToast(language === 'ar' ? 'تمت الترجمة بنجاح' : 'Translated successfully', 'success');
     } catch (error) {
       console.error('Translation failed:', error);
-      alert(language === 'ar' ? 'فشل في الترجمة' : 'Translation failed');
+      showToast(language === 'ar' ? 'فشل في الترجمة' : 'Translation failed', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDeleteOffer = async (id: string) => {
-    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذا العرض؟' : 'Are you sure you want to delete this offer?')) return;
-    try {
-      setIsLoading(true);
-      await api.deleteOffer(id);
-      setOffers(prev => prev.filter(o => o.id !== id));
-    } catch (error) {
-      console.error('Error deleting offer:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    setConfirmModal({
+      message: language === 'ar' ? 'هل أنت متأكد من حذف هذا العرض؟' : 'Are you sure you want to delete this offer?',
+      onConfirm: async () => {
+        try {
+          setIsLoading(true);
+          await api.deleteOffer(id);
+          setOffers(prev => prev.filter(o => o.id !== id));
+          showToast(language === 'ar' ? 'تم حذف العرض بنجاح' : 'Offer deleted successfully', 'success');
+        } catch (error) {
+          console.error('Error deleting offer:', error);
+          showToast(language === 'ar' ? 'حدث خطأ أثناء حذف العرض' : 'Error deleting offer', 'error');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    });
   };
 
   const handleSendOffer = async () => {
@@ -400,7 +537,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
     if (validWhatsAppCustomers.length === 0) {
       setShowOfferSelector(false);
-      alert('لا توجد أرقام واتساب صالحة في القائمة المختارة');
+      showToast('لا توجد أرقام واتساب صالحة في القائمة المختارة', 'error');
       return;
     }
 
@@ -447,29 +584,41 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
     setIsSending(true);
     setShowOfferSelector(false);
+    
+    setSendingQueue(validWhatsAppCustomers);
+    setCurrentSendIndex(0);
+    setLastSentMessage(message);
     setShowBulkSender(true);
+    setSendProgress({ 
+      current: 1, 
+      total: validWhatsAppCustomers.length,
+      currentName: validWhatsAppCustomers[0].name,
+      currentPhone: validWhatsAppCustomers[0].phone
+    });
+  };
 
-    // Send messages one by one (opening WhatsApp web/app)
-    for (let i = 0; i < validWhatsAppCustomers.length; i++) {
-      const customer = validWhatsAppCustomers[i];
-      setSendProgress({ 
-        current: i + 1, 
-        total: validWhatsAppCustomers.length,
-        currentName: customer.name 
+  const handleSendNext = () => {
+    if (currentSendIndex >= sendingQueue.length) return;
+    
+    const customer = sendingQueue[currentSendIndex];
+    sendWhatsAppMessage(customer.phone, lastSentMessage);
+    
+    if (currentSendIndex + 1 < sendingQueue.length) {
+      const nextIndex = currentSendIndex + 1;
+      setCurrentSendIndex(nextIndex);
+      setSendProgress({
+        current: nextIndex + 1,
+        total: sendingQueue.length,
+        currentName: sendingQueue[nextIndex].name,
+        currentPhone: sendingQueue[nextIndex].phone
       });
-      
-      // We use the utility to open WhatsApp
-      sendWhatsAppMessage(customer.phone, message);
-      
-      // Small delay to allow the browser to handle the window opening
-      await new Promise(resolve => setTimeout(resolve, 1500));
+    } else {
+      setIsSending(false);
+      setShowBulkSender(false);
+      setSelectedCustomers([]);
+      setSelectedOffer(null);
+      showToast('تم الانتهاء من عملية الإرسال بنجاح', 'success');
     }
-
-    setIsSending(false);
-    setShowBulkSender(false);
-    setSelectedCustomers([]);
-    setSelectedOffer(null);
-    alert('تم الانتهاء من عملية الإرسال بنجاح');
   };
 
   const renderOfferDesign = (offer: UmrahOffer) => {
@@ -561,8 +710,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 <Send className="w-10 h-10 text-emerald-500 animate-pulse" />
               </div>
               
-              <h2 className="text-2xl font-black text-white mb-2">جاري الإرسال التلقائي...</h2>
-              <p className="text-white/40 text-sm mb-8">يرجى السماح بفتح النوافذ المنبثقة لإتمام العملية</p>
+              <h2 className="text-2xl font-black text-white mb-2">الإرسال التسلسلي الذكي</h2>
+              <p className="text-white/40 text-sm mb-8">اضغط على الزر أدناه لفتح محادثة العميل التالي</p>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs font-bold">
@@ -579,21 +728,447 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 </div>
 
                 <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <p className="text-[10px] text-white/20 font-bold mb-1">يتم الإرسال الآن إلى:</p>
+                  <p className="text-[10px] text-white/20 font-bold mb-1">العميل الحالي:</p>
                   <p className="text-sm font-bold text-white">{sendProgress.currentName || 'جاري التحميل...'}</p>
+                  <p className="text-xs text-white/40 mt-1">{sendProgress.currentPhone}</p>
                 </div>
               </div>
 
               <button
+                onClick={handleSendNext}
+                className="mt-8 w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold text-lg transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3"
+              >
+                <Send className="w-6 h-6" />
+                إرسال للعميل التالي
+              </button>
+
+              <button
                 onClick={() => {
-                  if (window.confirm('هل أنت متأكد من إيقاف عملية الإرسال؟')) {
-                    window.location.reload(); // Hard stop
-                  }
+                  setConfirmModal({
+                    message: 'هل أنت متأكد من إيقاف عملية الإرسال؟',
+                    onConfirm: () => {
+                      setShowBulkSender(false);
+                      setIsSending(false);
+                    }
+                  });
                 }}
-                className="mt-8 w-full py-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl font-bold text-sm transition-all border border-red-500/20"
+                className="mt-4 w-full py-3 bg-white/5 hover:bg-white/10 text-white/40 rounded-2xl font-bold text-xs transition-all"
               >
                 إيقاف العملية
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-slate-900 border border-white/10 rounded-[2.5rem] p-8"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center border border-gold/20">
+                    <SettingsIcon className="w-5 h-5 text-gold" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white">إعدادات التسويق</h2>
+                    <p className="text-white/40 text-[10px] font-medium uppercase tracking-widest">تكوين أدوات الربط والذكاء</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-xl bg-white/5 text-white/40 hover:bg-white/10 transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-white/60 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-gold" />
+                    خدمة الربط المختارة
+                  </label>
+                  <select 
+                    value={whatsappService}
+                    onChange={(e) => {
+                      setWhatsappService(e.target.value);
+                      localStorage.setItem('whatsapp_service', e.target.value);
+                    }}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white text-sm focus:border-gold/50 transition-all outline-none"
+                  >
+                    <option value="whapi">Whapi.cloud (احترافي)</option>
+                    <option value="ultramsg">UltraMsg (سهل)</option>
+                  </select>
+                </div>
+
+                {whatsappService === 'ultramsg' && (
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold text-white/60 flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-gold" />
+                      معرف المثيل (Instance ID)
+                    </label>
+                    <input 
+                      type="text"
+                      value={whatsappInstanceId}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setWhatsappInstanceId(val);
+                        localStorage.setItem('whatsapp_instance_id', val);
+                      }}
+                      placeholder="مثال: instance12345"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white text-sm focus:border-gold/50 transition-all outline-none"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-white/60 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-gold" />
+                    رابط الـ API (Gateway)
+                  </label>
+                  <input 
+                    type="text"
+                    value={whatsappApiUrl}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setWhatsappApiUrl(val);
+                      localStorage.setItem('whatsapp_api_url', val);
+                    }}
+                    placeholder={whatsappService === 'whapi' ? "https://gate.whapi.cloud" : "https://api.ultramsg.com"}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white text-sm focus:border-gold/50 transition-all outline-none"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-white/60 flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-gold" />
+                    مفتاح API (Token)
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type={showToken ? "text" : "password"}
+                      value={whatsappApiKey}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setWhatsappApiKey(val);
+                        localStorage.setItem('whatsapp_api_key', val);
+                      }}
+                      placeholder="أدخل الـ Token هنا..."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white text-sm focus:border-gold/50 transition-all outline-none pr-12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowToken(!showToken)}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-all"
+                    >
+                      {showToken ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-white/20 italic">
+                    * هذا المفتاح يستخدم للفحص العميق للأرقام والتأكد من وجودها على واتساب فعلياً.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-gold/5 border border-gold/10 space-y-2">
+                  <div className="flex items-center gap-2 text-gold">
+                    <AlertCircle className="w-4 h-4" />
+                    <span className="text-[10px] font-bold">ملاحظة هامة</span>
+                  </div>
+                  <p className="text-[10px] text-white/40 leading-relaxed">
+                    في حال عدم وجود مفتاح API، سيعتمد النظام على "الفحص الذكي" الذي يحلل صيغة الأرقام الليبية ومدى صحتها برمجياً.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    console.log('Test connection button clicked', { whatsappService, whatsappApiKey, whatsappInstanceId });
+                    
+                    const trimmedToken = whatsappApiKey.trim();
+                    const trimmedInstance = whatsappInstanceId.trim();
+                    const baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+                    
+                    if (!trimmedToken) {
+                      showToast('يرجى إدخال الـ Token أولاً', 'error');
+                      return;
+                    }
+                    if (whatsappService === 'ultramsg' && !trimmedInstance) {
+                      showToast('يرجى إدخال Instance ID أولاً', 'error');
+                      return;
+                    }
+
+                    setIsTestingConnection(true);
+                    showToast('جاري اختبار الاتصال بالخدمة...', 'info');
+                    console.log('Starting connection test for', whatsappService);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => {
+                      console.log('Connection test timed out');
+                      controller.abort();
+                    }, 20000);
+
+                    try {
+                      let response;
+                      const headers: Record<string, string> = {
+                        'Accept': 'application/json'
+                      };
+
+                      let fetchUrl = '';
+                      if (whatsappService === 'whapi') {
+                        headers['Authorization'] = `Bearer ${trimmedToken}`;
+                        fetchUrl = `${baseUrl}/users/me`;
+                        console.log('Fetching Whapi endpoint:', fetchUrl);
+                        response = await fetch(fetchUrl, {
+                          headers,
+                          signal: controller.signal
+                        });
+
+                        // Fallback for Whapi if 404
+                        if (response.status === 404) {
+                          console.log('Whapi /users/me returned 404, trying /health...');
+                          fetchUrl = `${baseUrl}/health`;
+                          response = await fetch(fetchUrl, {
+                            headers,
+                            signal: controller.signal
+                          });
+                        }
+
+                        // Final fallback for Whapi if still 404
+                        if (response.status === 404) {
+                          console.log('Whapi /health returned 404, trying with /v1...');
+                          const v1Url = baseUrl.includes('/v1') ? baseUrl : `${baseUrl}/v1`;
+                          fetchUrl = `${v1Url}/users/me`;
+                          response = await fetch(fetchUrl, {
+                            headers,
+                            signal: controller.signal
+                          });
+                        }
+
+                        // Subdomain fallback for Whapi if still 404
+                        if (response.status === 404 && baseUrl.includes('gate.whapi.cloud')) {
+                          console.log('Whapi gate subdomain failed, trying api subdomain...');
+                          const apiBaseUrl = baseUrl.replace('gate.whapi.cloud', 'api.whapi.cloud');
+                          const v1Url = apiBaseUrl.includes('/v1') ? apiBaseUrl : `${apiBaseUrl}/v1`;
+                          fetchUrl = `${v1Url}/users/me`;
+                          response = await fetch(fetchUrl, {
+                            headers,
+                            signal: controller.signal
+                          });
+                        }
+
+                        // Final fallback for Whapi - try /v1/me
+                        if (response.status === 404) {
+                          console.log('Whapi still 404, trying /v1/me...');
+                          const v1Url = baseUrl.includes('/v1') ? baseUrl : `${baseUrl}/v1`;
+                          fetchUrl = `${v1Url}/me`;
+                          response = await fetch(fetchUrl, {
+                            headers,
+                            signal: controller.signal
+                          });
+                        }
+
+                        // One more fallback - try /v1/channels
+                        if (response.status === 404) {
+                          console.log('Whapi still 404, trying /v1/channels...');
+                          const v1Url = baseUrl.includes('/v1') ? baseUrl : `${baseUrl}/v1`;
+                          fetchUrl = `${v1Url}/channels`;
+                          response = await fetch(fetchUrl, {
+                            headers,
+                            signal: controller.signal
+                          });
+                        }
+                      } else {
+                        fetchUrl = `${baseUrl}/${trimmedInstance}/instance/status?token=${trimmedToken}`;
+                        console.log('Fetching UltraMsg endpoint:', fetchUrl);
+                        response = await fetch(fetchUrl, {
+                          headers,
+                          signal: controller.signal
+                        });
+                      }
+                      
+                      clearTimeout(timeoutId);
+                      console.log('Test connection response status:', response.status);
+
+                      let data;
+                      try {
+                        data = await response.json();
+                      } catch (e) {
+                        data = {};
+                      }
+                      
+                      console.log('Test connection response data:', data);
+
+                      if (response.ok) {
+                        // For UltraMsg, check if instance is actually connected
+                        if (whatsappService === 'ultramsg' && data.status !== 'authenticated' && data.status !== 'connected') {
+                          showToast(`⚠️ المتصل بالخدمة ولكن الحالة هي: ${data.status || 'غير معروف'}`, 'warning');
+                        } else {
+                          showToast('✅ تم الاتصال بنجاح! الخدمة تعمل والـ Token صحيح.', 'success');
+                        }
+                      } else {
+                        if (response.status === 404) {
+                          const advice = whatsappService === 'ultramsg' 
+                            ? 'تأكد من صحة الـ Instance ID' 
+                            : 'تأكد من الرابط. جرب إضافة /v1 في نهاية الرابط إذا استمر الخطأ.';
+                          showToast(`❌ خطأ 404: المسار غير موجود. الرابط المستخدم: ${fetchUrl}. ${advice}`, 'error');
+                        } else {
+                          const errorMsg = data.error || data.message || data.msg || 'يرجى التأكد من الـ Token و Instance ID';
+                          showToast(`❌ فشل الاتصال (خطأ ${response.status}): ${errorMsg}`, 'error');
+                        }
+                      }
+                    } catch (e: any) {
+                      clearTimeout(timeoutId);
+                      console.error('Test connection exception:', e);
+                      if (e.name === 'AbortError') {
+                        showToast('❌ فشل الاتصال: انتهت مهلة الطلب (20 ثانية).', 'error');
+                      } else {
+                        showToast(`❌ فشل الاتصال: ${e.message || 'تعذر الوصول للسيرفر'}. تأكد من اتصال الإنترنت.`, 'error');
+                      }
+                    } finally {
+                      setIsTestingConnection(false);
+                    }
+                  }}
+                  disabled={isTestingConnection}
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-bold text-[10px] transition-all border border-white/10 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isTestingConnection ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
+                  اختبار الاتصال بالخدمة
+                </button>
+
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-full py-4 bg-gold text-black rounded-2xl font-bold text-sm hover:bg-gold/90 transition-all shadow-lg shadow-gold/10"
+                >
+                  حفظ الإعدادات
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-[2rem] p-8 text-center"
+            >
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-4">{confirmModal.message}</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-bold transition-all"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={() => {
+                    confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  }}
+                  className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold transition-all shadow-lg shadow-red-500/20"
+                >
+                  تأكيد
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              toast.type === 'error' ? "bg-red-500/90 border-red-500/20 text-white" :
+              toast.type === 'warning' ? "bg-amber-500/90 border-amber-500/20 text-white" :
+              "bg-blue-500/90 border-blue-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
+             toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : 
+             toast.type === 'warning' ? <AlertCircle className="w-5 h-5" /> :
+             <Zap className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk Verification Progress Modal */}
+      <AnimatePresence>
+        {showBulkVerifier && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 text-center"
+            >
+              <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-500/20">
+                <CheckCircle2 className="w-10 h-10 text-blue-500 animate-pulse" />
+              </div>
+              
+              <h2 className="text-2xl font-black text-white mb-2">فحص الأرقام الذكي...</h2>
+              <p className="text-white/40 text-sm mb-8">يتم الآن فحص الأرقام وتصفية الوهمي منها</p>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
+                    <p className="text-[10px] text-emerald-500/60 font-bold mb-1">صالحة</p>
+                    <p className="text-2xl font-black text-emerald-500">{verificationStats.valid}</p>
+                  </div>
+                  <div className="p-4 bg-red-500/5 rounded-2xl border border-red-500/10">
+                    <p className="text-[10px] text-red-500/60 font-bold mb-1">غير صالحة</p>
+                    <p className="text-2xl font-black text-red-500">{verificationStats.invalid}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-white/40">التقدم الإجمالي</span>
+                    <span className="text-blue-500">{verificationStats.current} / {verificationStats.total}</span>
+                  </div>
+                  <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-blue-500"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(verificationStats.current / verificationStats.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {!isVerifying && (
+                <button
+                  onClick={() => setShowBulkVerifier(false)}
+                  className="mt-8 w-full py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold text-sm transition-all"
+                >
+                  إغلاق
+                </button>
+              )}
             </motion.div>
           </div>
         )}
@@ -614,19 +1189,23 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           <button 
             onClick={async () => {
               if (customers.length === 0) return;
-              if (!window.confirm('هل أنت متأكد من مسح جميع العملاء؟ لا يمكن التراجع عن هذه الخطوة.')) return;
-              try {
-                setIsLoading(true);
-                await Promise.all(customers.map(c => api.deleteCustomer(c.id)));
-                setCustomers([]);
-                localStorage.removeItem('cached_customers');
-                alert('تم مسح جميع العملاء بنجاح');
-              } catch (error) {
-                console.error('Error clearing customers:', error);
-                alert('حدث خطأ أثناء مسح البيانات');
-              } finally {
-                setIsLoading(false);
-              }
+              setConfirmModal({
+                message: 'هل أنت متأكد من مسح جميع العملاء؟ لا يمكن التراجع عن هذه الخطوة.',
+                onConfirm: async () => {
+                  try {
+                    setIsLoading(true);
+                    await api.bulkDeleteCustomers(customers.map(c => c.id));
+                    setCustomers([]);
+                    localStorage.removeItem('cached_customers');
+                    showToast('تم مسح جميع العملاء بنجاح', 'success');
+                  } catch (error) {
+                    console.error('Error clearing customers:', error);
+                    showToast('حدث خطأ أثناء مسح البيانات', 'error');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }
+              });
             }}
             className="p-3 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all border border-red-500/20"
             title="مسح جميع العملاء نهائياً"
@@ -636,7 +1215,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           <button 
             onClick={() => {
               fetchData(false, true);
-              alert('تم إفراغ التخزين المؤقت وجاري تحديث البيانات...');
+              showToast('تم إفراغ التخزين المؤقت وجاري تحديث البيانات...', 'info');
             }}
             className="p-3 rounded-2xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-all border border-white/10"
             title="تحديث البيانات وإفراغ التخزين المؤقت"
@@ -644,16 +1223,31 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             <RefreshCw className={clsx("w-5 h-5", isLoading && "animate-spin")} />
           </button>
           <button 
-            onClick={handleSmartCleanup}
-            className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all border border-emerald-500/20"
-            title="تنظيف ذكي للأرقام الوهمية"
+            onClick={() => {
+              if (selectedCustomers.length === 0) {
+                showToast('يرجى اختيار أرقام لفحصها أولاً', 'error');
+                return;
+              }
+              setShowBulkVerifier(true);
+              handleBulkVerify();
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 rounded-2xl"
+            title="فحص ذكي احترافي لجميع الأرقام المختارة"
           >
             <Filter className="w-5 h-5" />
+            <span className="text-xs font-bold">فحص ذكي</span>
+          </button>
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="p-3 rounded-2xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition-all border border-white/10"
+            title="إعدادات الربط والواتساب"
+          >
+            <SettingsIcon className="w-5 h-5" />
           </button>
           <button 
             onClick={() => {
               if (selectedCustomers.length === 0) {
-                alert('يرجى اختيار أرقام لفحصها أولاً');
+                showToast('يرجى اختيار أرقام لفحصها أولاً', 'error');
                 return;
               }
               setVerificationIndex(0);
@@ -668,7 +1262,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             onClick={() => {
               const whatsappOnly = customers.filter(c => c.hasWhatsApp).map(c => c.id);
               if (whatsappOnly.length === 0) {
-                alert('لا يوجد عملاء لديهم واتساب مفعل حالياً');
+                showToast('لا يوجد عملاء لديهم واتساب مفعل حالياً', 'error');
                 return;
               }
               setSelectedCustomers(whatsappOnly);
@@ -690,19 +1284,23 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           <button 
             onClick={async () => {
               if (selectedCustomers.length === 0) return;
-              if (!window.confirm(`هل أنت متأكد من حذف ${selectedCustomers.length} عميل؟`)) return;
-              try {
-                setIsLoading(true);
-                await Promise.all(selectedCustomers.map(id => api.deleteCustomer(id)));
-                setCustomers(prev => prev.filter(c => !selectedCustomers.includes(c.id)));
-                setSelectedCustomers([]);
-                alert('تم حذف العملاء المحددين بنجاح');
-              } catch (error) {
-                console.error('Error deleting customers:', error);
-                alert('حدث خطأ أثناء الحذف');
-              } finally {
-                setIsLoading(false);
-              }
+              setConfirmModal({
+                message: `هل أنت متأكد من حذف ${selectedCustomers.length} عميل؟`,
+                onConfirm: async () => {
+                  try {
+                    setIsLoading(true);
+                    await api.bulkDeleteCustomers(selectedCustomers);
+                    setCustomers(prev => prev.filter(c => !selectedCustomers.includes(c.id)));
+                    setSelectedCustomers([]);
+                    showToast('تم حذف العملاء المحددين بنجاح', 'success');
+                  } catch (error) {
+                    console.error('Error deleting customers:', error);
+                    showToast('حدث خطأ أثناء الحذف', 'error');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }
+              });
             }}
             disabled={selectedCustomers.length === 0 || isLoading}
             className={clsx(
@@ -1360,7 +1958,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                 });
                                 if (selectedOffer.fixedText) msg += `\n${selectedOffer.fixedText}`;
                                 navigator.clipboard.writeText(msg);
-                                alert('تم نسخ نص الرسالة! يمكنك لصقه في واتساب.');
+                                showToast('تم نسخ نص الرسالة! يمكنك لصقه في واتساب.', 'success');
                               }}
                               className="text-[9px] text-gold hover:underline font-bold"
                             >
@@ -1392,7 +1990,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                   
                                   // Check file size (max 750KB to stay under Firestore 1MB limit after base64 encoding)
                                   if (file.size > 750 * 1024) {
-                                    alert('حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 750 كيلوبايت لضمان نجاح الرفع.');
+                                    showToast('حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 750 كيلوبايت لضمان نجاح الرفع.', 'error');
                                     return;
                                   }
 
@@ -1404,11 +2002,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                       const imageId = await api.uploadImage(base64, file.name);
                                       const link = `${window.location.origin}/img/${imageId}`;
                                       setImageUrl(link);
-                                      alert('تم رفع الصورة وتوليد الرابط بنجاح!');
+                                      showToast('تم رفع الصورة وتوليد الرابط بنجاح!', 'success');
                                     } catch (error: any) {
                                       console.error('Upload failed:', error);
                                       const errorMessage = error.message || 'فشل رفع الصورة. تأكد من أن حجم الصورة أقل من 750 كيلوبايت.';
-                                      alert(errorMessage);
+                                      showToast(errorMessage, 'error');
                                     } finally {
                                       setIsUploadingImage(false);
                                     }
@@ -1416,7 +2014,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                   reader.onerror = () => {
                                     console.error('FileReader error');
                                     setIsUploadingImage(false);
-                                    alert('حدث خطأ أثناء قراءة الملف');
+                                    showToast('حدث خطأ أثناء قراءة الملف', 'error');
                                   };
                                   reader.readAsDataURL(file);
                                 }}
@@ -1443,7 +2041,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                               <button 
                                 onClick={() => {
                                   navigator.clipboard.writeText(imageUrl);
-                                  alert('تم نسخ الرابط!');
+                                  showToast('تم نسخ الرابط!', 'success');
                                 }}
                                 className="px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-white/60 hover:bg-white/10 transition-colors"
                               >
@@ -1484,7 +2082,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                   link.click();
                                 } catch (e) {
                                   console.error('Error generating image:', e);
-                                  alert('حدث خطأ أثناء إنشاء الصورة. يرجى المحاولة مرة أخرى.');
+                                  showToast('حدث خطأ أثناء إنشاء الصورة. يرجى المحاولة مرة أخرى.', 'error');
                                 }
                               }
                             }}
@@ -1539,6 +2137,65 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               )}
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-[2rem] p-8 text-center"
+            >
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-4">{confirmModal.message}</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-bold transition-all"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={() => {
+                    confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  }}
+                  className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold transition-all shadow-lg shadow-red-500/20"
+                >
+                  تأكيد
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              toast.type === 'error' ? "bg-red-500/90 border-red-500/20 text-white" :
+              toast.type === 'warning' ? "bg-amber-500/90 border-amber-500/20 text-white" :
+              "bg-blue-500/90 border-blue-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
+             toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : 
+             toast.type === 'warning' ? <AlertCircle className="w-5 h-5" /> :
+             <Zap className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

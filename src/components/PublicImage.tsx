@@ -5,13 +5,22 @@ import {
   Download, 
   Share2,
   Image as ImageIcon,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { clsx } from 'clsx';
 
 export default function PublicImage() {
   const { id } = useParams<{ id: string }>();
   const [image, setImage] = useState<{ data: string, name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     if (id) {
@@ -87,7 +96,7 @@ export default function PublicImage() {
                   url: window.location.href
                 }).catch(() => {
                   navigator.clipboard.writeText(window.location.href);
-                  alert('تم نسخ رابط الصورة!');
+                  showToast('تم نسخ رابط الصورة!', 'success');
                 });
               }}
               className="p-2 bg-white/5 text-white/60 rounded-lg hover:bg-white/10"
@@ -112,6 +121,25 @@ export default function PublicImage() {
           </div>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              "bg-red-500/90 border-red-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

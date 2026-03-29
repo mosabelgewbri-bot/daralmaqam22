@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Booking, Trip, Pilgrim } from '../types';
 import { api } from '../services/api';
-import { motion } from 'motion/react';
-import { Search, Printer, CreditCard, ArrowLeft, Hotel, Phone, User as UserIcon, Download, Share2, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Search, Printer, CreditCard, ArrowLeft, Hotel, Phone, User as UserIcon, Download, Share2, ImageIcon, Loader2, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import Logo from './Logo';
@@ -20,6 +20,21 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
   const [hideDefaultHeader, setHideDefaultHeader] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<number | null>(null);
+
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    show: false,
+    message: '',
+    type: 'success'
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -145,10 +160,10 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
       link.click();
       
       // Optional: Inform user they can now upload to Canva
-      // alert('تم تحميل البطاقة بجودة عالية. يمكنك الآن رفعها إلى Canva.');
+      // showToast('تم تحميل البطاقة بجودة عالية. يمكنك الآن رفعها إلى Canva.', 'success');
     } catch (error) {
       console.error('Export error:', error);
-      alert('حدث خطأ أثناء التصدير');
+      showToast('حدث خطأ أثناء التصدير', 'error');
     } finally {
       setExporting(null);
     }
@@ -182,7 +197,7 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
       }
     } catch (error) {
       console.error('Export all error:', error);
-      alert('حدث خطأ أثناء تصدير الكل');
+      showToast('حدث خطأ أثناء تصدير الكل', 'error');
     } finally {
       setExporting(null);
     }
@@ -370,9 +385,9 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                     madinah_rep: madinahRep,
                     hide_default_header: String(hideDefaultHeader)
                   });
-                  alert('تم حفظ الإعدادات بنجاح');
+                  showToast('تم حفظ الإعدادات بنجاح', 'success');
                 } catch (e) {
-                  alert('فشل حفظ الإعدادات');
+                  showToast('فشل حفظ الإعدادات', 'error');
                 }
               }}
               className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white/60 rounded-xl border border-white/10 transition-all text-sm font-bold"
@@ -773,6 +788,30 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
           }
         }
       `}} />
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={clsx(
+              "fixed bottom-8 right-8 z-[200] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl",
+              toast.type === 'success' && "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+              toast.type === 'error' && "bg-red-500/10 border-red-500/20 text-red-400",
+              toast.type === 'warning' && "bg-amber-500/10 border-amber-500/20 text-amber-400",
+              toast.type === 'info' && "bg-blue-500/10 border-blue-500/20 text-blue-400"
+            )}
+          >
+            {toast.type === 'success' && <CheckCircle2 className="w-6 h-6" />}
+            {toast.type === 'error' && <AlertCircle className="w-6 h-6" />}
+            {toast.type === 'warning' && <Zap className="w-6 h-6" />}
+            {toast.type === 'info' && <ImageIcon className="w-6 h-6" />}
+            <span className="font-bold">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

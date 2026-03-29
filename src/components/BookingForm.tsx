@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Pilgrim } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap } from 'lucide-react';
 import Logo from './Logo';
 import PassportScanner from './PassportScanner';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -28,6 +28,18 @@ export default function BookingForm({ user }: { user: User }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [savedBooking, setSavedBooking] = useState<any>(null);
   const [viewingPassport, setViewingPassport] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    setToast({ message, type });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const fieldRefs = React.useRef<Record<string, HTMLElement | null>>({});
@@ -171,7 +183,7 @@ export default function BookingForm({ user }: { user: User }) {
           }
         }
         
-        alert(errorMessage);
+        showToast(errorMessage, 'error');
         
         const updated = [...pilgrims];
         updated[index] = { ...updated[index], passportImage: base64 };
@@ -418,7 +430,7 @@ export default function BookingForm({ user }: { user: User }) {
       pdf.save(`فاتورة_${savedBooking.headName}_${savedBooking.id}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
-      alert('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       document.body.removeChild(printWindow);
     }
@@ -1160,7 +1172,7 @@ export default function BookingForm({ user }: { user: User }) {
                             setPassengerCount(prev => prev - 1);
                             setPilgrims(prev => prev.filter((_, i) => i !== idx));
                           } else {
-                            alert('يجب أن يكون هناك معتمر واحد على الأقل');
+                            showToast('يجب أن يكون هناك معتمر واحد على الأقل', 'warning');
                           }
                         }}
                         className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors"
@@ -1326,6 +1338,28 @@ export default function BookingForm({ user }: { user: User }) {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              toast.type === 'error' ? "bg-red-500/90 border-red-500/20 text-white" :
+              "bg-blue-500/90 border-blue-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
+             toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : 
+             <Zap className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
           </motion.div>
         )}
       </AnimatePresence>

@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
 const NotificationBell: React.FC = () => {
-  const { notifications, unreadCount, markAsRead, refreshNotifications, scanForTasks, loading } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, refreshNotifications, scanForTasks, loading } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -21,8 +21,7 @@ const NotificationBell: React.FC = () => {
   }, []);
 
   const handleMarkAllAsRead = async () => {
-    const unread = notifications.filter(n => !n.read);
-    await Promise.all(unread.map(n => markAsRead(n.id)));
+    await markAllAsRead();
   };
 
   const getIcon = (type: string) => {

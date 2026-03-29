@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Booking } from '../types';
 import { api } from '../services/api';
-import { motion } from 'motion/react';
-import { Search, DollarSign, CreditCard, Save, CheckCircle2, AlertCircle, ShieldAlert, FileText, Download, MessageSquare } from 'lucide-react';
+import { Search, DollarSign, CreditCard, Save, CheckCircle2, AlertCircle, ShieldAlert, FileText, Download, MessageSquare, Zap } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { getRolePermissions } from '../utils/dataUtils';
 import jsPDF from 'jspdf';
@@ -18,6 +18,21 @@ export default function FinanceModule({ user }: { user: User }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ id: string, status: 'idle' | 'saving' | 'success' | 'error' }>({ id: '', status: 'idle' });
+
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    show: false,
+    message: '',
+    type: 'success'
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
 
   const sendWhatsAppMessage = (phone: string, message: string) => {
     if (!phone) return;
@@ -268,7 +283,7 @@ export default function FinanceModule({ user }: { user: User }) {
       pdf.save(`${onlyRemaining ? 'Remaining' : 'Finance'}_Report_${new Date().toLocaleDateString('ar-LY')}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
-      alert('حدث خطأ أثناء تصدير ملف PDF.');
+      showToast('حدث خطأ أثناء تصدير ملف PDF.', 'error');
     } finally {
       document.body.removeChild(printWindow);
     }
@@ -484,6 +499,30 @@ export default function FinanceModule({ user }: { user: User }) {
           </div>
         </div>
       )}
+      
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={clsx(
+              "fixed bottom-8 right-8 z-[200] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl",
+              toast.type === 'success' && "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+              toast.type === 'error' && "bg-red-500/10 border-red-500/20 text-red-400",
+              toast.type === 'warning' && "bg-amber-500/10 border-amber-500/20 text-amber-400",
+              toast.type === 'info' && "bg-blue-500/10 border-blue-500/20 text-blue-400"
+            )}
+          >
+            {toast.type === 'success' && <CheckCircle2 className="w-6 h-6" />}
+            {toast.type === 'error' && <AlertCircle className="w-6 h-6" />}
+            {toast.type === 'warning' && <Zap className="w-6 h-6" />}
+            {toast.type === 'info' && <FileText className="w-6 h-6" />}
+            <span className="font-bold">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

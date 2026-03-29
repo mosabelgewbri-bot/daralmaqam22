@@ -6,6 +6,7 @@ interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
   markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
   scanForTasks: () => Promise<void>;
   loading: boolean;
@@ -33,6 +34,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     } catch (error) {
       console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+    if (unreadIds.length === 0) return;
+    
+    try {
+      await api.bulkMarkNotificationsAsRead(unreadIds);
+      setNotifications(prev => prev.map(n => unreadIds.includes(n.id) ? { ...n, read: true } : n));
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
     }
   };
 
@@ -201,7 +214,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
 
       // Add new notifications
       if (newNotifications.length > 0) {
-        await Promise.all(newNotifications.map(n => api.addNotification(n)));
+        await api.bulkAddNotifications(newNotifications);
         await refreshNotifications();
       }
 
@@ -237,6 +250,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
       notifications, 
       unreadCount, 
       markAsRead, 
+      markAllAsRead,
       refreshNotifications, 
       scanForTasks,
       loading 

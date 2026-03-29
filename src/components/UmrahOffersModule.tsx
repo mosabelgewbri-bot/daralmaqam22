@@ -16,7 +16,9 @@ import {
   Share2,
   Check,
   Copy,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
@@ -93,7 +95,21 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ 
+    title: string; 
+    message: string; 
+    onConfirm: () => void; 
+    confirmText?: string;
+    cancelText?: string;
+    type?: 'danger' | 'warning' | 'info';
+  } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     fetchData();
@@ -158,7 +174,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
 
   const handleSave = async () => {
     if (!currentOffer.name) {
-      alert('يرجى إدخال اسم العرض');
+      showToast('يرجى إدخال اسم العرض', 'warning');
       return;
     }
     try {
@@ -171,13 +187,25 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا العرض؟')) return;
-    try {
-      await api.deleteUmrahOffer(id);
-      fetchData();
-    } catch (error) {
-      console.error('Error deleting offer:', error);
-    }
+    setConfirmModal({
+      title: 'حذف العرض',
+      message: 'هل أنت متأكد من حذف هذا العرض؟ لا يمكن التراجع عن هذا الإجراء.',
+      onConfirm: async () => {
+        try {
+          await api.deleteUmrahOffer(id);
+          showToast('تم حذف العرض بنجاح', 'success');
+          fetchData();
+        } catch (error) {
+          console.error('Error deleting offer:', error);
+          showToast('حدث خطأ أثناء حذف العرض', 'error');
+        } finally {
+          setConfirmModal(null);
+        }
+      },
+      confirmText: 'حذف',
+      cancelText: 'إلغاء',
+      type: 'danger'
+    });
   };
 
   const exportToImage = async (offer: UmrahOffer) => {
@@ -213,7 +241,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
       link.click();
     } catch (error) {
       console.error('Error exporting Image:', error);
-      alert('حدث خطأ أثناء تصدير الصورة. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تصدير الصورة. يرجى المحاولة مرة أخرى.', 'error');
     }
   };
 
@@ -296,7 +324,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
       pdf.save(`عرض_عمرة_${offer.name}.pdf`);
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      alert('حدث خطأ أثناء تصدير PDF. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تصدير PDF. يرجى المحاولة مرة أخرى.', 'error');
     }
   };
 
@@ -572,7 +600,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
       saveAs(blob, `عرض_عمرة_${offer.name}.docx`);
     } catch (error) {
       console.error('Error exporting Word:', error);
-      alert('حدث خطأ أثناء تصدير ملف Word.');
+      showToast('حدث خطأ أثناء تصدير ملف Word.', 'error');
     }
   };
 
@@ -875,11 +903,11 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                           const imageId = await api.uploadImage(base64, file.name);
                           const link = `${window.location.origin}/img/${imageId}`;
                           setCurrentOffer(prev => ({ ...prev, imageUrl: link }));
-                          alert('تم رفع الصورة وتوليد الرابط بنجاح!');
+                          showToast('تم رفع الصورة وتوليد الرابط بنجاح!', 'success');
                         } catch (error: any) {
                           console.error('Upload failed:', error);
                           const errorMessage = error.message || 'فشل رفع الصورة. يرجى المحاولة بصورة أصغر.';
-                          alert(errorMessage);
+                          showToast(errorMessage, 'error');
                         } finally {
                           setIsUploadingImage(false);
                         }
@@ -887,7 +915,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                       reader.onerror = () => {
                         console.error('FileReader error');
                         setIsUploadingImage(false);
-                        alert('حدث خطأ أثناء قراءة الملف');
+                        showToast('حدث خطأ أثناء قراءة الملف', 'error');
                       };
                       reader.readAsDataURL(file);
                     }}
@@ -914,7 +942,7 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   <button 
                     onClick={() => {
                       navigator.clipboard.writeText(currentOffer.imageUrl || '');
-                      alert('تم نسخ الرابط!');
+                      showToast('تم نسخ الرابط!', 'success');
                     }}
                     className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white/60 hover:bg-white/10 transition-colors"
                   >
@@ -1311,6 +1339,64 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-[2rem] p-8 text-center"
+            >
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-4">{confirmModal.message}</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setConfirmModal(null)}
+                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-bold transition-all"
+                >
+                  {confirmModal.cancelText || 'إلغاء'}
+                </button>
+                <button
+                  onClick={() => {
+                    confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  }}
+                  className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold transition-all shadow-lg shadow-red-500/20"
+                >
+                  {confirmModal.confirmText || 'تأكيد'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              toast.type === 'error' ? "bg-red-500/90 border-red-500/20 text-white" :
+              "bg-blue-500/90 border-blue-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
+             toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : 
+             <Zap className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
         )}
       </AnimatePresence>
     </motion.div>

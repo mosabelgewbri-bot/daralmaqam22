@@ -11,14 +11,24 @@ import {
   Share2,
   MapPin,
   Hotel,
-  Utensils
+  Utensils,
+  Zap,
+  AlertCircle
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { motion, AnimatePresence } from 'motion/react';
+import { clsx } from 'clsx';
 
 export default function PublicOffer() {
   const { id } = useParams<{ id: string }>();
   const [offer, setOffer] = useState<UmrahOffer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     if (id) {
@@ -226,7 +236,7 @@ export default function PublicOffer() {
                   url: window.location.href
                 }).catch(() => {
                   navigator.clipboard.writeText(window.location.href);
-                  alert('تم نسخ رابط العرض!');
+                  showToast('تم نسخ رابط العرض!', 'success');
                 });
               }}
               className="w-full sm:w-auto px-8 py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg"
@@ -237,6 +247,25 @@ export default function PublicOffer() {
           </div>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              "bg-red-500/90 border-red-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

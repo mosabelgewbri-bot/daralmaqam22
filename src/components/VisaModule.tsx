@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { User, Pilgrim, Booking, Trip } from '../types';
 import { api } from '../services/api';
 import { deduplicateBookings } from '../utils/dataUtils';
-import { motion } from 'motion/react';
-import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare } from 'lucide-react';
+import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare, Zap, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import Logo from './Logo';
@@ -20,10 +20,25 @@ export default function VisaModule({ user }: { user: User }) {
   const [selectedPilgrims, setSelectedPilgrims] = useState<string[]>([]); // Array of passportNo
   const [bulkStatus, setBulkStatus] = useState<Pilgrim['visaStatus'] | ''>('');
 
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info' | 'warning';
+  }>({
+    show: false,
+    message: '',
+    type: 'success'
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
   const sendWhatsAppMessage = (pilgrim: any) => {
     const phone = pilgrim.phone?.replace(/\s+/g, '');
     if (!phone) {
-      alert('رقم الهاتف غير متوفر لهذا المعتمر');
+      showToast('رقم الهاتف غير متوفر لهذا المعتمر', 'error');
       return;
     }
 
@@ -116,7 +131,7 @@ export default function VisaModule({ user }: { user: User }) {
     } catch (error) {
       console.error('Error updating visa status:', error);
       setBookings(originalBookings);
-      alert('حدث خطأ أثناء تحديث الحالة. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تحديث الحالة. يرجى المحاولة مرة أخرى.', 'error');
     }
   };
 
@@ -140,7 +155,7 @@ export default function VisaModule({ user }: { user: User }) {
     } catch (error) {
       console.error('Error updating group number:', error);
       setBookings(originalBookings);
-      alert('حدث خطأ أثناء تحديث رقم المجموعة. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تحديث رقم المجموعة. يرجى المحاولة مرة أخرى.', 'error');
     }
   };
 
@@ -169,7 +184,7 @@ export default function VisaModule({ user }: { user: User }) {
         setBookings(updatedBookings);
         setSelectedPilgrims([]);
         setBulkStatus('');
-        alert('تم تحديث حالة التأشيرات بنجاح');
+        showToast('تم تحديث حالة التأشيرات بنجاح', 'success');
       } catch (error) {
         console.error('Error in bulk update:', error);
       }
@@ -355,7 +370,7 @@ export default function VisaModule({ user }: { user: User }) {
       pdf.save(`تأشيرات_${tripName}_${new Date().toLocaleDateString('ar-LY')}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
-      alert('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.');
+      showToast('حدث خطأ أثناء تصدير ملف PDF. يرجى المحاولة مرة أخرى.', 'error');
     } finally {
       document.body.removeChild(printWindow);
     }
@@ -523,6 +538,30 @@ export default function VisaModule({ user }: { user: User }) {
           </tbody>
         </table>
       </div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={clsx(
+              "fixed bottom-8 right-8 z-[200] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl",
+              toast.type === 'success' && "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+              toast.type === 'error' && "bg-red-500/10 border-red-500/20 text-red-400",
+              toast.type === 'warning' && "bg-amber-500/10 border-amber-500/20 text-amber-400",
+              toast.type === 'info' && "bg-blue-500/10 border-blue-500/20 text-blue-400"
+            )}
+          >
+            {toast.type === 'success' && <CheckCircle2 className="w-6 h-6" />}
+            {toast.type === 'error' && <AlertCircle className="w-6 h-6" />}
+            {toast.type === 'warning' && <Zap className="w-6 h-6" />}
+            {toast.type === 'info' && <Shield className="w-6 h-6" />}
+            <span className="font-bold">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

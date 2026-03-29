@@ -432,6 +432,32 @@ export const api = {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
   },
+  async bulkSaveBookings(bookings: Partial<Booking>[]): Promise<void> {
+    const path = 'bookings';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < bookings.length; i += chunkSize) {
+        const chunk = bookings.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(booking => {
+          const { id, ...data } = booking;
+          const cleanData = Object.fromEntries(
+            Object.entries(data).filter(([_, v]) => v !== undefined)
+          );
+          if (id && id !== 'new') {
+            batch.update(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
+          } else {
+            batch.set(doc(collection(db, path)), { ...cleanData, createdAt: serverTimestamp() });
+          }
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkSaveBookings:', error);
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
 
   // Permissions
   async getPermissions(): Promise<RolePermissions[]> {
@@ -918,6 +944,47 @@ export const api = {
       console.error('Error marking notification as read:', error);
     }
   },
+  async bulkAddNotifications(notifications: Partial<Notification>[]): Promise<void> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < notifications.length; i += chunkSize) {
+        const chunk = notifications.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(notification => {
+          const cleanData = Object.fromEntries(
+            Object.entries(notification).filter(([_, v]) => v !== undefined)
+          );
+          batch.set(doc(collection(db, path)), {
+            ...cleanData,
+            read: false,
+            createdAt: serverTimestamp()
+          });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkAddNotifications:', error);
+    }
+  },
+  async bulkMarkNotificationsAsRead(ids: string[]): Promise<void> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.update(doc(db, path, id), { read: true });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkMarkNotificationsAsRead:', error);
+    }
+  },
   
   // Umrah Offers
   async getUmrahOffers(): Promise<UmrahOffer[]> {
@@ -1168,6 +1235,24 @@ export const api = {
       await this.ensureAuth();
       await deleteDoc(doc(db, path, id));
     } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+  async bulkDeleteCustomers(ids: string[]): Promise<void> {
+    const path = 'customers';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.delete(doc(db, path, id));
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkDeleteCustomers:', error);
       handleFirestoreError(error, OperationType.DELETE, path);
     }
   },
