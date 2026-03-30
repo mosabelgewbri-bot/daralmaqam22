@@ -1035,6 +1035,64 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
   }
 });
 
+// WhatsApp API Proxy to bypass CORS
+app.post("/api/whatsapp/proxy", async (req, res) => {
+  const { url, method, headers, body } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: "URL is required" });
+  }
+
+  console.log(`Proxying ${method || 'GET'} request to: ${url}`);
+  
+  try {
+    // Add a 45-second timeout to the server-side fetch to match frontend expectations
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      console.warn(`Proxy request to ${url} timed out after 45s`);
+      controller.abort();
+    }, 45000);
+
+    const response = await fetch(url, {
+      method: method || 'GET',
+      headers: headers || {},
+      body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    const text = await response.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.warn(`Failed to parse JSON from ${url}. Raw response: ${text.substring(0, 200)}`);
+      data = { raw: text, status: response.statusText, isRaw: true };
+    }
+    
+    if (response.ok) {
+      console.log(`Proxy request to ${url} succeeded with status ${response.status}`);
+    } else {
+      if (response.status === 402) {
+        console.warn(`Proxy request to ${url} failed with status 402 (Payment Required). Whapi.Cloud account needs credit/subscription.`);
+      } else {
+        console.warn(`Proxy request to ${url} failed with status ${response.status}`);
+      }
+    }
+
+    res.status(response.status).json(data || { status: response.statusText });
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error(`Proxy request to ${url} was aborted (timeout)`);
+      res.status(504).json({ error: "Gateway Timeout", details: "The request to the WhatsApp API timed out." });
+    } else {
+      console.error(`Proxy error for ${url}:`, error);
+      res.status(500).json({ error: "Failed to proxy request", details: error.message });
+    }
+  }
+});
+
 // Global error handler for Express
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Unhandled Express Error:", err);

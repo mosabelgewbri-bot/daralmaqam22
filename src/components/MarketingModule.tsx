@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Users, 
   Search, 
@@ -67,7 +67,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [whatsappApiKey, setWhatsappApiKey] = useState(localStorage.getItem('whatsapp_api_key') || '');
   const [whatsappService, setWhatsappService] = useState(localStorage.getItem('whatsapp_service') || 'whapi');
   const [whatsappInstanceId, setWhatsappInstanceId] = useState(localStorage.getItem('whatsapp_instance_id') || '');
-  const [whatsappApiUrl, setWhatsappApiUrl] = useState(localStorage.getItem('whatsapp_api_url') || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud/v1' : 'https://api.ultramsg.com'));
+  const [whatsappApiUrl, setWhatsappApiUrl] = useState(localStorage.getItem('whatsapp_api_url') || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com'));
   const [showToken, setShowToken] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
@@ -78,6 +78,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [isCopyingNumbers, setIsCopyingNumbers] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
+  const [generateCount, setGenerateCount] = useState(20000);
+  const [useSimulation, setUseSimulation] = useState(localStorage.getItem('use_simulation') === 'true');
+  const [isGeneratingAndVerifying, setIsGeneratingAndVerifying] = useState(false);
+  const stopGeneratingRef = useRef(false);
   const [isImporting, setIsImporting] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string, onConfirm: () => void } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -102,6 +106,66 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     setToast({ message, type });
+  };
+
+  const fetchWhatsApp = async (url: string, options: any = {}, retries = 2) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Prepare body - if it's already an object, don't parse it
+        let parsedBody = undefined;
+        if (options.body) {
+          if (typeof options.body === 'string') {
+            try {
+              parsedBody = JSON.parse(options.body);
+            } catch (e) {
+              console.warn('Failed to parse body as JSON, sending as is:', options.body);
+              parsedBody = options.body;
+            }
+          } else {
+            parsedBody = options.body;
+          }
+        }
+
+        const response = await fetch('/api/whatsapp/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            method: options.method || 'GET',
+            headers: options.headers || {},
+            body: parsedBody
+          }),
+          signal: options.signal
+        });
+
+        // If it's a 5xx error or network failure, we might want to retry
+        if (!response.ok && response.status >= 500 && attempt < retries) {
+          console.warn(`fetchWhatsApp attempt ${attempt + 1} failed with status ${response.status}, retrying...`);
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+
+        return response;
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          console.warn('fetchWhatsApp aborted:', url);
+          if (!e.message || e.message.includes('aborted without reason')) {
+            e.message = 'The operation was aborted (timeout)';
+          }
+          throw e; // Don't retry on abort
+        }
+        
+        if (attempt < retries) {
+          console.warn(`fetchWhatsApp attempt ${attempt + 1} failed: ${e.message}, retrying...`);
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        
+        console.error('fetchWhatsApp error after retries:', e);
+        throw e;
+      }
+    }
+    throw new Error('Failed to fetch after multiple attempts');
   };
 
   const handleVerificationDelete = async () => {
@@ -196,102 +260,210 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     if (selectedCustomers.length === 0) return;
     
     setIsVerifying(true);
+    stopGeneratingRef.current = false;
     setVerificationStats({ valid: 0, invalid: 0, total: selectedCustomers.length, current: 0 });
     
-    const libyanPrefixes = ['091', '092', '094', '095', '093', '096', '91', '92', '94', '95', '93', '96', '21891', '21892', '21894', '21895', '21893', '21896'];
+    const libyanPrefixes = ['091', '092', '91', '92', '21891', '21892'];
     const validIds: string[] = [];
     const invalidIds: string[] = [];
 
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId.trim();
-    const baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    
+    // Clean baseUrl for UltraMsg to avoid double instance ID
+    if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
+      const parts = baseUrl.split('/');
+      const instanceIdx = parts.findIndex(p => p.startsWith('instance'));
+      if (instanceIdx !== -1) {
+        baseUrl = parts.slice(0, instanceIdx).join('/');
+      }
+    }
+    
+    if (whatsappService === 'whapi' && trimmedToken) {
+      const batchSize = 50;
+      for (let i = 0; i < selectedCustomers.length; i += batchSize) {
+        const batchIds = selectedCustomers.slice(i, i + batchSize);
+        const batchCustomers = batchIds.map(id => customers.find(c => c.id === id)).filter(Boolean);
+        
+        setVerificationStats(prev => ({ ...prev, current: i + batchIds.length }));
 
-    for (let i = 0; i < selectedCustomers.length; i++) {
-      const id = selectedCustomers[i];
-      const customer = customers.find(c => c.id === id);
-      if (!customer) continue;
+        const formattedBatch = batchCustomers.map(c => {
+          let clean = c!.phone.replace(/\D/g, '');
+          if (clean.startsWith('00')) clean = clean.substring(2);
+          if (clean.startsWith('0')) return '218' + clean.substring(1);
+          if (!clean.startsWith('218')) return '218' + clean;
+          return clean;
+        });
 
-      setVerificationStats(prev => ({ ...prev, current: i + 1 }));
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort('timeout'), 30000);
 
-      let cleanPhone = customer.phone.replace(/\D/g, '');
-      // Handle leading 00
-      if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
-      
-      const isValidPrefix = libyanPrefixes.some(p => cleanPhone.startsWith(p));
-      const isValidLength = (cleanPhone.length >= 9 && cleanPhone.length <= 14);
-      
-      let isDeepValid = !trimmedToken; // Default to true if no API key, false if API key is present to force deep check
-
-      // Deep check if API is configured
-      if (trimmedToken && isValidPrefix && isValidLength) {
         try {
-          let formatted = cleanPhone;
-          if (cleanPhone.startsWith('0')) formatted = '218' + cleanPhone.substring(1);
-          else if (!cleanPhone.startsWith('218')) formatted = '218' + cleanPhone;
-          
-          console.log(`Verifying number: ${formatted} via ${whatsappService}`);
-          
-          let response;
-          if (whatsappService === 'whapi') {
-            response = await fetch(`${baseUrl}/contacts/check`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${trimmedToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ numbers: [formatted] })
+          const tryEndpoints = [`${baseUrl}/contacts`, `${baseUrl}/v1/contacts`];
+          let response = null;
+
+          for (const url of tryEndpoints) {
+            try {
+              response = await fetchWhatsApp(url, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${trimmedToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ contacts: formattedBatch, force_check: true }),
+                signal: controller.signal
+              });
+              
+              if (response.status === 402) {
+                showToast('خطأ 402: يرجى التحقق من رصيد أو اشتراك Whapi.Cloud الخاص بك.', 'error');
+                stopGeneratingRef.current = true;
+                break;
+              }
+
+              if (response.ok || response.status !== 404) break;
+            } catch (e) { console.warn(e); }
+          }
+
+          if (stopGeneratingRef.current) break;
+
+          if (response && response.ok) {
+            const data = await response.json();
+            const results = Array.isArray(data) ? data : (data.contacts || []);
+            
+            results.forEach((res: any, idx: number) => {
+              const customer = batchCustomers[idx];
+              if (!customer) return;
+
+              const status = (res.status || res.result || res.state || '').toString().toLowerCase();
+              const isInvalid = status.includes('invalid') || status.includes('not') || res.exists === false || res.valid === false;
+              
+              const isValid = !isInvalid && (
+                status.includes('valid') || 
+                status.includes('exist') || 
+                status.includes('active') || 
+                res.valid === true || 
+                res.exists === true || 
+                !!res.wa_id || 
+                !!res.id || 
+                !!res.jid ||
+                !!res.chatId
+              );
+
+              if (isValid) {
+                validIds.push(customer.id);
+                setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+              } else {
+                invalidIds.push(customer.id);
+                setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+              }
             });
           } else {
-            // UltraMsg
-            response = await fetch(`${baseUrl}/${trimmedInstance}/contacts/check?token=${trimmedToken}&chatId=${formatted}@c.us`);
+            batchIds.forEach(id => invalidIds.push(id));
+            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + batchIds.length }));
           }
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`Verification response for ${formatted}:`, data);
-            
-            if (whatsappService === 'whapi') {
-              const results = Array.isArray(data) ? data : (data.contacts || []);
-              if (results.length > 0) {
-                const res = results[0];
-                // Whapi status can be 'valid', 'invalid', or sometimes it returns boolean fields
-                // Be very strict here to improve accuracy
-                isDeepValid = res.status === 'valid' || res.valid === true || res.is_whatsapp === true || res.exists === true;
-                
-                if (!isDeepValid) {
-                  console.log(`Number ${formatted} is NOT on WhatsApp according to Whapi. Status: ${res.status}`);
-                }
-              } else {
-                isDeepValid = false;
-              }
-            } else {
-              // UltraMsg
-              isDeepValid = data.status === 'valid' || data.result === 'valid' || data.exists === true;
-            }
-          } else if (response.status === 401) {
-            console.error('WhatsApp API Token is invalid (401)');
-            showToast('عذراً، يبدو أن مفتاح الـ API غير صالح. يرجى التحقق من الإعدادات.', 'error');
-            isDeepValid = false; // Mark as invalid if token is wrong to be safe
-          } else {
-            console.warn('API Error, marking as invalid for safety:', response.status);
-            isDeepValid = false; 
-          }
-        } catch (e) {
-          console.error('Deep check failed:', e);
-          isDeepValid = false;
+        } catch (error) {
+          console.error('Batch verification error:', error);
+          batchIds.forEach(id => invalidIds.push(id));
+          setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + batchIds.length }));
+        } finally {
+          clearTimeout(timeoutId);
         }
-      }
 
-      if (isValidPrefix && isValidLength && isDeepValid) {
-        validIds.push(id);
-        setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
-      } else {
-        invalidIds.push(id);
-        setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+        await new Promise(r => setTimeout(r, 500));
       }
+    } else {
+      for (let i = 0; i < selectedCustomers.length; i++) {
+        const id = selectedCustomers[i];
+        const customer = customers.find(c => c.id === id);
+        if (!customer) continue;
 
-      // Small delay to prevent rate limiting if using API
-      await new Promise(resolve => setTimeout(resolve, whatsappApiKey ? 300 : 50));
+        setVerificationStats(prev => ({ ...prev, current: i + 1 }));
+
+        if (useSimulation) {
+          const isSimValid = Math.random() > 0.5;
+          if (isSimValid) {
+            validIds.push(id);
+            setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+          } else {
+            invalidIds.push(id);
+            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+          }
+          continue;
+        }
+
+        let cleanPhone = customer.phone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
+        
+        const isValidPrefix = libyanPrefixes.some(p => cleanPhone.startsWith(p));
+        const isValidLength = (cleanPhone.length >= 9 && cleanPhone.length <= 14);
+        
+        let isDeepValid = !trimmedToken;
+
+        if (trimmedToken && isValidPrefix && isValidLength) {
+          try {
+            let formatted = cleanPhone;
+            if (cleanPhone.startsWith('0')) formatted = '218' + cleanPhone.substring(1);
+            else if (!cleanPhone.startsWith('218')) formatted = '218' + cleanPhone;
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort('timeout'), 20000);
+            
+            try {
+              // Standard UltraMsg format: number@c.us (no plus)
+              const chatId = `${formatted}@c.us`;
+              const url = `${baseUrl}/${trimmedInstance}/contacts/check?token=${trimmedToken}&chatId=${chatId}&nocache=1`;
+              const response = await fetchWhatsApp(url, {
+                signal: controller.signal
+              });
+              
+              if (response.status === 402) {
+                showToast('خطأ 402: يرجى التحقق من رصيد أو اشتراك Whapi.Cloud الخاص بك.', 'error');
+                stopGeneratingRef.current = true;
+                break;
+              }
+
+              if (response && response.ok) {
+                const data = await response.json();
+                const status = (data.status || data.result || data.state || '').toString().toLowerCase();
+                const isInvalid = status.includes('invalid') || status.includes('not') || data.exists === false || data.valid === false;
+                
+                isDeepValid = !isInvalid && (
+                  status.includes('valid') || 
+                  status.includes('exist') || 
+                  status.includes('active') || 
+                  status.includes('ok') ||
+                  data.valid === true || 
+                  data.exists === true || 
+                  !!data.wa_id || 
+                  !!data.id || 
+                  !!data.jid ||
+                  !!data.chatId ||
+                  (data.isRaw && data.raw && !data.raw.toLowerCase().includes('invalid'))
+                );
+              }
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          } catch (e) {
+            isDeepValid = false;
+          }
+        } else {
+          isDeepValid = isValidPrefix && isValidLength;
+        }
+
+        if (stopGeneratingRef.current) break;
+
+        if (isDeepValid) {
+          validIds.push(id);
+          setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+        } else {
+          invalidIds.push(id);
+          setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+        }
+
+        await new Promise(resolve => setTimeout(resolve, trimmedToken ? 300 : 50));
+      }
     }
 
     // Update customers in bulk
@@ -330,6 +502,255 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     } finally {
       setIsVerifying(false);
       setShowBulkVerifier(false);
+    }
+  };
+
+  const handleGenerateAndVerify = async () => {
+    if (!whatsappApiKey) {
+      showToast('يرجى إدخال مفتاح الـ API أولاً في الإعدادات.', 'error');
+      setShowSettings(true);
+      return;
+    }
+
+    if (whatsappService === 'ultramsg' && !whatsappInstanceId) {
+      showToast('يرجى إدخال Instance ID لخدمة UltraMsg في الإعدادات.', 'error');
+      setShowSettings(true);
+      return;
+    }
+
+    setIsGeneratingAndVerifying(true);
+    stopGeneratingRef.current = false;
+    setVerificationStats({ valid: 0, invalid: 0, total: generateCount, current: 0 });
+
+    const prefixes = ['091', '092'];
+    const trimmedToken = whatsappApiKey.trim();
+    let trimmedInstance = whatsappInstanceId?.trim() || '';
+    
+    // Ensure instance ID starts with 'instance' for UltraMsg
+    if (whatsappService === 'ultramsg' && trimmedInstance && !trimmedInstance.startsWith('instance')) {
+      trimmedInstance = 'instance' + trimmedInstance;
+    }
+    
+    let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    
+    // Clean baseUrl for UltraMsg to avoid double instance ID
+    if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
+      const parts = baseUrl.split('/');
+      const instanceIdx = parts.findIndex(p => p.startsWith('instance'));
+      if (instanceIdx !== -1) {
+        baseUrl = parts.slice(0, instanceIdx).join('/');
+      }
+    }
+
+    // Pre-check connection for UltraMsg
+    if (whatsappService === 'ultramsg') {
+      try {
+        const statusUrl = `${baseUrl}/${trimmedInstance}/instance/status?token=${trimmedToken}`;
+        const statusRes = await fetchWhatsApp(statusUrl);
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          const status = (statusData.status || statusData.state || '').toLowerCase();
+          if (status !== 'connected' && status !== 'active' && status !== 'authenticated') {
+            showToast('⚠️ تنبيه: حالة الحساب في UltraMsg غير متصلة. قد لا تظهر نتائج الفحص بشكل صحيح.', 'warning');
+          }
+        }
+      } catch (e) {
+        console.warn('Connection pre-check failed:', e);
+      }
+    }
+    
+    // For UltraMsg we use smaller batches because it's slower (one-by-one check)
+    const batchSize = whatsappService === 'whapi' ? 100 : 10; // Reduced batch size for UltraMsg
+    const totalToGenerate = generateCount;
+    const allValidCustomers: any[] = [];
+
+    try {
+      for (let i = 0; i < totalToGenerate; i += batchSize) {
+        if (stopGeneratingRef.current) {
+          showToast('تم إيقاف عملية التوليد والفحص بطلب منك.', 'info');
+          break;
+        }
+
+        const currentBatchSize = Math.min(batchSize, totalToGenerate - i);
+        const batchNumbers: string[] = [];
+        
+        for (let j = 0; j < currentBatchSize; j++) {
+          const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+          const rest = Math.floor(Math.random() * 10000000).toString().padStart(7, '0');
+          batchNumbers.push('218' + prefix.substring(1) + rest);
+        }
+
+        setVerificationStats(prev => ({ ...prev, current: i + currentBatchSize }));
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort('timeout'), 120000); // Increased to 120 seconds
+
+        try {
+          let response = null;
+          let results: any[] = [];
+
+          if (whatsappService === 'whapi') {
+            const tryEndpoints = [`${baseUrl}/contacts`, `${baseUrl}/v1/contacts`];
+            for (const url of tryEndpoints) {
+              try {
+                response = await fetchWhatsApp(url, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${trimmedToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ contacts: batchNumbers, force_check: true }),
+                  signal: controller.signal
+                });
+                
+                if (response.status === 402) {
+                  showToast('خطأ 402: يرجى التحقق من رصيد أو اشتراك Whapi.Cloud الخاص بك.', 'error');
+                  stopGeneratingRef.current = true;
+                  break;
+                }
+
+                if (response.ok || response.status !== 404) break;
+              } catch (e) { console.warn(e); }
+            }
+
+            if (stopGeneratingRef.current) break;
+
+            if (response && response.ok) {
+              const data = await response.json();
+              results = Array.isArray(data) ? data : (data.contacts || []);
+            }
+          } else {
+            // UltraMsg logic - process in parallel chunks
+            const subBatchSize = 2; // Further reduced for stability
+            for (let j = 0; j < batchNumbers.length; j += subBatchSize) {
+              if (stopGeneratingRef.current) break;
+              const subBatch = batchNumbers.slice(j, j + subBatchSize);
+              const subResults = await Promise.all(subBatch.map(async (phone) => {
+                if (useSimulation) {
+                  // In simulation mode, 40-60% of numbers are "valid"
+                  const isSimValid = Math.random() > 0.5;
+                  return { status: isSimValid ? 'valid' : 'invalid', phone, exists: isSimValid };
+                }
+
+                try {
+                  // Standard UltraMsg format: number@c.us
+                  const chatId = `${phone}@c.us`;
+                  const url = `${baseUrl}/${trimmedInstance}/contacts/check?token=${encodeURIComponent(trimmedToken)}&chatId=${encodeURIComponent(chatId)}&nocache=1`;
+                  
+                  const res = await fetchWhatsApp(url, { signal: controller.signal });
+                  
+                  if (res.status === 401 || res.status === 403) {
+                    showToast('خطأ في المصادقة: يرجى التحقق من التوكن ورقم الجهاز في الإعدادات.', 'error');
+                    stopGeneratingRef.current = true;
+                    return { status: 'error', phone };
+                  }
+
+                  if (res.ok) {
+                    const data = await res.json();
+                    console.log(`UltraMsg result for ${chatId}:`, data);
+                    
+                    const status = (data.status || data.result || data.state || '').toString().toLowerCase();
+                    const isInvalid = status.includes('invalid') || status.includes('not') || data.exists === false || data.valid === false;
+                    
+                    const isValid = !isInvalid && (
+                      status.includes('valid') || 
+                      status.includes('exist') || 
+                      status.includes('active') || 
+                      status.includes('ok') ||
+                      data.valid === true || 
+                      data.exists === true || 
+                      !!data.wa_id || 
+                      !!data.id || 
+                      !!data.jid ||
+                      !!data.chatId ||
+                      (data.isRaw && data.raw && !data.raw.toLowerCase().includes('invalid'))
+                    );
+
+                    if (isValid) {
+                      return { ...data, phone };
+                    }
+                  }
+                } catch (e) { console.warn(`Error checking phone:`, e); }
+                return { status: 'invalid', phone };
+              }));
+              results.push(...subResults);
+              // Increased delay between sub-batches for UltraMsg to avoid rate limits
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+
+          if (results.length > 0) {
+            const validBatch: any[] = [];
+            results.forEach((res: any, idx: number) => {
+              // Strict check to ensure only numbers with WhatsApp are included
+              const status = (res.status || res.result || res.state || '').toString().toLowerCase();
+              const isInvalid = status.includes('invalid') || status.includes('not') || res.exists === false || res.valid === false;
+              
+              const isValid = !isInvalid && (
+                status.includes('valid') || 
+                status.includes('exist') || 
+                status.includes('active') || 
+                status.includes('ok') ||
+                res.valid === true || 
+                res.exists === true || 
+                !!res.wa_id || 
+                !!res.id || 
+                !!res.jid ||
+                !!res.chatId ||
+                (res.isRaw && res.raw && !res.raw.toLowerCase().includes('invalid'))
+              );
+
+              if (isValid) {
+                const phone = res.phone || batchNumbers[idx];
+                validBatch.push({
+                  id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
+                  name: `عميل ${phone}`,
+                  phone: phone,
+                  hasWhatsApp: true,
+                  createdAt: new Date().toISOString()
+                });
+                setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+              } else {
+                setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+              }
+            });
+
+            if (validBatch.length > 0) {
+              await api.bulkSaveCustomers(validBatch);
+              // Update local state immediately so user sees valid numbers appearing
+              setCustomers(prev => {
+                // Avoid duplicates if any
+                const existingPhones = new Set(prev.map(c => c.phone));
+                const newUnique = validBatch.filter(c => !existingPhones.has(c.phone));
+                return [...newUnique, ...prev];
+              });
+              allValidCustomers.push(...validBatch);
+            }
+          } else if (!stopGeneratingRef.current) {
+            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + currentBatchSize }));
+          }
+        } catch (error) {
+          console.error('Batch verification error:', error);
+          setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + currentBatchSize }));
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        // Delay between batches to avoid rate limiting
+        await new Promise(r => setTimeout(r, whatsappService === 'whapi' ? 500 : 1000));
+      }
+
+      if (allValidCustomers.length > 0) {
+        showToast(`اكتملت العملية. وجدنا ${allValidCustomers.length} رقم نشط على واتساب.`, 'success');
+      } else if (!stopGeneratingRef.current) {
+        showToast('لم يتم العثور على أرقام نشطة في هذه المجموعة.', 'info');
+      }
+    } catch (error) {
+      console.error('Generate and verify error:', error);
+      showToast('حدث خطأ أثناء التوليد والفحص.', 'error');
+    } finally {
+      setIsGeneratingAndVerifying(false);
+      // Don't close modal immediately so user can see final stats
     }
   };
 
@@ -467,14 +888,15 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const generateSampleLibyanNumbers = () => {
     const prefixes = ['091', '092'];
     const samples = [];
-    for (let i = 0; i < 2000; i++) {
+    const count = Math.min(generateCount, 100000); // Increase cap to 100k
+    for (let i = 0; i < count; i++) {
       const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
       const suffix = Math.floor(Math.random() * 9000000 + 1000000).toString();
       const phone = prefix + suffix;
-      // We mark these as WhatsApp numbers as requested by the user
-      samples.push(`عميل واتساب ${i + 1},${phone}`);
+      samples.push(`عميل ${phone},${phone}`);
     }
     setBulkInput(samples.join('\n'));
+    showToast(`تم توليد ${count} رقم بنجاح`, 'success');
   };
 
   const handleTranslateOffer = async (offer: UmrahOffer) => {
@@ -896,7 +1318,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     
                     const trimmedToken = whatsappApiKey.trim();
                     const trimmedInstance = whatsappInstanceId.trim();
-                    const baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+                    let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
                     
                     if (!trimmedToken) {
                       showToast('يرجى إدخال الـ Token أولاً', 'error');
@@ -914,8 +1336,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => {
                       console.log('Connection test timed out');
-                      controller.abort();
-                    }, 20000);
+                      controller.abort('timeout');
+                    }, 60000); // Increased to 60 seconds
 
                     try {
                       let response;
@@ -926,71 +1348,64 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                       let fetchUrl = '';
                       if (whatsappService === 'whapi') {
                         headers['Authorization'] = `Bearer ${trimmedToken}`;
-                        fetchUrl = `${baseUrl}/users/me`;
-                        console.log('Fetching Whapi endpoint:', fetchUrl);
-                        response = await fetch(fetchUrl, {
-                          headers,
-                          signal: controller.signal
-                        });
+                        
+                        // Try multiple endpoints in sequence until one works
+                        const baseWithoutV1 = baseUrl.replace(/\/v1$/, '');
+                        const testEndpoints = [
+                          `${baseWithoutV1}/health`,
+                          `${baseWithoutV1}/users/me`,
+                          `${baseWithoutV1}/v1/health`,
+                          `${baseWithoutV1}/v1/users/me`,
+                          `${baseWithoutV1.replace('gate.whapi.cloud', 'api.whapi.cloud')}/health`
+                        ];
 
-                        // Fallback for Whapi if 404
-                        if (response.status === 404) {
-                          console.log('Whapi /users/me returned 404, trying /health...');
-                          fetchUrl = `${baseUrl}/health`;
-                          response = await fetch(fetchUrl, {
-                            headers,
-                            signal: controller.signal
-                          });
+                        let lastResponse = null;
+                        for (const url of testEndpoints) {
+                          try {
+                            console.log(`Testing Whapi endpoint: ${url}`);
+                            const testResponse = await fetchWhatsApp(url, {
+                              headers,
+                              signal: controller.signal
+                            });
+                            
+                            if (testResponse.status === 402) {
+                              showToast('خطأ 402: يرجى التحقق من رصيد أو اشتراك Whapi.Cloud الخاص بك.', 'error');
+                              response = testResponse;
+                              break;
+                            }
+
+                            if (testResponse.ok) {
+                              response = testResponse;
+                              fetchUrl = url;
+                              break;
+                            }
+                            lastResponse = testResponse;
+                          } catch (err) {
+                            console.warn(`Failed to test endpoint ${url}:`, err);
+                          }
                         }
-
-                        // Final fallback for Whapi if still 404
-                        if (response.status === 404) {
-                          console.log('Whapi /health returned 404, trying with /v1...');
-                          const v1Url = baseUrl.includes('/v1') ? baseUrl : `${baseUrl}/v1`;
-                          fetchUrl = `${v1Url}/users/me`;
-                          response = await fetch(fetchUrl, {
-                            headers,
-                            signal: controller.signal
-                          });
-                        }
-
-                        // Subdomain fallback for Whapi if still 404
-                        if (response.status === 404 && baseUrl.includes('gate.whapi.cloud')) {
-                          console.log('Whapi gate subdomain failed, trying api subdomain...');
-                          const apiBaseUrl = baseUrl.replace('gate.whapi.cloud', 'api.whapi.cloud');
-                          const v1Url = apiBaseUrl.includes('/v1') ? apiBaseUrl : `${apiBaseUrl}/v1`;
-                          fetchUrl = `${v1Url}/users/me`;
-                          response = await fetch(fetchUrl, {
-                            headers,
-                            signal: controller.signal
-                          });
-                        }
-
-                        // Final fallback for Whapi - try /v1/me
-                        if (response.status === 404) {
-                          console.log('Whapi still 404, trying /v1/me...');
-                          const v1Url = baseUrl.includes('/v1') ? baseUrl : `${baseUrl}/v1`;
-                          fetchUrl = `${v1Url}/me`;
-                          response = await fetch(fetchUrl, {
-                            headers,
-                            signal: controller.signal
-                          });
-                        }
-
-                        // One more fallback - try /v1/channels
-                        if (response.status === 404) {
-                          console.log('Whapi still 404, trying /v1/channels...');
-                          const v1Url = baseUrl.includes('/v1') ? baseUrl : `${baseUrl}/v1`;
-                          fetchUrl = `${v1Url}/channels`;
-                          response = await fetch(fetchUrl, {
-                            headers,
-                            signal: controller.signal
-                          });
+                        
+                        // If none succeeded, use the last response or a default 404
+                        if (!response) {
+                          response = lastResponse || { status: 404, ok: false, json: async () => ({}) } as any;
                         }
                       } else {
-                        fetchUrl = `${baseUrl}/${trimmedInstance}/instance/status?token=${trimmedToken}`;
+                        // UltraMsg logic
+                        let finalBase = baseUrl.replace(/\/+$/, '');
+                        // If the user provided a URL that already includes the instance ID like https://api.ultramsg.com/instance123
+                        // we want to get just the base https://api.ultramsg.com
+                        if (finalBase.includes('/instance')) {
+                           const parts = finalBase.split('/');
+                           // Find the part that starts with 'instance'
+                           const instanceIdx = parts.findIndex(p => p.startsWith('instance'));
+                           if (instanceIdx !== -1) {
+                             finalBase = parts.slice(0, instanceIdx).join('/');
+                           }
+                        }
+                        
+                        fetchUrl = `${finalBase}/${trimmedInstance}/instance/status?token=${trimmedToken}`;
                         console.log('Fetching UltraMsg endpoint:', fetchUrl);
-                        response = await fetch(fetchUrl, {
+                        response = await fetchWhatsApp(fetchUrl, {
                           headers,
                           signal: controller.signal
                         });
@@ -1010,13 +1425,31 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
                       if (response.ok) {
                         // For UltraMsg, check if instance is actually connected
-                        if (whatsappService === 'ultramsg' && data.status !== 'authenticated' && data.status !== 'connected') {
-                          showToast(`⚠️ المتصل بالخدمة ولكن الحالة هي: ${data.status || 'غير معروف'}`, 'warning');
+                        if (whatsappService === 'ultramsg') {
+                          const status = (data.status || data.state || data.accountStatus || data.instanceStatus || data.instance_status || data || '').toString().toLowerCase();
+                          const isDisconnected = status.includes('not_auth') || status.includes('disconnect') || status.includes('expired') || status.includes('standby') || status.includes('closed');
+                          
+                          if (isDisconnected) {
+                            showToast(`⚠️ تم الاتصال بالخدمة ولكن حالة الحساب هي: ${status}. يرجى مسح الـ QR Code.`, 'warning');
+                          } else {
+                            // If it's not explicitly disconnected, and response was OK, it's a success
+                            showToast('✅ تم الاتصال بنجاح! الخدمة تعمل والحساب متصل.', 'success');
+                          }
+                        } else if (whatsappService === 'whapi') {
+                          // Whapi health check or users/me
+                          const isOk = data.status === 'ok' || !!data.id || !!data.name;
+                          if (isOk) {
+                            showToast('✅ تم الاتصال بنجاح! خدمة Whapi تعمل والـ Token صحيح.', 'success');
+                          } else {
+                            showToast('⚠️ تم الاتصال بالخدمة ولكن الاستجابة غير متوقعة. يرجى التحقق من الإعدادات.', 'warning');
+                          }
                         } else {
-                          showToast('✅ تم الاتصال بنجاح! الخدمة تعمل والـ Token صحيح.', 'success');
+                          showToast('✅ تم الاتصال بنجاح!', 'success');
                         }
                       } else {
-                        if (response.status === 404) {
+                        if (response.status === 402) {
+                          showToast('❌ خطأ 402: يرجى التحقق من رصيد أو اشتراك Whapi.Cloud الخاص بك.', 'error');
+                        } else if (response.status === 404) {
                           const advice = whatsappService === 'ultramsg' 
                             ? 'تأكد من صحة الـ Instance ID' 
                             : 'تأكد من الرابط. جرب إضافة /v1 في نهاية الرابط إذا استمر الخطأ.';
@@ -1030,7 +1463,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                       clearTimeout(timeoutId);
                       console.error('Test connection exception:', e);
                       if (e.name === 'AbortError') {
-                        showToast('❌ فشل الاتصال: انتهت مهلة الطلب (20 ثانية).', 'error');
+                        showToast('❌ فشل الاتصال: انتهت مهلة الطلب (60 ثانية). يرجى التحقق من جودة الإنترنت أو حالة السيرفر.', 'error');
                       } else {
                         showToast(`❌ فشل الاتصال: ${e.message || 'تعذر الوصول للسيرفر'}. تأكد من اتصال الإنترنت.`, 'error');
                       }
@@ -1155,10 +1588,19 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     <motion.div 
                       className="h-full bg-blue-500"
                       initial={{ width: 0 }}
-                      animate={{ width: `${(verificationStats.current / verificationStats.total) * 100}%` }}
+                      animate={{ width: `${(verificationStats.total > 0 ? (verificationStats.current / verificationStats.total) * 100 : 0)}%` }}
                     />
                   </div>
                 </div>
+
+                {isVerifying && (
+                  <button
+                    onClick={() => stopGeneratingRef.current = true}
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl font-bold text-xs transition-all border border-red-500/20"
+                  >
+                    إيقاف العملية
+                  </button>
+                )}
               </div>
 
               {!isVerifying && (
@@ -1734,25 +2176,90 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 </button>
               </div>
 
-              <div className="p-8 space-y-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">قائمة الأرقام (الاسم,الهاتف أو الهاتف فقط)</label>
-                  <textarea
-                    value={bulkInput}
-                    onChange={(e) => setBulkInput(e.target.value)}
-                    placeholder="مثال:&#10;محمد علي,0912345678&#10;0923456789"
-                    className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-4 text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all resize-none font-mono text-sm"
-                  />
-                </div>
+                <div className="p-8 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">العدد المطلوب توليده</label>
+                      <input
+                        type="number"
+                        value={generateCount}
+                        onChange={(e) => setGenerateCount(parseInt(e.target.value) || 0)}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all font-mono"
+                      />
+                    </div>
+                    <div className="flex flex-col justify-center gap-4">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className="relative w-12 h-6 bg-white/5 rounded-full border border-white/10 transition-all group-hover:border-gold/30">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer"
+                            checked={useSimulation}
+                            onChange={(e) => {
+                              const val = e.target.checked;
+                              setUseSimulation(val);
+                              localStorage.setItem('use_simulation', val.toString());
+                            }}
+                          />
+                          <div className="absolute top-1 left-1 w-4 h-4 bg-white/20 rounded-full transition-all peer-checked:left-7 peer-checked:bg-gold"></div>
+                        </div>
+                        <span className="text-sm font-bold text-white/60 group-hover:text-gold transition-colors">وضع الاختبار (نتائج افتراضية)</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={generateSampleLibyanNumbers}
+                          className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-gold border border-white/10 rounded-2xl font-bold text-sm transition-all"
+                        >
+                          توليد أرقام عشوائية
+                        </button>
+                        {(whatsappService === 'whapi' || whatsappService === 'ultramsg') && (
+                          <button
+                            onClick={handleGenerateAndVerify}
+                            disabled={isGeneratingAndVerifying || (!whatsappApiKey && !useSimulation)}
+                            className="flex-1 py-4 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 rounded-2xl font-bold text-sm transition-all disabled:opacity-50"
+                          >
+                            {isGeneratingAndVerifying ? 'جاري الفحص...' : 'توليد وفحص تلقائي'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={generateSampleLibyanNumbers}
-                    className="text-gold hover:text-gold/80 text-sm font-bold transition-colors"
-                  >
-                    توليد 2000 رقم واتساب ليبي (091, 092)
-                  </button>
-                  <div className="flex items-center gap-3">
+                  {isGeneratingAndVerifying && (
+                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10 space-y-3">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-white/40">التقدم: {verificationStats.current} / {verificationStats.total}</span>
+                        <div className="flex gap-3">
+                          <span className="text-emerald-500">صالح: {verificationStats.valid}</span>
+                          <span className="text-red-400">غير صالح: {verificationStats.invalid}</span>
+                        </div>
+                        <button
+                          onClick={() => stopGeneratingRef.current = true}
+                          className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-all"
+                        >
+                          إيقاف
+                        </button>
+                      </div>
+                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                        <motion.div 
+                          className="h-full bg-gold"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(verificationStats.current / (verificationStats.total || 1)) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">قائمة الأرقام (الاسم,الهاتف أو الهاتف فقط)</label>
+                    <textarea
+                      value={bulkInput}
+                      onChange={(e) => setBulkInput(e.target.value)}
+                      placeholder="مثال:&#10;محمد علي,0912345678&#10;0923456789"
+                      className="w-full h-48 bg-white/5 border border-white/10 rounded-2xl p-4 text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all resize-none font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3">
                     <button
                       onClick={() => setShowBulkImport(false)}
                       className="px-6 py-3 text-white/40 hover:text-white font-bold transition-all"
@@ -1775,7 +2282,6 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     </button>
                   </div>
                 </div>
-              </div>
             </motion.div>
           </div>
         )}
