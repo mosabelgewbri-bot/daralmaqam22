@@ -817,32 +817,44 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                     <td className="py-4 px-2">
                       <input 
                         type="number" 
-                        value={row.double}
-                        onChange={e => handleRowChange(idx, 'double', Number(e.target.value))}
+                        value={isNaN(row.double) ? '' : row.double}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          handleRowChange(idx, 'double', isNaN(val) ? 0 : val);
+                        }}
                         className="w-20 bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
                       />
                     </td>
                     <td className="py-4 px-2">
                       <input 
                         type="number" 
-                        value={row.triple}
-                        onChange={e => handleRowChange(idx, 'triple', Number(e.target.value))}
+                        value={isNaN(row.triple) ? '' : row.triple}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          handleRowChange(idx, 'triple', isNaN(val) ? 0 : val);
+                        }}
                         className="w-20 bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
                       />
                     </td>
                     <td className="py-4 px-2">
                       <input 
                         type="number" 
-                        value={row.quad}
-                        onChange={e => handleRowChange(idx, 'quad', Number(e.target.value))}
+                        value={isNaN(row.quad) ? '' : row.quad}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          handleRowChange(idx, 'quad', isNaN(val) ? 0 : val);
+                        }}
                         className="w-20 bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
                       />
                     </td>
                     <td className="py-4 px-2">
                       <input 
                         type="number" 
-                        value={row.quint}
-                        onChange={e => handleRowChange(idx, 'quint', Number(e.target.value))}
+                        value={isNaN(row.quint) ? '' : row.quint}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          handleRowChange(idx, 'quint', isNaN(val) ? 0 : val);
+                        }}
                         className="w-20 bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
                       />
                     </td>

@@ -1,8 +1,4 @@
-/**
- * Resizes a base64 image to a maximum width and height while maintaining aspect ratio.
- * Returns a promise that resolves to the resized base64 image (JPEG format).
- */
-export const resizeImage = (base64: string, maxWidth = 1200, maxHeight = 1200): Promise<string> => {
+export const resizeImage = (input: File | string, maxWidth: number = 1200, maxHeight: number = 1200, quality: number = 0.8): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -26,13 +22,17 @@ export const resizeImage = (base64: string, maxWidth = 1200, maxHeight = 1200): 
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(img, 0, 0, width, height);
-      // Use 0.8 quality to reduce payload size further
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
-    img.onerror = () => {
-      // If error, return original image
-      resolve(base64);
-    };
-    img.src = base64;
+
+    if (typeof input === 'string') {
+      img.src = input;
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(input);
+    }
   });
 };

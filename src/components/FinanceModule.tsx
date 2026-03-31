@@ -413,7 +413,7 @@ export default function FinanceModule({ user }: { user: User }) {
                           <input 
                             type="number"
                             className="w-16 bg-black/40 border border-white/10 rounded px-1 py-1 text-left focus:border-emerald-500 outline-none text-xs"
-                            value={b.paidCashLYD || 0}
+                            value={isNaN(b.paidCashLYD || 0) || (b.paidCashLYD || 0) === 0 ? '' : (b.paidCashLYD || 0)}
                             onChange={(e) => handleUpdatePaid(b.id, 'paidCashLYD', e.target.value)}
                           />
                         </td>
@@ -421,7 +421,7 @@ export default function FinanceModule({ user }: { user: User }) {
                           <input 
                             type="number"
                             className="w-16 bg-black/40 border border-white/10 rounded px-1 py-1 text-left focus:border-emerald-500 outline-none text-xs"
-                            value={b.paidTransferLYD || 0}
+                            value={isNaN(b.paidTransferLYD || 0) || (b.paidTransferLYD || 0) === 0 ? '' : (b.paidTransferLYD || 0)}
                             onChange={(e) => handleUpdatePaid(b.id, 'paidTransferLYD', e.target.value)}
                           />
                         </td>
@@ -434,7 +434,7 @@ export default function FinanceModule({ user }: { user: User }) {
                           <input 
                             type="number"
                             className="w-16 bg-black/40 border border-white/10 rounded px-1 py-1 text-left focus:border-blue-500 outline-none text-xs"
-                            value={b.paidCashUSD || 0}
+                            value={isNaN(b.paidCashUSD || 0) || (b.paidCashUSD || 0) === 0 ? '' : (b.paidCashUSD || 0)}
                             onChange={(e) => handleUpdatePaid(b.id, 'paidCashUSD', e.target.value)}
                           />
                         </td>
@@ -442,7 +442,7 @@ export default function FinanceModule({ user }: { user: User }) {
                           <input 
                             type="number"
                             className="w-16 bg-black/40 border border-white/10 rounded px-1 py-1 text-left focus:border-blue-500 outline-none text-xs"
-                            value={b.paidTransferUSD || 0}
+                            value={isNaN(b.paidTransferUSD || 0) || (b.paidTransferUSD || 0) === 0 ? '' : (b.paidTransferUSD || 0)}
                             onChange={(e) => handleUpdatePaid(b.id, 'paidTransferUSD', e.target.value)}
                           />
                         </td>

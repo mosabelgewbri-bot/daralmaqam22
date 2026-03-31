@@ -1,21 +1,26 @@
-/**
- * Resizes and compresses an image base64 string
- * @param base64 The original base64 string
- * @param maxWidth Maximum width of the resized image
- * @param maxHeight Maximum height of the resized image
- * @param quality JPEG quality (0 to 1)
- * @returns A promise that resolves to the resized base64 string
- */
-export async function resizeImage(base64: string, maxWidth = 1200, maxHeight = 1200, quality = 0.7): Promise<string> {
-  return new Promise((resolve, reject) => {
+export const compressImage = async (base64: string, quality: number = 0.7): Promise<string> => {
+  return new Promise((resolve) => {
     const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
     img.src = base64;
+  });
+};
+
+export const resizeImage = (input: File | string, maxWidth: number = 1200, maxHeight: number = 1200, quality: number = 0.8): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let width = img.width;
       let height = img.height;
 
-      // Calculate new dimensions
       if (width > height) {
         if (width > maxWidth) {
           height *= maxWidth / width;
@@ -30,18 +35,19 @@ export async function resizeImage(base64: string, maxWidth = 1200, maxHeight = 1
 
       canvas.width = width;
       canvas.height = height;
-
       const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Could not get canvas context'));
-        return;
-      }
-
-      // Draw and compress
-      ctx.drawImage(img, 0, 0, width, height);
-      const resizedBase64 = canvas.toDataURL('image/jpeg', quality);
-      resolve(resizedBase64);
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
-    img.onerror = (error) => reject(error);
+
+    if (typeof input === 'string') {
+      img.src = input;
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(input);
+    }
   });
-}
+};

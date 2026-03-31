@@ -242,6 +242,7 @@ export default function TripForm({ user }: { user: User }) {
           id: `TRIP-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
           tripNumber: formData.tripNumber || '',
           name: formData.name.trim(),
+          date: formData.startDate || formData.departureDate || '',
           airline: formData.airline.trim(),
           totalSeats: Number(formData.totalSeats),
           availableSeats: Number(formData.totalSeats),
@@ -472,7 +473,7 @@ export default function TripForm({ user }: { user: User }) {
                       required
                       min="1"
                       className="input-field w-full"
-                      value={formData.totalSeats === 0 ? '' : formData.totalSeats}
+                      value={isNaN(formData.totalSeats!) || formData.totalSeats === 0 ? '' : formData.totalSeats}
                       onChange={(e) => setFormData({...formData, totalSeats: parseInt(e.target.value) || 0})}
                     />
                   </div>
@@ -487,7 +488,7 @@ export default function TripForm({ user }: { user: User }) {
                       required
                       min="0"
                       className="input-field w-full"
-                      value={formData.ticketPrice}
+                      value={isNaN(formData.ticketPrice!) || formData.ticketPrice === 0 ? '' : formData.ticketPrice}
                       onChange={(e) => setFormData({...formData, ticketPrice: parseFloat(e.target.value) || 0})}
                     />
                   </div>
@@ -549,7 +550,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.flightLYD}
+                            value={isNaN(formData.costs?.flightLYD || 0) || (formData.costs?.flightLYD || 0) === 0 ? '' : formData.costs?.flightLYD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, flightLYD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -558,7 +559,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.hotelLYD}
+                            value={isNaN(formData.costs?.hotelLYD || 0) || (formData.costs?.hotelLYD || 0) === 0 ? '' : formData.costs?.hotelLYD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, hotelLYD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -567,7 +568,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.transportLYD}
+                            value={isNaN(formData.costs?.transportLYD || 0) || (formData.costs?.transportLYD || 0) === 0 ? '' : formData.costs?.transportLYD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, transportLYD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -576,7 +577,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.visaLYD}
+                            value={isNaN(formData.costs?.visaLYD || 0) || (formData.costs?.visaLYD || 0) === 0 ? '' : formData.costs?.visaLYD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, visaLYD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -585,7 +586,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.otherLYD}
+                            value={isNaN(formData.costs?.otherLYD || 0) || (formData.costs?.otherLYD || 0) === 0 ? '' : formData.costs?.otherLYD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, otherLYD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -601,7 +602,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.flightUSD}
+                            value={isNaN(formData.costs?.flightUSD || 0) || (formData.costs?.flightUSD || 0) === 0 ? '' : formData.costs?.flightUSD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, flightUSD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -610,7 +611,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.hotelUSD}
+                            value={isNaN(formData.costs?.hotelUSD || 0) || (formData.costs?.hotelUSD || 0) === 0 ? '' : formData.costs?.hotelUSD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, hotelUSD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -619,7 +620,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.transportUSD}
+                            value={isNaN(formData.costs?.transportUSD || 0) || (formData.costs?.transportUSD || 0) === 0 ? '' : formData.costs?.transportUSD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, transportUSD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -628,7 +629,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.visaUSD}
+                            value={isNaN(formData.costs?.visaUSD || 0) || (formData.costs?.visaUSD || 0) === 0 ? '' : formData.costs?.visaUSD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, visaUSD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>
@@ -637,7 +638,7 @@ export default function TripForm({ user }: { user: User }) {
                           <input 
                             type="number" 
                             className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.otherUSD}
+                            value={isNaN(formData.costs?.otherUSD || 0) || (formData.costs?.otherUSD || 0) === 0 ? '' : formData.costs?.otherUSD}
                             onChange={(e) => setFormData({...formData, costs: {...formData.costs!, otherUSD: parseFloat(e.target.value) || 0}})}
                           />
                         </div>

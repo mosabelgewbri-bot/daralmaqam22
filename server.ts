@@ -457,6 +457,20 @@ app.get("/api/health", (req, res) => {
   }
 });
 
+app.get("/api/prayer-times", async (req, res) => {
+  try {
+    const response = await fetch('https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3');
+    if (!response.ok) {
+      throw new Error(`API responded with status: ${response.status}`);
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error: any) {
+    console.error("Error proxying prayer times:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/api/test", (req, res) => {
   res.send("Server is running correctly");
 });

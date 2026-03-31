@@ -19,8 +19,11 @@ export default function PrayerTimes() {
   useEffect(() => {
     const fetchPrayerTimes = async () => {
       try {
-        // Fetch for Tripoli, Libya
-        const response = await fetch('https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3');
+        // Fetch via our server-side proxy to avoid CORS issues
+        const response = await fetch('/api/prayer-times');
+        if (!response.ok) {
+          throw new Error(`Server proxy responded with status: ${response.status}`);
+        }
         const data = await response.json();
         if (data.code === 200) {
           const timings = data.data.timings;

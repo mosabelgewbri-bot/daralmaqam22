@@ -20,7 +20,8 @@ import {
   IdCard,
   Plane,
   Megaphone,
-  Globe
+  Globe,
+  MessageSquare
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -53,6 +54,7 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
     { icon: Megaphone, label: 'عروض العمرة', path: '/offers', id: 'offers' },
     { icon: Users, label: 'التسويق والعملاء', path: '/marketing', id: 'marketing' },
+    { icon: MessageSquare, label: 'أدوات الواتساب', path: '/whatsapp', id: 'whatsapp' },
     { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
     { icon: History, label: 'سجل العمليات', path: '/logs', id: 'logs' },
@@ -76,8 +78,8 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     }
 
     // Fallback to basic logic if no permissions found or role not in saved permissions
-    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs'].includes(item.id);
-    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'logs'].includes(item.id);
+    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs', 'whatsapp', 'marketing', 'offers'].includes(item.id);
+    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'logs', 'whatsapp', 'marketing', 'offers'].includes(item.id);
     if (user.role === 'manager') return true;
     if (user.role === 'visa_specialist') return ['dashboard', 'visa', 'reports'].includes(item.id);
     if (user.role === 'receptionist') return ['dashboard', 'booking'].includes(item.id);

@@ -19,6 +19,7 @@ import PilgrimCardsModule from './components/PilgrimCardsModule';
 import LogsModule from './components/LogsModule';
 import UmrahOffersModule from './components/UmrahOffersModule';
 import MarketingModule from './components/MarketingModule';
+import { WhatsAppTools } from './components/WhatsAppTools';
 import PublicOffer from './components/PublicOffer';
 import PublicImage from './components/PublicImage';
 import Sidebar from './components/Sidebar';
@@ -155,6 +156,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
               <Route path="/reports" element={<ReportsModule user={user} />} />
               <Route path="/offers" element={<UmrahOffersModule user={user} />} />
               <Route path="/marketing" element={<MarketingModule user={user} />} />
+              <Route path="/whatsapp" element={<WhatsAppTools />} />
               <Route path="/visa" element={<VisaModule user={user} />} />
               <Route path="/users" element={<UsersManagement user={user} />} />
               <Route path="/trips" element={<TripForm user={user} />} />
@@ -255,7 +257,7 @@ export default function App() {
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
-        const allScreens = ['dashboard', 'booking', 'rooming', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'cards', 'trips', 'users', 'logs', 'settings'];
+        const allScreens = ['dashboard', 'booking', 'rooming', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'cards', 'trips', 'users', 'logs', 'settings', 'whatsapp', 'marketing', 'offers'];
 
         for (const role of roles) {
           const existingPerm = perms.find(p => p.role === role);

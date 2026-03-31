@@ -19,6 +19,7 @@ import {
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../firebase';
+import bcrypt from 'bcryptjs';
 
 enum OperationType {
   CREATE = 'create',
@@ -51,17 +52,22 @@ interface FirestoreErrorInfo {
 function isQuotaError(error: any): boolean {
   if (!error) return false;
   const msg = (error.message || error.error || String(error)).toLowerCase();
-  return msg.includes('quota') || msg.includes('exhausted') || msg.includes('limit exceeded') || msg.includes('offline') || msg.includes('insufficient permissions');
+  const code = error.code || '';
+  return msg.includes('quota') || 
+         msg.includes('exhausted') || 
+         msg.includes('limit exceeded') || 
+         msg.includes('offline') || 
+         code === 'resource-exhausted' ||
+         code === 'unavailable';
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
-  const isQuota = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
+  const isQuota = isQuotaError(error);
   
   if (isQuota) {
     quotaExceeded = true;
-    console.warn('Firestore Quota Exceeded (Silently Handled) for path:', path);
-    // Don't throw for quota errors if we can handle them gracefully
+    console.warn(`Firestore Quota Exceeded for ${operationType} on ${path}. Falling back to cache.`);
     return;
   }
 
@@ -112,19 +118,20 @@ export const api = {
     try {
       await this.ensureAuth();
       
-      // If quota exceeded, try to find user in cache
+      // Try to find user in cache first if quota exceeded
       if (quotaExceeded) {
         const cachedUsers = localStorage.getItem('cached_users');
         if (cachedUsers) {
           const users = JSON.parse(cachedUsers) as User[];
-          // Note: This is insecure but allows login during quota exceeded if user was cached
-          // In a real app, we'd need a better way, but for this demo/prototype it's a fallback
-          const user = users.find(u => u.username === username && (u as any).password === password);
-          if (user) return { user };
+          const user = users.find(u => u.username === username);
+          if (user && (user as any).passwordHash) {
+            const isValid = bcrypt.compareSync(password, (user as any).passwordHash);
+            if (isValid) return { user };
+          }
         }
       }
 
-      const q = query(collection(db, path), where("username", "==", username), where("password", "==", password));
+      const q = query(collection(db, path), where("username", "==", username));
       const querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty) {
@@ -134,21 +141,35 @@ export const api = {
       const userDoc = querySnapshot.docs[0];
       const userData = userDoc.data() as any;
       
-      return { 
-        user: { 
-          id: userDoc.id, 
-          ...userData,
-          createdAt: userData.createdAt?.toDate?.()?.toISOString() || userData.createdAt,
-          updatedAt: userData.updatedAt?.toDate?.()?.toISOString() || userData.updatedAt
-        } 
+      // Verify password
+      const passwordHash = userData.passwordHash || userData.password; // Fallback to plain text if migration not done
+      const isValid = passwordHash.startsWith('$2') 
+        ? bcrypt.compareSync(password, passwordHash)
+        : password === passwordHash;
+
+      if (!isValid) {
+        throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة');
+      }
+      
+      const user = { 
+        id: userDoc.id, 
+        ...userData,
+        createdAt: userData.createdAt?.toDate?.()?.toISOString() || userData.createdAt,
+        updatedAt: userData.updatedAt?.toDate?.()?.toISOString() || userData.updatedAt
       };
+
+      // Update cache
+      const cachedUsers = JSON.parse(localStorage.getItem('cached_users') || '[]');
+      const filtered = cachedUsers.filter((u: any) => u.id !== user.id);
+      localStorage.setItem('cached_users', JSON.stringify([...filtered, user]));
+      
+      return { user };
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
       }
-      if (error instanceof Error && error.message === 'اسم المستخدم أو كلمة المرور غير صحيحة') throw error;
+      if (error.message === 'اسم المستخدم أو كلمة المرور غير صحيحة') throw error;
       handleFirestoreError(error, OperationType.GET, path);
-      // If handleFirestoreError didn't throw (quota error), we still need to throw something to stop login
       if (isQuotaError(error)) throw new Error('تم تجاوز حصة الاستخدام المجانية لليوم. يرجى المحاولة لاحقاً.');
       throw error;
     }
@@ -163,7 +184,8 @@ export const api = {
     
     const now = Date.now();
     // Don't retry auth too frequently if it's failing
-    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 30000) {
+    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 10000) {
+      if (this.authPromise) return this.authPromise;
       return;
     }
 
@@ -174,16 +196,14 @@ export const api = {
     this.authPromise = (async () => {
       this.lastAuthAttempt = Date.now();
       try {
-        // Only attempt anonymous auth if we are not already in a login flow
-        // and if it hasn't explicitly failed before with admin-restricted-operation
         const authDisabled = localStorage.getItem('fb_auth_disabled') === 'true';
         if (!authDisabled) {
           await signInAnonymously(auth);
           console.log('Anonymous authentication successful');
         }
       } catch (error: any) {
-        if (error.code === 'auth/admin-restricted-operation') {
-          console.warn('Anonymous auth is disabled in Firebase Console.');
+        if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
+          console.warn('Anonymous auth is disabled or not allowed in Firebase Console.');
           localStorage.setItem('fb_auth_disabled', 'true');
         } else {
           console.error('Error signing in anonymously:', error);
@@ -331,10 +351,22 @@ export const api = {
 
       if (!limitCount) {
         localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+      } else {
+        // Merge with existing cache if possible
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          const merged = [...bookings];
+          all.forEach(b => {
+            if (!merged.find(m => m.id === b.id)) merged.push(b);
+          });
+          localStorage.setItem('cached_bookings', JSON.stringify(merged.slice(0, 1000)));
+        } else {
+          localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+        }
       }
       return bookings;
     } catch (error: any) {
-      console.error('Error fetching bookings:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
       }
@@ -348,6 +380,7 @@ export const api = {
           }
         } catch (e) {}
       }
+      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -383,6 +416,14 @@ export const api = {
   async checkDuplicateRegId(regId: string, excludeId?: string): Promise<boolean> {
     const path = 'bookings';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          return all.some(b => b.regId === regId && b.id !== excludeId);
+        }
+      }
+
       await this.ensureAuth();
       const q = query(collection(db, path), where("regId", "==", regId));
       const snapshot = await getDocs(q);
@@ -393,6 +434,14 @@ export const api = {
       }
       return true;
     } catch (error) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          return all.some(b => b.regId === regId && b.id !== excludeId);
+        }
+      }
       console.error('Error checking duplicate regId:', error);
       return false;
     }
@@ -463,7 +512,6 @@ export const api = {
   async getPermissions(): Promise<RolePermissions[]> {
     const path = 'permissions';
     try {
-      // If quota exceeded, return cache immediately
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_permissions');
         if (cached) return JSON.parse(cached);
@@ -473,21 +521,11 @@ export const api = {
       const querySnapshot = await getDocs(collection(db, path));
       const perms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
       
-      // Cache permissions
       localStorage.setItem('cached_permissions', JSON.stringify(perms));
       return perms;
     } catch (error: any) {
-      // Return cached permissions if quota exceeded
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        try {
-          const cacheSnapshot = await getDocsFromCache(collection(db, path));
-          if (!cacheSnapshot.empty) {
-            return cacheSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
-          }
-        } catch (cacheError) {
-          console.warn('Cache fetch failed:', cacheError);
-        }
         const cached = localStorage.getItem('cached_permissions');
         if (cached) return JSON.parse(cached);
       }
@@ -526,7 +564,6 @@ export const api = {
   async getUsers(): Promise<User[]> {
     const path = 'users';
     try {
-      // If quota exceeded, return cache immediately
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_users');
         if (cached) return JSON.parse(cached);
@@ -544,29 +581,11 @@ export const api = {
         } as unknown as User;
       });
       
-      // Cache users
       localStorage.setItem('cached_users', JSON.stringify(users));
       return users;
     } catch (error: any) {
-      // Return cached users if quota exceeded
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        try {
-          const cacheSnapshot = await getDocsFromCache(collection(db, path));
-          if (!cacheSnapshot.empty) {
-            return cacheSnapshot.docs.map(doc => {
-              const data = doc.data();
-              return { 
-                id: doc.id, 
-                ...data,
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-              } as unknown as User;
-            });
-          }
-        } catch (cacheError) {
-          console.warn('Cache fetch failed:', cacheError);
-        }
         const cached = localStorage.getItem('cached_users');
         if (cached) return JSON.parse(cached);
       }
@@ -576,12 +595,18 @@ export const api = {
   },
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
     const path = 'users';
-    const { id, ...data } = user;
+    const { id, password, ...data } = user;
     
-    // Remove undefined fields to avoid Firestore errors
-    const cleanData = Object.fromEntries(
+    const cleanData: any = Object.fromEntries(
       Object.entries(data).filter(([_, v]) => v !== undefined)
     );
+
+    if (password) {
+      const salt = bcrypt.genSaltSync(10);
+      cleanData.passwordHash = bcrypt.hashSync(password, salt);
+      // Remove old plain text password field if it exists
+      cleanData.password = null;
+    }
 
     try {
       await this.ensureAuth();
@@ -614,7 +639,6 @@ export const api = {
   async getSettings(): Promise<Record<string, string>> {
     const path = 'settings';
     try {
-      // If quota exceeded, return cache immediately
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_settings');
         if (cached) return JSON.parse(cached);
@@ -628,26 +652,11 @@ export const api = {
         if (data.key) settings[data.key] = data.value;
       });
       
-      // Cache settings
       localStorage.setItem('cached_settings', JSON.stringify(settings));
       return settings;
     } catch (error: any) {
-      // Return cached settings if quota exceeded
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        try {
-          const cacheSnapshot = await getDocsFromCache(collection(db, path));
-          if (!cacheSnapshot.empty) {
-            const settings: Record<string, string> = {};
-            cacheSnapshot.docs.forEach(doc => {
-              const data = doc.data();
-              if (data.key) settings[data.key] = data.value;
-            });
-            return settings;
-          }
-        } catch (cacheError) {
-          console.warn('Cache fetch failed:', cacheError);
-        }
         const cached = localStorage.getItem('cached_settings');
         if (cached) return JSON.parse(cached);
       }
@@ -683,10 +692,26 @@ export const api = {
       if (!userSnap.exists()) throw new Error('المستخدم غير موجود');
       
       const userData = userSnap.data();
-      if (userData.password !== currentPassword) throw new Error('كلمة المرور الحالية غير صحيحة');
+      const passwordHash = userData.passwordHash || userData.password;
       
-      await updateDoc(userRef, { password: newPassword });
+      const isValid = passwordHash.startsWith('$2')
+        ? bcrypt.compareSync(currentPassword, passwordHash)
+        : currentPassword === passwordHash;
+
+      if (!isValid) throw new Error('كلمة المرور الحالية غير صحيحة');
+      
+      const salt = bcrypt.genSaltSync(10);
+      const newHash = bcrypt.hashSync(newPassword, salt);
+      
+      await updateDoc(userRef, { 
+        passwordHash: newHash,
+        password: null, // Clear plain text password
+        updatedAt: serverTimestamp() 
+      });
     } catch (error) {
+      if (error instanceof Error && (error.message === 'كلمة المرور الحالية غير صحيحة' || error.message === 'المستخدم غير موجود')) {
+        throw error;
+      }
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
@@ -779,19 +804,21 @@ export const api = {
     }
   },
 
-  async logAction(userId: string, userName: string, action: string, details?: string): Promise<void> {
+  async logAction(userId: string, action: string, details?: any, userName?: string): Promise<void> {
     const path = 'logs';
     try {
+      if (quotaExceeded) return;
+
       await this.ensureAuth();
       await addDoc(collection(db, path), {
         userId,
-        userName,
+        userName: userName || 'Unknown',
         action,
-        details,
+        details: details || {},
         timestamp: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error logging action:', error);
+      console.warn('Failed to log action:', error);
     }
   },
 
@@ -850,10 +877,21 @@ export const api = {
 
       if (!bookingId) {
         localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
+      } else {
+        const cached = localStorage.getItem('cached_pilgrims');
+        if (cached) {
+          const all = JSON.parse(cached) as Pilgrim[];
+          const merged = [...pilgrims];
+          all.forEach(p => {
+            if (!merged.find(m => m.id === p.id)) merged.push(p);
+          });
+          localStorage.setItem('cached_pilgrims', JSON.stringify(merged.slice(0, 2000)));
+        } else {
+          localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
+        }
       }
       return pilgrims;
     } catch (error: any) {
-      console.error('Error fetching pilgrims:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
       }
@@ -867,6 +905,7 @@ export const api = {
           }
         } catch (e) {}
       }
+      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -883,9 +922,9 @@ export const api = {
       }
 
       await this.ensureAuth();
-      let q = query(collection(db, path));
+      let q = query(collection(db, path), orderBy("createdAt", "desc"));
       if (userId) {
-        q = query(collection(db, path), where("userId", "==", userId));
+        q = query(collection(db, path), where("userId", "==", userId), orderBy("createdAt", "desc"));
       }
       const querySnapshot = await getDocs(q);
       const notifications = querySnapshot.docs.map(doc => {
@@ -895,10 +934,10 @@ export const api = {
           ...data,
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt
         } as unknown as Notification;
-      }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      });
 
       if (!userId) {
-        localStorage.setItem('cached_notifications', JSON.stringify(notifications));
+        localStorage.setItem('cached_notifications', JSON.stringify(notifications.slice(0, 500)));
       }
       return notifications;
     } catch (error: any) {
@@ -992,10 +1031,7 @@ export const api = {
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_umrah_offers');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed;
-        }
+        if (cached) return JSON.parse(cached);
       }
 
       await this.ensureAuth();
@@ -1016,26 +1052,12 @@ export const api = {
       localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
       return offers;
     } catch (error: any) {
-      console.error('Error in getUmrahOffers:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
+        const cached = localStorage.getItem('cached_umrah_offers');
+        if (cached) return JSON.parse(cached);
       }
-      
-      const cached = localStorage.getItem('cached_umrah_offers');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed;
-        } catch (e) {
-          console.error('Error parsing cached offers:', e);
-        }
-      }
-      
-      try {
-        handleFirestoreError(error, OperationType.LIST, path);
-      } catch (e) {
-        console.warn('Silencing error in getUmrahOffers to prevent crash');
-      }
+      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -1149,10 +1171,7 @@ export const api = {
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_customers');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed;
-        }
+        if (cached) return JSON.parse(cached);
       }
 
       await this.ensureAuth();
@@ -1172,26 +1191,12 @@ export const api = {
       localStorage.setItem('cached_customers', JSON.stringify(customers));
       return customers;
     } catch (error: any) {
-      console.error('Error in getCustomers:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
+        const cached = localStorage.getItem('cached_customers');
+        if (cached) return JSON.parse(cached);
       }
-      
-      const cached = localStorage.getItem('cached_customers');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed;
-        } catch (e) {
-          console.error('Error parsing cached customers:', e);
-        }
-      }
-
-      try {
-        handleFirestoreError(error, OperationType.LIST, path);
-      } catch (e) {
-        console.warn('Silencing error in getCustomers to prevent crash');
-      }
+      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -1339,9 +1344,30 @@ export const api = {
     }
   },
 
+  async clearCache(): Promise<void> {
+    const keys = [
+      'cached_users', 
+      'cached_trips', 
+      'cached_bookings', 
+      'cached_pilgrims', 
+      'cached_permissions', 
+      'cached_settings', 
+      'cached_notifications', 
+      'cached_umrah_offers', 
+      'cached_customers'
+    ];
+    keys.forEach(key => localStorage.removeItem(key));
+    quotaExceeded = false;
+  },
+
   async syncCustomersFromBookings(): Promise<Customer[]> {
     const path = 'customers';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_customers');
+        if (cached) return JSON.parse(cached);
+      }
+
       await this.ensureAuth();
       
       // 1. Get all bookings, pilgrims, and existing customers using resilient methods
@@ -1401,8 +1427,15 @@ export const api = {
       }
 
       // 3. Return updated customers list
-      return this.getCustomers();
+      const updatedCustomers = await this.getCustomers();
+      localStorage.setItem('cached_customers', JSON.stringify(updatedCustomers));
+      return updatedCustomers;
     } catch (error) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_customers');
+        if (cached) return JSON.parse(cached);
+      }
       console.error('Error syncing customers:', error);
       handleFirestoreError(error, OperationType.WRITE, 'customers');
       return [];

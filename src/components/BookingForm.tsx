@@ -836,7 +836,7 @@ export default function BookingForm({ user }: { user: User }) {
                     <input 
                       type="number"
                       className="input-field w-full py-1 text-lg font-bold text-gold"
-                      value={manualTicketPrice}
+                      value={isNaN(manualTicketPrice) ? 0 : manualTicketPrice}
                       onChange={(e) => setManualTicketPrice(parseFloat(e.target.value) || 0)}
                     />
                     <span className="text-gold font-bold">{selectedTrip.currency}</span>
@@ -873,7 +873,7 @@ export default function BookingForm({ user }: { user: User }) {
                   type="number" 
                   className={clsx("input-field w-full py-1.5 text-sm", errors.makkahNights && "border-red-500 bg-red-500/10")}
                   placeholder="0"
-                  value={makkahNights === 0 ? '' : makkahNights}
+                  value={makkahNights === 0 || isNaN(makkahNights) ? '' : makkahNights}
                   onChange={(e) => {
                     setMakkahNights(parseInt(e.target.value) || 0);
                     setErrors(prev => ({ ...prev, makkahNights: false }));
@@ -901,7 +901,7 @@ export default function BookingForm({ user }: { user: User }) {
                   type="number" 
                   className={clsx("input-field w-full py-1.5 text-sm", errors.madinahNights && "border-red-500 bg-red-500/10")}
                   placeholder="0"
-                  value={madinahNights === 0 ? '' : madinahNights}
+                  value={madinahNights === 0 || isNaN(madinahNights) ? '' : madinahNights}
                   onChange={(e) => {
                     setMadinahNights(parseInt(e.target.value) || 0);
                     setErrors(prev => ({ ...prev, madinahNights: false }));
@@ -1213,7 +1213,7 @@ export default function BookingForm({ user }: { user: User }) {
                     type="number" 
                     className={clsx("input-field flex-1 text-right", errors[`roomPrice-${type}`] && "border-red-500 bg-red-500/10")}
                     placeholder="السعر" 
-                    value={roomPrices[type].price === 0 ? '' : roomPrices[type].price}
+                    value={roomPrices[type].price === 0 || isNaN(roomPrices[type].price) ? '' : roomPrices[type].price}
                     onChange={(e) => {
                       setRoomPrices(prev => ({
                         ...prev,

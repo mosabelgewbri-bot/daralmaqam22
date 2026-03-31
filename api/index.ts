@@ -1,5 +1,4 @@
-import app from "../server.ts";
-import { serverPromise } from "../server.ts";
+import { app, serverPromise } from "../server.ts";
 
 export default async (req: any, res: any) => {
   // Wait for the server to initialize (database, etc.)

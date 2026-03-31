@@ -79,6 +79,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [generateCount, setGenerateCount] = useState(20000);
+  const [generatePrefix, setGeneratePrefix] = useState('091');
+  const [generateStartRange, setGenerateStartRange] = useState('0000000');
+  const [generationMode, setGenerationMode] = useState<'random' | 'range'>('random');
   const [useSimulation, setUseSimulation] = useState(localStorage.getItem('use_simulation') === 'true');
   const [isGeneratingAndVerifying, setIsGeneratingAndVerifying] = useState(false);
   const stopGeneratingRef = useRef(false);
@@ -575,9 +578,22 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         const batchNumbers: string[] = [];
         
         for (let j = 0; j < currentBatchSize; j++) {
-          const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-          const rest = Math.floor(Math.random() * 10000000).toString().padStart(7, '0');
-          batchNumbers.push('218' + prefix.substring(1) + rest);
+          if (generationMode === 'random') {
+            const prefixes = ['91', '92', '94', '93', '95'];
+            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+            const rest = Math.floor(Math.random() * 10000000).toString().padStart(7, '0');
+            batchNumbers.push('218' + prefix + rest);
+          } else {
+            const start = parseInt(generateStartRange) || 0;
+            const num = (start + i + j).toString().padStart(generateStartRange.length, '0');
+            let cleanPrefix = generatePrefix.replace(/\D/g, '');
+            if (cleanPrefix.startsWith('0')) {
+              cleanPrefix = cleanPrefix.substring(1);
+            } else if (cleanPrefix.startsWith('218')) {
+              cleanPrefix = cleanPrefix.substring(3);
+            }
+            batchNumbers.push('218' + cleanPrefix + num.substring(num.length - 7));
+          }
         }
 
         setVerificationStats(prev => ({ ...prev, current: i + currentBatchSize }));
@@ -590,7 +606,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           let results: any[] = [];
 
           if (whatsappService === 'whapi') {
-            const tryEndpoints = [`${baseUrl}/contacts`, `${baseUrl}/v1/contacts`];
+            const tryEndpoints = [`${baseUrl}/contacts`, `${baseUrl}/v1/contacts`, `${baseUrl}/contacts/check`];
             for (const url of tryEndpoints) {
               try {
                 response = await fetchWhatsApp(url, {
@@ -609,8 +625,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                   break;
                 }
 
-                if (response.ok || response.status !== 404) break;
-              } catch (e) { console.warn(e); }
+                if (response.ok) break;
+              } catch (e) { console.warn(`Whapi endpoint ${url} failed:`, e); }
             }
 
             if (stopGeneratingRef.current) break;
@@ -686,33 +702,33 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               const status = (res.status || res.result || res.state || '').toString().toLowerCase();
               const isInvalid = status.includes('invalid') || status.includes('not') || res.exists === false || res.valid === false;
               
-              const isValid = !isInvalid && (
-                status.includes('valid') || 
-                status.includes('exist') || 
-                status.includes('active') || 
-                status.includes('ok') ||
-                res.valid === true || 
-                res.exists === true || 
-                !!res.wa_id || 
-                !!res.id || 
-                !!res.jid ||
-                !!res.chatId ||
-                (res.isRaw && res.raw && !res.raw.toLowerCase().includes('invalid'))
-              );
+            const isValid = !isInvalid && (
+              status.includes('valid') || 
+              status.includes('exist') || 
+              status.includes('active') || 
+              status.includes('ok') ||
+              res.valid === true || 
+              res.exists === true || 
+              !!res.wa_id || 
+              !!res.id || 
+              !!res.jid ||
+              !!res.chatId ||
+              (res.isRaw && res.raw && !res.raw.toLowerCase().includes('invalid'))
+            );
 
-              if (isValid) {
-                const phone = res.phone || batchNumbers[idx];
-                validBatch.push({
-                  id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
-                  name: `عميل ${phone}`,
-                  phone: phone,
-                  hasWhatsApp: true,
-                  createdAt: new Date().toISOString()
-                });
-                setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
-              } else {
-                setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
-              }
+            if (isValid) {
+              const phone = (res.phone || res.wa_id || res.id || res.jid || batchNumbers[idx] || '').split('@')[0].replace(/\D/g, '');
+              validBatch.push({
+                id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
+                name: `عميل ${phone}`,
+                phone: phone,
+                hasWhatsApp: true,
+                createdAt: new Date().toISOString()
+              });
+              setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+            } else {
+              setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+            }
             });
 
             if (validBatch.length > 0) {
@@ -888,11 +904,18 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const generateSampleLibyanNumbers = () => {
     const prefixes = ['091', '092'];
     const samples = [];
-    const count = Math.min(generateCount, 100000); // Increase cap to 100k
+    const count = Math.min(generateCount, 100000);
     for (let i = 0; i < count; i++) {
-      const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-      const suffix = Math.floor(Math.random() * 9000000 + 1000000).toString();
-      const phone = prefix + suffix;
+      let phone = '';
+      if (generationMode === 'random') {
+        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+        const suffix = Math.floor(Math.random() * 9000000 + 1000000).toString();
+        phone = prefix + suffix;
+      } else {
+        const start = parseInt(generateStartRange) || 0;
+        const num = (start + i).toString().padStart(generateStartRange.length, '7');
+        phone = generatePrefix + num.substring(num.length - 7);
+      }
       samples.push(`عميل ${phone},${phone}`);
     }
     setBulkInput(samples.join('\n'));
@@ -2177,50 +2200,104 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               </div>
 
                 <div className="p-8 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex p-1 bg-white/5 rounded-2xl mb-6">
+                    <button
+                      onClick={() => setGenerationMode('random')}
+                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${generationMode === 'random' ? 'bg-gold text-black shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                    >
+                      توليد عشوائي (ليبيا)
+                    </button>
+                    <button
+                      onClick={() => setGenerationMode('range')}
+                      className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${generationMode === 'range' ? 'bg-gold text-black shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                    >
+                      توليد بنطاق محدد
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {generationMode === 'range' && (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">المقدمة (مثلاً 091)</label>
+                          <input
+                            type="text"
+                            value={generatePrefix}
+                            onChange={(e) => setGeneratePrefix(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all font-mono"
+                            placeholder="091"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">بداية النطاق (7 أرقام)</label>
+                          <input
+                            type="text"
+                            value={generateStartRange}
+                            onChange={(e) => setGenerateStartRange(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all font-mono"
+                            placeholder="0000000"
+                          />
+                        </div>
+                      </>
+                    )}
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">العدد المطلوب توليده</label>
                       <input
                         type="number"
-                        value={generateCount}
-                        onChange={(e) => setGenerateCount(parseInt(e.target.value) || 0)}
+                        value={isNaN(generateCount) ? '' : generateCount}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setGenerateCount(isNaN(val) ? 0 : val);
+                        }}
                         className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all font-mono"
                       />
                     </div>
-                    <div className="flex flex-col justify-center gap-4">
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="relative w-12 h-6 bg-white/5 rounded-full border border-white/10 transition-all group-hover:border-gold/30">
-                          <input 
-                            type="checkbox" 
-                            className="sr-only peer"
-                            checked={useSimulation}
-                            onChange={(e) => {
-                              const val = e.target.checked;
-                              setUseSimulation(val);
-                              localStorage.setItem('use_simulation', val.toString());
-                            }}
-                          />
-                          <div className="absolute top-1 left-1 w-4 h-4 bg-white/20 rounded-full transition-all peer-checked:left-7 peer-checked:bg-gold"></div>
-                        </div>
-                        <span className="text-sm font-bold text-white/60 group-hover:text-gold transition-colors">وضع الاختبار (نتائج افتراضية)</span>
-                      </label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={generateSampleLibyanNumbers}
-                          className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-gold border border-white/10 rounded-2xl font-bold text-sm transition-all"
-                        >
-                          توليد أرقام عشوائية
-                        </button>
-                        {(whatsappService === 'whapi' || whatsappService === 'ultramsg') && (
-                          <button
-                            onClick={handleGenerateAndVerify}
-                            disabled={isGeneratingAndVerifying || (!whatsappApiKey && !useSimulation)}
-                            className="flex-1 py-4 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 rounded-2xl font-bold text-sm transition-all disabled:opacity-50"
-                          >
-                            {isGeneratingAndVerifying ? 'جاري الفحص...' : 'توليد وفحص تلقائي'}
-                          </button>
-                        )}
+                  </div>
+
+                  <div className="mt-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className="relative w-12 h-6 bg-white/5 rounded-full border border-white/10 transition-all group-hover:border-gold/30">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer"
+                          checked={useSimulation}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setUseSimulation(val);
+                            localStorage.setItem('use_simulation', val.toString());
+                          }}
+                        />
+                        <div className="absolute top-1 left-1 w-4 h-4 bg-white/20 rounded-full transition-all peer-checked:left-7 peer-checked:bg-gold"></div>
                       </div>
+                      <span className="text-sm font-bold text-white/60 group-hover:text-gold transition-colors">وضع الاختبار (نتائج افتراضية)</span>
+                    </label>
+                    
+                    <div className="flex gap-3 w-full md:w-auto">
+                      <button
+                        onClick={generateSampleLibyanNumbers}
+                        className="flex-1 md:flex-none px-8 py-4 bg-white/5 hover:bg-white/10 text-gold border border-white/10 rounded-2xl font-bold text-sm transition-all"
+                      >
+                        توليد أرقام فقط
+                      </button>
+                      {(whatsappService === 'whapi' || whatsappService === 'ultramsg') && (
+                        <button
+                          onClick={handleGenerateAndVerify}
+                          disabled={isGeneratingAndVerifying || (!whatsappApiKey && !useSimulation)}
+                          className="flex-1 md:flex-none px-8 py-4 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 rounded-2xl font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {isGeneratingAndVerifying ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              جاري الفحص...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4" />
+                              توليد وفحص تلقائي
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
 

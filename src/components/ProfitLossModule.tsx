@@ -258,7 +258,7 @@ export default function ProfitLossModule({ user }: { user: User }) {
                     <input 
                       type="number" 
                       className="bg-white/5 border border-white/10 rounded px-2 py-1 text-rose-400 w-24 text-sm focus:border-gold outline-none transition-colors"
-                      value={row.costLYD}
+                      value={isNaN(row.costLYD) || row.costLYD === 0 ? '' : row.costLYD}
                       onChange={(e) => handleBookingCostChange(row.id, 'costLYD', e.target.value)}
                     />
                   </td>
@@ -275,7 +275,7 @@ export default function ProfitLossModule({ user }: { user: User }) {
                       <input 
                         type="number" 
                         className="bg-white/5 border border-white/10 rounded px-2 py-1 text-rose-400 w-24 text-sm focus:border-gold outline-none transition-colors"
-                        value={row.costUSD}
+                        value={isNaN(row.costUSD) || row.costUSD === 0 ? '' : row.costUSD}
                         onChange={(e) => handleBookingCostChange(row.id, 'costUSD', e.target.value)}
                       />
                     </div>
@@ -379,7 +379,7 @@ export default function ProfitLossModule({ user }: { user: User }) {
                       <input 
                         type="number" 
                         className="input-field w-full"
-                        value={editingCosts?.otherLYD || 0}
+                        value={isNaN(editingCosts?.otherLYD || 0) || (editingCosts?.otherLYD || 0) === 0 ? '' : (editingCosts?.otherLYD || 0)}
                         onChange={(e) => handleCostChange('otherLYD', e.target.value)}
                         placeholder="0"
                       />
@@ -391,7 +391,7 @@ export default function ProfitLossModule({ user }: { user: User }) {
                       <input 
                         type="number" 
                         className="input-field w-full"
-                        value={editingCosts?.otherUSD || 0}
+                        value={isNaN(editingCosts?.otherUSD || 0) || (editingCosts?.otherUSD || 0) === 0 ? '' : (editingCosts?.otherUSD || 0)}
                         onChange={(e) => handleCostChange('otherUSD', e.target.value)}
                         placeholder="0"
                       />
