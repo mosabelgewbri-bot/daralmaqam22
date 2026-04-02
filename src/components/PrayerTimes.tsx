@@ -18,41 +18,56 @@ export default function PrayerTimes() {
 
   useEffect(() => {
     const fetchPrayerTimes = async () => {
-      try {
-        // Fetch via our server-side proxy to avoid CORS issues
-        const response = await fetch('/api/prayer-times');
-        if (!response.ok) {
-          throw new Error(`Server proxy responded with status: ${response.status}`);
+      const endpoints = [
+        'https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3',
+        'https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=2',
+        'https://api.aladhan.com/v1/timings?latitude=32.8872&longitude=13.1913&method=3'
+      ];
+
+      for (const url of endpoints) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+          
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) continue;
+          
+          const data = await response.json();
+          if (data.code === 200) {
+            const timings = data.data.timings;
+            setTimes({
+              Fajr: timings.Fajr,
+              Sunrise: timings.Sunrise,
+              Dhuhr: timings.Dhuhr,
+              Asr: timings.Asr,
+              Maghrib: timings.Maghrib,
+              Isha: timings.Isha,
+            });
+            calculateNextPrayer(timings);
+            setLoading(false);
+            return; // Success!
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch from ${url}:`, error);
+          // Continue to next endpoint
         }
-        const data = await response.json();
-        if (data.code === 200) {
-          const timings = data.data.timings;
-          setTimes({
-            Fajr: timings.Fajr,
-            Sunrise: timings.Sunrise,
-            Dhuhr: timings.Dhuhr,
-            Asr: timings.Asr,
-            Maghrib: timings.Maghrib,
-            Isha: timings.Isha,
-          });
-          calculateNextPrayer(timings);
-        }
-      } catch (error) {
-        console.error('Error fetching prayer times:', error);
-        // Fallback to approximate times for Tripoli if API fails
-        const fallbackTimings = {
-          Fajr: '05:30',
-          Sunrise: '07:00',
-          Dhuhr: '13:00',
-          Asr: '16:30',
-          Maghrib: '19:15',
-          Isha: '20:45',
-        };
-        setTimes(fallbackTimings);
-        calculateNextPrayer(fallbackTimings);
-      } finally {
-        setLoading(false);
       }
+
+      // If all endpoints fail, use fallback
+      console.error('All prayer time endpoints failed, using fallback times');
+      const fallbackTimings = {
+        Fajr: '05:30',
+        Sunrise: '07:00',
+        Dhuhr: '13:00',
+        Asr: '16:30',
+        Maghrib: '19:15',
+        Isha: '20:45',
+      };
+      setTimes(fallbackTimings);
+      calculateNextPrayer(fallbackTimings);
+      setLoading(false);
     };
 
     fetchPrayerTimes();

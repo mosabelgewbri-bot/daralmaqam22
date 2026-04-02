@@ -1,25 +1,41 @@
-import React, { createContext, useContext, useState } from 'react';
-
-type Language = 'en' | 'ar';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface LanguageContextType {
-  language: Language;
-  setLanguage: (lang: Language) => void;
-  t: (key: string) => string;
+  language: string;
+  setLanguage: (lang: string) => void;
+  dir: 'rtl' | 'ltr';
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [language, setLanguage] = useState<Language>('en');
+  const { i18n } = useTranslation();
+  const [language, setLanguageState] = useState(i18n.language || 'ar');
+  const [dir, setDir] = useState<'rtl' | 'ltr'>(language === 'ar' ? 'rtl' : 'ltr');
 
-  const t = (key: string) => {
-    // Basic translation mock
-    return key;
+  const setLanguage = (lang: string) => {
+    i18n.changeLanguage(lang);
+    setLanguageState(lang);
+    const newDir = lang === 'ar' ? 'rtl' : 'ltr';
+    setDir(newDir);
+    document.documentElement.dir = newDir;
+    document.documentElement.lang = lang;
+    localStorage.setItem('language', lang);
   };
 
+  useEffect(() => {
+    const savedLang = localStorage.getItem('language') || 'ar';
+    if (savedLang !== language) {
+      setLanguage(savedLang);
+    } else {
+      document.documentElement.dir = dir;
+      document.documentElement.lang = language;
+    }
+  }, []);
+
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, dir }}>
       {children}
     </LanguageContext.Provider>
   );

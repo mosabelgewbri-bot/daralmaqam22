@@ -458,16 +458,34 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/prayer-times", async (req, res) => {
+  console.log("Incoming request for prayer times...");
   try {
-    const response = await fetch('https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3');
+    const apiUrl = 'https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3';
+    console.log(`Fetching from Aladhan API: ${apiUrl}`);
+    const response = await fetch(apiUrl);
+    
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      console.error("Aladhan API returned non-JSON response:", text.substring(0, 200));
+      throw new Error(`Aladhan API returned non-JSON response (${contentType})`);
+    }
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Aladhan API error (${response.status}):`, errorText);
       throw new Error(`API responded with status: ${response.status}`);
     }
+    
     const data = await response.json();
+    console.log("Prayer times fetched successfully");
     res.json(data);
   } catch (error: any) {
     console.error("Error proxying prayer times:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: error.message,
+      details: "Failed to fetch from Aladhan API"
+    });
   }
 });
 

@@ -1,439 +1,124 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  PieChart as PieChartIcon, 
-  BarChart3, 
-  ArrowUpRight, 
-  ArrowDownRight,
-  Filter,
-  Download,
-  Calendar,
-  Briefcase,
-  Save,
-  RefreshCw,
-  Calculator,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { api } from '../services/api';
-import { Trip, Booking, User } from '../types';
-import { clsx } from 'clsx';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { motion } from 'motion/react';
+import { TrendingUp, TrendingDown, DollarSign, Search, Filter, Plus, Download, Calendar, PieChart, BarChart3, AlertCircle } from 'lucide-react';
 
-export default function ProfitLossModule({ user }: { user: User }) {
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [selectedTripId, setSelectedTripId] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+const ProfitLossModule: React.FC = () => {
+  const { t } = useTranslation();
 
-  // Local state for editing costs of the selected trip
-  const [editingCosts, setEditingCosts] = useState<Trip['costs']>({
-    flightLYD: 0, hotelLYD: 0, transportLYD: 0, visaLYD: 0, otherLYD: 0,
-    flightUSD: 0, hotelUSD: 0, transportUSD: 0, visaUSD: 0, otherUSD: 0
-  });
-
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [tripsData, bookingsData] = await Promise.all([
-        api.getTrips(),
-        api.getBookings()
-      ]);
-      setTrips(tripsData);
-      setBookings(bookingsData);
-    } catch (error) {
-      console.error('Error fetching P&L data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedTripId !== 'all') {
-      const trip = trips.find(t => t.id === selectedTripId);
-      if (trip && trip.costs) {
-        setEditingCosts(trip.costs);
-      } else {
-        setEditingCosts({
-          flightLYD: 0, hotelLYD: 0, transportLYD: 0, visaLYD: 0, otherLYD: 0,
-          flightUSD: 0, hotelUSD: 0, transportUSD: 0, visaUSD: 0, otherUSD: 0
-        });
-      }
-    }
-  }, [selectedTripId, trips]);
-
-  const handleCostChange = (field: keyof Trip['costs'], value: string) => {
-    const numValue = parseFloat(value) || 0;
-    setEditingCosts(prev => ({
-      ...prev!,
-      [field]: numValue
-    }));
-  };
-
-  const handleSaveCosts = async () => {
-    if (selectedTripId === 'all') return;
-    setSaving(true);
-    setSaveStatus('idle');
-    try {
-      const trip = trips.find(t => t.id === selectedTripId);
-      if (trip) {
-        const updatedTrip = { ...trip, costs: editingCosts };
-        await api.saveTrip(updatedTrip);
-        setTrips(prev => prev.map(t => t.id === selectedTripId ? updatedTrip : t));
-        setSaveStatus('success');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-      }
-    } catch (error) {
-      console.error('Error saving costs:', error);
-      setSaveStatus('error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleBookingCostChange = async (bookingId: string, field: 'costLYD' | 'costUSD', value: string) => {
-    const numValue = parseFloat(value) || 0;
-    const booking = bookings.find(b => b.id === bookingId);
-    if (!booking) return;
-
-    const updatedBooking = { ...booking, [field]: numValue };
-    
-    // Optimistic update
-    setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
-
-    try {
-      await api.saveBooking(updatedBooking);
-    } catch (error) {
-      console.error('Error saving booking cost:', error);
-      // Revert on error
-      setBookings(prev => prev.map(b => b.id === bookingId ? booking : b));
-    }
-  };
-
-  const calculateDetailedMetrics = () => {
-    const filteredTrips = selectedTripId === 'all' ? trips : trips.filter(t => t.id === selectedTripId);
-    const filteredBookings = selectedTripId === 'all' ? bookings : bookings.filter(b => b.tripId === selectedTripId);
-
-    const tripCostsPerPax = new Map<string, { lyd: number, usd: number }>();
-    
-    trips.forEach(trip => {
-      const totalLYD = (trip.costs?.flightLYD || 0) + (trip.costs?.hotelLYD || 0) + (trip.costs?.transportLYD || 0) + (trip.costs?.visaLYD || 0) + (trip.costs?.otherLYD || 0);
-      const totalUSD = (trip.costs?.flightUSD || 0) + (trip.costs?.hotelUSD || 0) + (trip.costs?.transportUSD || 0) + (trip.costs?.visaUSD || 0) + (trip.costs?.otherUSD || 0);
-      
-      // Calculate cost per seat (assuming costs are spread across all seats)
-      const paxCount = trip.totalSeats || 1;
-      tripCostsPerPax.set(trip.id, {
-        lyd: totalLYD / paxCount,
-        usd: totalUSD / paxCount
-      });
-    });
-
-    const detailedRows = filteredBookings.map(booking => {
-      const trip = trips.find(t => t.id === booking.tripId);
-      const costPerPax = tripCostsPerPax.get(booking.tripId) || { lyd: 0, usd: 0 };
-      
-      const revenueLYD = booking.totals?.totalLYD || 0;
-      const revenueUSD = booking.totals?.totalUSD || 0;
-      
-      // Use booking-specific cost if set, otherwise fallback to distributed trip cost
-      const costLYD = booking.costLYD !== undefined ? booking.costLYD : (costPerPax.lyd * (booking.passengerCount || 0));
-      const costUSD = booking.costUSD !== undefined ? booking.costUSD : (costPerPax.usd * (booking.passengerCount || 0));
-      
-      return {
-        id: booking.id,
-        regId: booking.regId,
-        tripName: trip?.name || 'غير معروف',
-        headName: booking.headName,
-        revenueLYD,
-        revenueUSD,
-        costLYD,
-        costUSD,
-        profitLYD: revenueLYD - costLYD,
-        profitUSD: revenueUSD - costUSD
-      };
-    });
-
-    const totals = detailedRows.reduce((acc, row) => ({
-      revenueLYD: acc.revenueLYD + row.revenueLYD,
-      revenueUSD: acc.revenueUSD + row.revenueUSD,
-      costLYD: acc.costLYD + row.costLYD,
-      costUSD: acc.costUSD + row.costUSD,
-      profitLYD: acc.profitLYD + row.profitLYD,
-      profitUSD: acc.profitUSD + row.profitUSD,
-    }), { revenueLYD: 0, revenueUSD: 0, costLYD: 0, costUSD: 0, profitLYD: 0, profitUSD: 0 });
-
-    return { rows: detailedRows, totals };
-  };
-
-  const { rows, totals } = calculateDetailedMetrics();
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gold"></div>
-      </div>
-    );
-  }
+  const stats = [
+    { title: t('finance.totalRevenue'), value: '450,000', icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-50' },
+    { title: t('finance.totalExpenses'), value: '120,000', icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
+    { title: t('finance.netProfit'), value: '330,000', icon: DollarSign, color: 'text-blue-500', bg: 'bg-blue-50' },
+    { title: t('finance.profitMargin'), value: '73%', icon: TrendingUp, color: 'text-purple-500', bg: 'bg-purple-50' },
+  ];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 text-right" dir="rtl">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-            <Calculator className="w-8 h-8 text-gold" /> تفاصيل الأرباح والخسائر (حسب القيد)
-          </h2>
-          <p className="text-white/60 text-lg">تحليل مالي مفصل لكل فاتورة ورحلة</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={fetchData}
-            className="p-3 bg-white/5 rounded-xl border border-white/10 text-white/60 hover:text-gold transition-colors"
-            title="تحديث البيانات"
-          >
-            <RefreshCw className="w-5 h-5" />
+    <div className="p-6 space-y-6">
+      <header className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <TrendingUp className="text-primary w-6 h-6" />
+          {t('nav.profitLoss')}
+        </h1>
+        <div className="flex gap-2">
+          <button className="bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-all">
+            <Calendar className="w-4 h-4" />
+            {t('common.dateRange')}
           </button>
-          
-          <div className="flex items-center gap-3 bg-white/5 p-2 rounded-2xl border border-white/10">
-            <Filter className="w-5 h-5 text-gold ml-2" />
-            <select 
-              className="bg-transparent text-white border-none focus:ring-0 text-sm cursor-pointer min-w-[200px]"
-              value={selectedTripId}
-              onChange={(e) => setSelectedTripId(e.target.value)}
-            >
-              <option value="all" className="bg-slate-900">جميع الرحلات</option>
-              {trips.map(trip => (
-                <option key={trip.id} value={trip.id} className="bg-slate-900">{trip.name}</option>
-              ))}
-            </select>
+          <button className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-dark transition-all shadow-lg shadow-primary/20">
+            <Download className="w-4 h-4" />
+            {t('reports.exportAll')}
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {stats.map((stat, index) => (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+            className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+          >
+            <div className={`${stat.bg} ${stat.color} p-3 rounded-lg w-fit mb-4`}>
+              <stat.icon className="w-6 h-6" />
+            </div>
+            <p className="text-sm text-gray-500">{stat.title}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {stat.value} <span className="text-xs font-normal text-gray-400">SAR</span>
+            </p>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+            <BarChart3 className="text-primary w-5 h-5" />
+            {t('finance.revenueVsExpenses')}
+          </h2>
+          <div className="flex items-end justify-between h-48 gap-4">
+            {[40, 60, 45, 80, 55, 70].map((h, i) => (
+              <div key={i} className="flex-1 flex gap-1 items-end h-full">
+                <div className="flex-1 bg-green-500 rounded-t-md" style={{ height: `${h}%` }}></div>
+                <div className="flex-1 bg-red-500 rounded-t-md" style={{ height: `${h * 0.3}%` }}></div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between mt-4 text-xs text-gray-400">
+            <span>أكتوبر</span>
+            <span>نوفمبر</span>
+            <span>ديسمبر</span>
+            <span>يناير</span>
+            <span>فبراير</span>
+            <span>مارس</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+            <PieChart className="text-primary w-5 h-5" />
+            {t('finance.profitByTripType')}
+          </h2>
+          <div className="flex items-center justify-center h-48">
+            <div className="relative w-32 h-32 rounded-full border-[16px] border-primary border-r-green-500 border-b-amber-500 border-l-purple-500">
+              <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-900">
+                الأرباح
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 mt-6">
+            {[
+              { label: 'عمرة', value: 65, color: 'bg-primary' },
+              { label: 'حج', value: 20, color: 'bg-green-500' },
+              { label: 'سياحة', value: 10, color: 'bg-amber-500' },
+              { label: 'أخرى', value: 5, color: 'bg-purple-500' },
+            ].map((item, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${item.color}`}></div>
+                <span className="text-xs text-gray-600">{item.label}</span>
+                <span className="text-xs font-bold text-gray-900 ml-auto">{item.value}%</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Detailed Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right">
-            <thead>
-              <tr className="bg-white/5 text-gold text-xs uppercase tracking-widest border-b border-white/10">
-                <th className="px-6 py-4 font-bold">رقم القيد</th>
-                <th className="px-6 py-4 font-bold">الرحلة</th>
-                <th className="px-6 py-4 font-bold">اسم رب الأسرة</th>
-                <th className="px-6 py-4 font-bold">السعر (LYD)</th>
-                <th className="px-6 py-4 font-bold">التكلفة (LYD)</th>
-                <th className="px-6 py-4 font-bold">الربح (LYD)</th>
-                <th className="px-6 py-4 font-bold">السعر ($)</th>
-                <th className="px-6 py-4 font-bold">التكلفة ($)</th>
-                <th className="px-6 py-4 font-bold">الربح ($)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {rows.map((row, idx) => (
-                <motion.tr 
-                  key={row.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.03 }}
-                  className="hover:bg-white/[0.02] transition-colors"
-                >
-                  <td className="px-6 py-4 text-white/60 font-mono text-xs">{row.regId || row.id.slice(0, 8)}</td>
-                  <td className="px-6 py-4 text-white font-medium">{row.tripName}</td>
-                  <td className="px-6 py-4 text-white">{row.headName}</td>
-                  <td className="px-6 py-4 text-emerald-400 font-bold">{row.revenueLYD.toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <input 
-                      type="number" 
-                      className="bg-white/5 border border-white/10 rounded px-2 py-1 text-rose-400 w-24 text-sm focus:border-gold outline-none transition-colors"
-                      value={isNaN(row.costLYD) || row.costLYD === 0 ? '' : row.costLYD}
-                      onChange={(e) => handleBookingCostChange(row.id, 'costLYD', e.target.value)}
-                    />
-                  </td>
-                  <td className={clsx(
-                    "px-6 py-4 font-black",
-                    row.profitLYD >= 0 ? "text-emerald-400" : "text-rose-400"
-                  )}>
-                    {row.profitLYD.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-blue-400 font-bold">${row.revenueUSD.toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <span className="text-rose-400 text-xs">$</span>
-                      <input 
-                        type="number" 
-                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-rose-400 w-24 text-sm focus:border-gold outline-none transition-colors"
-                        value={isNaN(row.costUSD) || row.costUSD === 0 ? '' : row.costUSD}
-                        onChange={(e) => handleBookingCostChange(row.id, 'costUSD', e.target.value)}
-                      />
-                    </div>
-                  </td>
-                  <td className={clsx(
-                    "px-6 py-4 font-black",
-                    row.profitUSD >= 0 ? "text-blue-400" : "text-rose-400"
-                  )}>
-                    ${row.profitUSD.toLocaleString()}
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gold/10 border-t-2 border-gold/20">
-              <tr className="text-white font-black">
-                <td colSpan={3} className="px-6 py-6 text-xl text-gold">الإجماليات</td>
-                <td className="px-6 py-6 text-emerald-400">{totals.revenueLYD.toLocaleString()}</td>
-                <td className="px-6 py-6 text-rose-400">{totals.costLYD.toLocaleString()}</td>
-                <td className={clsx(
-                  "px-6 py-6 text-2xl",
-                  totals.profitLYD >= 0 ? "text-emerald-400" : "text-rose-400"
-                )}>
-                  {totals.profitLYD.toLocaleString()}
-                </td>
-                <td className="px-6 py-6 text-blue-400">${totals.revenueUSD.toLocaleString()}</td>
-                <td className="px-6 py-6 text-rose-400">${totals.costUSD.toLocaleString()}</td>
-                <td className={clsx(
-                  "px-6 py-6 text-2xl",
-                  totals.profitUSD >= 0 ? "text-blue-400" : "text-rose-400"
-                )}>
-                  ${totals.profitUSD.toLocaleString()}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+      <div className="bg-amber-50 p-6 rounded-xl border border-amber-100 flex items-center gap-4">
+        <div className="bg-amber-500 p-3 rounded-lg text-white">
+          <AlertCircle className="w-6 h-6" />
         </div>
-      </div>
-
-      {/* Cost Input Form (Side panel or bottom) */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-3">
-          <div className="glass-card p-8 bg-gold/5 border-gold/20 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-32 h-32 bg-gold/10 rounded-br-full -ml-8 -mt-8 blur-2xl"></div>
-            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-gold/20 rounded-2xl text-gold">
-                  <Calculator className="w-8 h-8" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white">ملخص الأداء العام</h3>
-                  <p className="text-white/40">صافي الربح الإجمالي بناءً على التكاليف المخصصة لكل قيد</p>
-                </div>
-              </div>
-              
-              <div className="flex gap-8">
-                <div className="text-center">
-                  <p className="text-xs text-white/40 mb-1 uppercase tracking-widest">الإجمالي بالدينار</p>
-                  <p className={clsx(
-                    "text-3xl font-black",
-                    totals.profitLYD >= 0 ? "text-emerald-400" : "text-rose-400"
-                  )}>
-                    {totals.profitLYD.toLocaleString()} <span className="text-sm font-normal">د.ل</span>
-                  </p>
-                </div>
-                <div className="w-px bg-white/10" />
-                <div className="text-center">
-                  <p className="text-xs text-white/40 mb-1 uppercase tracking-widest">الإجمالي بالدولار</p>
-                  <p className={clsx(
-                    "text-3xl font-black",
-                    totals.profitUSD >= 0 ? "text-blue-400" : "text-rose-400"
-                  )}>
-                    <span className="text-sm font-normal">$</span>{totals.profitUSD.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div>
+          <h3 className="font-bold text-amber-900">تنبيه هام</h3>
+          <p className="text-sm text-amber-800">يوجد 5 حجوزات لم يتم سداد كامل قيمتها بعد، بإجمالي مبلغ 15,000 ريال سعودي.</p>
         </div>
-
-        <div className="lg:col-span-1">
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white">تعديل تكاليف الرحلة</h3>
-              <div className="p-2 bg-gold/10 rounded-lg text-gold">
-                <Briefcase className="w-5 h-5" />
-              </div>
-            </div>
-
-            {selectedTripId === 'all' ? (
-              <div className="p-8 text-center space-y-4 bg-white/5 rounded-2xl border border-dashed border-white/10">
-                <AlertCircle className="w-12 h-12 text-white/20 mx-auto" />
-                <p className="text-white/40">اختر رحلة لتعديل التكاليف التي يتم توزيعها على القيود</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-gold/60 border-b border-white/5 pb-2">إجمالي تكاليف الرحلة</h4>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-white/40 mr-1">إجمالي التكاليف بالدينار</label>
-                      <input 
-                        type="number" 
-                        className="input-field w-full"
-                        value={isNaN(editingCosts?.otherLYD || 0) || (editingCosts?.otherLYD || 0) === 0 ? '' : (editingCosts?.otherLYD || 0)}
-                        onChange={(e) => handleCostChange('otherLYD', e.target.value)}
-                        placeholder="0"
-                      />
-                      <p className="text-[9px] text-white/30">يتم توزيع هذا المبلغ على عدد مقاعد الرحلة</p>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-white/40 mr-1">إجمالي التكاليف بالدولار ($)</label>
-                      <input 
-                        type="number" 
-                        className="input-field w-full"
-                        value={isNaN(editingCosts?.otherUSD || 0) || (editingCosts?.otherUSD || 0) === 0 ? '' : (editingCosts?.otherUSD || 0)}
-                        onChange={(e) => handleCostChange('otherUSD', e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleSaveCosts}
-                  disabled={saving}
-                  className={clsx(
-                    "w-full py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all",
-                    saveStatus === 'success' ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
-                    saveStatus === 'error' ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" :
-                    "bg-gold text-slate-900 hover:bg-gold/90"
-                  )}
-                >
-                  {saving ? (
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                  ) : saveStatus === 'success' ? (
-                    <>
-                      <CheckCircle2 className="w-5 h-5" /> تم الحفظ بنجاح
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-5 h-5" /> حفظ التكاليف
-                    </>
-                  )}
-                </button>
-
-                <div className="p-4 bg-blue-500/10 rounded-xl border border-blue-500/20">
-                  <p className="text-xs text-blue-400 leading-relaxed">
-                    * يمكنك تعديل تكلفة كل قيد (رب أسرة) مباشرة من الجدول أعلاه.
-                    <br />
-                    * في حال عدم تحديد تكلفة خاصة، سيتم استخدام التكلفة الموزعة آلياً (إجمالي تكاليف الرحلة ÷ عدد المقاعد).
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <button className="mr-auto bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+          مراجعة الحجوزات
+        </button>
       </div>
     </div>
   );
-}
+};
+
+export default ProfitLossModule;

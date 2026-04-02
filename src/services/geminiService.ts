@@ -1,61 +1,168 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+export async function translateOffer(offerData: any) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
 
-export const extractPassportData = async (base64Image: string) => {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [
-      {
-        inlineData: {
-          mimeType: "image/jpeg",
-          data: base64Image.split(',')[1],
-        },
-      },
-      {
-        text: "Extract passport details: name, passport number, nationality, date of birth, expiry date.",
-      },
-    ],
-  });
-  return response.text;
-};
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Translate this Umrah offer from Arabic to English. 
+      Maintain the structure and return ONLY a JSON object with these exact keys:
+      - name: (translated name)
+      - category: (translated category)
+      - rows: (array of objects with translated 'makkah', 'madinah', 'offer', 'meals')
+      - fixedText: (translated fixed text)
+      
+      Original Data: ${JSON.stringify(offerData)}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            category: { type: Type.STRING },
+            rows: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  makkah: { type: Type.STRING },
+                  madinah: { type: Type.STRING },
+                  offer: { type: Type.STRING },
+                  meals: { type: Type.STRING },
+                  double: { type: Type.STRING },
+                  triple: { type: Type.STRING },
+                  quad: { type: Type.STRING },
+                  quint: { type: Type.STRING },
+                  currency: { type: Type.STRING }
+                }
+              }
+            },
+            fixedText: { type: Type.STRING }
+          }
+        }
+      }
+    });
 
-export const translateOffer = async (offer: any, targetLanguage: string = 'English') => {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Translate the following Umrah offer to ${targetLanguage}: ${JSON.stringify(offer)}. Return a JSON object with the same structure.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          category: { type: Type.STRING },
-          rows: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                makkah: { type: Type.STRING },
-                madinah: { type: Type.STRING },
-                offer: { type: Type.STRING },
-                meals: { type: Type.STRING },
-                double: { type: Type.STRING },
-                triple: { type: Type.STRING },
-                quad: { type: Type.STRING },
-                quint: { type: Type.STRING },
-                currency: { type: Type.STRING },
-              },
+    return JSON.parse(response.text);
+  } catch (error) {
+    console.error("Translation Error:", error);
+    throw error;
+  }
+}
+
+export async function extractPassportData(base64Image: string) {
+  try {
+    console.log("OCR Service: Initializing Gemini on frontend...");
+    
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'undefined') {
+      console.error("OCR Service: GEMINI_API_KEY is missing!");
+      throw new Error("GEMINI_API_KEY is not configured. Please add it to Vercel environment variables.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    // Extract mime type and base64 data
+    const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const base64Data = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
+
+    console.log("OCR Service: Sending request to Gemini (flash-latest)...");
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-flash-latest",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data,
             },
           },
-          fixedText: { type: Type.STRING },
-        },
+          {
+            text: `Extract passport information from this image. 
+            Return ONLY a JSON object with these exact keys:
+            - passportNumber: (the passport number)
+            - expiryDate: (the expiry date in YYYY-MM-DD format)
+            - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+            
+            Do not include any other text or markdown formatting.`,
+          },
+        ],
       },
-    },
-  });
-  return JSON.parse(response.text);
-};
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            passportNumber: { type: Type.STRING },
+            expiryDate: { type: Type.STRING },
+            fullNameArabic: { type: Type.STRING },
+          },
+          required: ["passportNumber", "expiryDate", "fullNameArabic"],
+        },
+        systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
+      },
+    });
 
-export const analyzePassport = async (base64Image: string) => {
-  return extractPassportData(base64Image);
-};
+    const text = response.text;
+    console.log("OCR Service: Raw response text:", text);
+    
+    if (!text) {
+      throw new Error("No text returned from Gemini");
+    }
+
+    try {
+      const data = JSON.parse(text);
+      console.log("OCR Service: Success", data);
+      return data;
+    } catch (parseError) {
+      console.error("OCR Service: Failed to parse JSON:", text);
+      throw new Error("فشل في تحليل بيانات الجواز المستخرجة. يرجى التأكد من وضوح الصورة.");
+    }
+  } catch (e: any) {
+    console.error("OCR Service Error:", e);
+    
+    let errorMessage = e.message || "فشل في معالجة صورة الجواز";
+    if (e.message && (e.message.includes("API key not valid") || e.message.includes("API_KEY_INVALID"))) {
+      errorMessage = "مفتاح API غير صالح. يرجى التأكد من إعداد GEMINI_API_KEY بشكل صحيح.";
+    } else if (e.message && e.message.includes("Quota exceeded")) {
+      errorMessage = "تم تجاوز حصة الاستخدام لمفتاح API. يرجى المحاولة لاحقاً.";
+    }
+    
+    throw new Error(errorMessage);
+  }
+}
+
+export async function generateMarketingMessage(customerName: string, offerDetails?: string) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const prompt = offerDetails 
+      ? `صغ رسالة تسويقية جذابة وشخصية لعميل اسمه "${customerName}" بخصوص عرض العمرة التالي: ${offerDetails}. 
+         اجعل الرسالة ودودة، محترمة، ونابعة من القلب (لهجة ليبية محببة). 
+         تحدث عن فضل العمرة والراحة في "دار المقام".`
+      : `صغ رسالة تحية ودودة وشخصية لعميل اسمه "${customerName}" من شركة "دار المقام" لخدمات العمرة. 
+         اجعل الرسالة تذكره بفضل العمرة وتدعوه للاستفسار عن الرحلات القادمة بلهجة ليبية محببة.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        systemInstruction: "أنت خبير تسويق لشركة عمرة ليبية اسمها 'دار المقام'. أسلوبك جذاب، محترم، ويستخدم اللهجة الليبية البيضاء الراقية.",
+      }
+    });
+
+    return response.text;
+  } catch (error) {
+    console.error("Marketing Message Generation Error:", error);
+    return `مرحباً ${customerName}، يسعدنا في دار المقام إطلاعكم على أحدث عروض العمرة.`;
+  }
+}

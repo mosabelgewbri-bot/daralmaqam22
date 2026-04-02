@@ -1,85 +1,54 @@
-export type Role = 'admin' | 'manager' | 'accountant' | 'client' | 'guest' | 'staff' | 'visa_specialist' | 'receptionist';
-
-export interface RolePermissions {
-  canManageUsers: boolean;
-  canManageTrips: boolean;
-  canManageBookings: boolean;
-  canManageFinance: boolean;
-  canManageMarketing: boolean;
-  canViewReports: boolean;
-  canManageSettings: boolean;
-  role?: Role;
-  allowedScreens?: string[];
-}
+export type Role = 'admin' | 'manager' | 'accountant' | 'visa_officer' | 'rooming_officer' | 'marketing' | 'agent' | 'customer' | 'staff' | 'visa_specialist' | 'receptionist';
 
 export interface User {
   id: string;
   username: string;
   name: string;
-  email?: string;
   role: Role;
-  permissions?: RolePermissions;
-  status?: string;
+  status: 'active' | 'inactive';
+  email?: string;
+  phone?: string;
+  permissions?: string[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface RolePermissions {
+  id: string;
+  role: Role;
+  permissions: string[];
+  allowedScreens?: string[];
 }
 
 export interface Trip {
   id: string;
   name: string;
-  date: string;
-  totalSeats: number;
-  ticketPrice: number;
-  status: 'active' | 'completed' | 'cancelled' | 'Upcoming';
+  type: 'umrah' | 'hajj' | 'tourism';
+  startDate: string;
+  endDate: string;
+  price: number;
+  currency: string;
+  status: 'open' | 'closed' | 'completed';
+  capacity?: number;
+  booked?: number;
+  description?: string;
   createdAt?: string;
   updatedAt?: string;
-  [key: string]: any;
 }
 
 export interface Booking {
   id: string;
   tripId: string;
-  userId: string;
-  customerName: string;
-  customerPhone: string;
-  seats: number;
-  totalAmount: number;
-  paidAmount: number;
-  status: 'confirmed' | 'pending' | 'cancelled';
-  createdAt?: string;
-  updatedAt?: string;
-  [key: string]: any;
-}
-
-export interface Customer {
-  id: string;
+  regId: string;
   name: string;
   phone: string;
-  hasWhatsApp?: boolean;
-  lastBookingDate?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface UmrahOfferRow {
-  makkah: string;
-  madinah: string;
-  offer: string;
-  meals: string;
-  double: string;
-  triple: string;
-  quad: string;
-  quint?: string;
-  currency?: string;
-}
-
-export interface UmrahOffer {
-  id: string;
-  name?: string;
-  documentTitle?: string;
-  category: string;
-  rows: UmrahOfferRow[];
-  fixedText?: string;
+  contactName: string;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  totalAmount: number;
+  paidAmount: number;
+  currency: string;
+  pilgrimsCount: number;
+  notes?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -87,6 +56,7 @@ export interface UmrahOffer {
 export interface AuditLog {
   id: string;
   userId: string;
+  userName: string;
   action: string;
   details: string;
   timestamp: string;
@@ -97,8 +67,9 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
+  type: 'info' | 'warning' | 'error' | 'success';
   read: boolean;
-  timestamp: string;
+  createdAt: string;
 }
 
 export interface Pilgrim {
@@ -107,18 +78,22 @@ export interface Pilgrim {
   name: string;
   passportNumber: string;
   nationality: string;
-  [key: string]: any;
+  gender: 'male' | 'female';
+  birthDate: string;
 }
 
-export type Category = 'Cocktails' | 'Desserts' | 'Coffee';
-
-export interface Recipe {
+export interface UmrahOffer {
   id: string;
   title: string;
   description: string;
-  category: Category;
-  image: string;
-  ingredients: string[];
-  instructions: string[];
-  prepTime: string;
+  price: number;
+  currency: string;
+  image?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
 }

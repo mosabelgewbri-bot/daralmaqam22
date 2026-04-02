@@ -1,12 +1,26 @@
 import React from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 
-const Logo: React.FC<{ className?: string }> = ({ className }) => {
+interface LogoProps {
+  textSize?: string;
+  showSubtitle?: boolean;
+  className?: string;
+}
+
+const Logo: React.FC<LogoProps> = ({ textSize = 'text-2xl', showSubtitle = true, className = '' }) => {
+  const { language } = useLanguage();
+  const isArabic = language === 'ar';
+
   return (
-    <div className={`flex items-center space-x-2 ${className}`}>
-      <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
-        <span className="text-white font-bold text-lg">U</span>
+    <div className={`flex flex-col items-center justify-center ${className}`}>
+      <div className={`font-bold text-primary ${textSize}`}>
+        {isArabic ? 'دار المقام' : 'Dar Al-Maqam'}
       </div>
-      <span className="text-xl font-bold text-gray-900">Umrah App</span>
+      {showSubtitle && (
+        <div className="text-xs text-gray-500 mt-1">
+          {isArabic ? 'لخدمات الحج والعمرة' : 'Hajj & Umrah Services'}
+        </div>
+      )}
     </div>
   );
 };
