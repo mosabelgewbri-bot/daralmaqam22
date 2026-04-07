@@ -51,32 +51,18 @@ interface FirestoreErrorInfo {
 function isQuotaError(error: any): boolean {
   if (!error) return false;
   const msg = (error.message || error.error || String(error)).toLowerCase();
-  const code = error.code || '';
-  return msg.includes('quota exceeded') || 
-         msg.includes('quota limit exceeded') || 
-         msg.includes('resource-exhausted') ||
-         msg.includes('resource_exhausted') ||
-         msg.includes('resource exhausted') ||
-         code === 'resource-exhausted' ||
-         code === 'resource_exhausted' ||
-         code === 'functions/resource-exhausted' ||
-         code === '8' || // gRPC code for RESOURCE_EXHAUSTED
-         (error.status === 429);
+  return msg.includes('quota') || msg.includes('exhausted') || msg.includes('limit exceeded') || msg.includes('offline') || msg.includes('insufficient permissions');
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
-  const isQuota = isQuotaError(error);
+  const isQuota = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
   
   if (isQuota) {
-    if (!quotaExceeded) {
-      quotaExceeded = true;
-      localStorage.setItem('fb_quota_exceeded', 'true');
-      window.dispatchEvent(new CustomEvent('firestore_quota_exceeded'));
-    }
-    console.warn('Firestore Quota Exceeded (Handled) for path:', path);
-    // Throw a specific error that can be caught by UI
-    throw new Error(`⚠️ تنبيه: تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). لا يمكن إتمام عملية ${operationType} على ${path} حالياً.`);
+    quotaExceeded = true;
+    console.warn('Firestore Quota Exceeded (Silently Handled) for path:', path);
+    // Don't throw for quota errors if we can handle them gracefully
+    return;
   }
 
   const errInfo: FirestoreErrorInfo = {
@@ -102,84 +88,24 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 // Test connection on boot
-let quotaExceeded = localStorage.getItem('fb_quota_exceeded') === 'true';
-let lastQuotaCheck = 0;
+let quotaExceeded = false;
 
-async function testConnection(force: boolean = false) {
-  const now = Date.now();
-  if (!force && lastQuotaCheck > 0 && now - lastQuotaCheck < 300000) return; // Only check every 5 mins unless forced
-  
-  lastQuotaCheck = now;
+async function testConnection() {
   try {
-    // Use getDocFromServer to force a server check
     await getDocFromServer(doc(db, 'test', 'connection'));
-    quotaExceeded = false;
-    localStorage.removeItem('fb_quota_exceeded');
-    console.log('Firestore Connection OK');
   } catch (error: any) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. ");
+    }
     if (isQuotaError(error)) {
       quotaExceeded = true;
-      localStorage.setItem('fb_quota_exceeded', 'true');
-      console.warn('Firestore Quota still exceeded');
-    } else {
-      // Other errors might not mean quota is exceeded
-      console.error('Connection test error:', error);
     }
   }
 }
-
-// Don't run testConnection at top level, it might block
-// testConnection();
-
-async function getDocsWithCacheFallback(colRef: any, cacheKey: string) {
-  if (quotaExceeded) {
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) return JSON.parse(cached);
-    
-    // Try to get from Firestore cache if localStorage is empty
-    try {
-      const cacheSnap = await getDocsFromCache(colRef);
-      if (!cacheSnap.empty) return cacheSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-    } catch (e) {
-      console.warn('Firestore cache fetch failed:', e);
-    }
-    return [];
-  }
-
-  try {
-    const querySnapshot = await getDocs(colRef);
-    const data = querySnapshot.docs.map(doc => {
-      const d = doc.data() as any;
-      return { 
-        id: doc.id, 
-        ...d,
-        createdAt: d.createdAt?.toDate?.()?.toISOString() || d.createdAt,
-        updatedAt: d.updatedAt?.toDate?.()?.toISOString() || d.updatedAt
-      };
-    });
-    localStorage.setItem(cacheKey, JSON.stringify(data));
-    return data;
-  } catch (error: any) {
-    if (isQuotaError(error)) {
-      quotaExceeded = true;
-      localStorage.setItem('fb_quota_exceeded', 'true');
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) return JSON.parse(cached);
-    }
-    throw error;
-  }
-}
-
-function checkQuotaBeforeWrite(operation: string) {
-  if (quotaExceeded) {
-    console.warn(`Firestore write operation '${operation}' blocked: Quota Exceeded.`);
-    throw new Error('تم تجاوز حصة الاستخدام المجانية لليوم. لا يمكن حفظ البيانات حالياً.');
-  }
-}
+testConnection();
 
 export const api = {
   isQuotaExceeded: () => quotaExceeded,
-  testConnection: (force?: boolean) => testConnection(force),
   // Auth
   async login(username: string, password: string): Promise<{ user: User }> {
     const path = 'users';
@@ -284,11 +210,6 @@ export const api = {
       if (userSnap.exists()) {
         userData = { id: userSnap.id, ...userSnap.data() } as User;
       } else {
-        // Check quota before creating new user
-        if (quotaExceeded) {
-          throw new Error('Quota exceeded. Cannot create new user record.');
-        }
-        
         // Create a basic user record for the first-time Google login
         userData = {
           id: firebaseUser.uid,
@@ -311,14 +232,36 @@ export const api = {
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
     try {
-      return await getDocsWithCacheFallback(collection(db, path), 'cached_trips');
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_trips');
+        if (cached) return JSON.parse(cached);
+      }
+
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      const trips = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Trip;
+      });
+      
+      localStorage.setItem('cached_trips', JSON.stringify(trips));
+      return trips;
     } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        const cached = localStorage.getItem('cached_trips');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
   async saveTrip(trip: Trip): Promise<void> {
-    checkQuotaBeforeWrite('saveTrip');
     const path = 'trips';
     const { id, ...data } = trip;
     
@@ -345,7 +288,6 @@ export const api = {
     }
   },
   async deleteTrip(id: string): Promise<void> {
-    checkQuotaBeforeWrite('deleteTrip');
     const path = 'trips';
     try {
       await this.ensureAuth();
@@ -359,13 +301,53 @@ export const api = {
   async getBookings(limitCount?: number): Promise<Booking[]> {
     const path = 'bookings';
     try {
-      const all = await getDocsWithCacheFallback(
-        query(collection(db, path), orderBy("createdAt", "desc")), 
-        'cached_bookings'
-      );
-      return limitCount ? all.slice(0, limitCount) : all;
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_bookings');
+        if (cached) {
+          const all = JSON.parse(cached) as Booking[];
+          return limitCount ? all.slice(0, limitCount) : all;
+        }
+      }
+
+      await this.ensureAuth();
+      let q = query(collection(db, path), orderBy("createdAt", "desc"));
+      if (limitCount) {
+        q = query(q, limit(limitCount));
+      }
+      
+      const querySnapshot = await getDocs(q);
+      const bookings = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          name: String(data.name || ''),
+          phone: String(data.phone || ''),
+          contactName: String(data.contactName || ''),
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as Booking;
+      });
+
+      if (!limitCount) {
+        localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+      }
+      return bookings;
     } catch (error: any) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      console.error('Error fetching bookings:', error);
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+      }
+      
+      const cached = localStorage.getItem('cached_bookings');
+      if (cached) {
+        try {
+          const all = JSON.parse(cached) as Booking[];
+          if (Array.isArray(all)) {
+            return limitCount ? all.slice(0, limitCount) : all;
+          }
+        } catch (e) {}
+      }
       return [];
     }
   },
@@ -416,7 +398,6 @@ export const api = {
     }
   },
   async saveBooking(booking: Booking): Promise<void> {
-    checkQuotaBeforeWrite('saveBooking');
     const path = 'bookings';
     const { id, ...data } = booking;
     
@@ -443,7 +424,6 @@ export const api = {
     }
   },
   async deleteBooking(id: string): Promise<void> {
-    checkQuotaBeforeWrite('deleteBooking');
     const path = 'bookings';
     try {
       await this.ensureAuth();
@@ -452,19 +432,70 @@ export const api = {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
   },
+  async bulkSaveBookings(bookings: Partial<Booking>[]): Promise<void> {
+    const path = 'bookings';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < bookings.length; i += chunkSize) {
+        const chunk = bookings.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(booking => {
+          const { id, ...data } = booking;
+          const cleanData = Object.fromEntries(
+            Object.entries(data).filter(([_, v]) => v !== undefined)
+          );
+          if (id && id !== 'new') {
+            batch.update(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
+          } else {
+            batch.set(doc(collection(db, path)), { ...cleanData, createdAt: serverTimestamp() });
+          }
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkSaveBookings:', error);
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
 
   // Permissions
   async getPermissions(): Promise<RolePermissions[]> {
     const path = 'permissions';
     try {
-      return await getDocsWithCacheFallback(collection(db, path), 'cached_permissions');
+      // If quota exceeded, return cache immediately
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_permissions');
+        if (cached) return JSON.parse(cached);
+      }
+
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      const perms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
+      
+      // Cache permissions
+      localStorage.setItem('cached_permissions', JSON.stringify(perms));
+      return perms;
     } catch (error: any) {
+      // Return cached permissions if quota exceeded
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        try {
+          const cacheSnapshot = await getDocsFromCache(collection(db, path));
+          if (!cacheSnapshot.empty) {
+            return cacheSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
+          }
+        } catch (cacheError) {
+          console.warn('Cache fetch failed:', cacheError);
+        }
+        const cached = localStorage.getItem('cached_permissions');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
   async savePermission(permission: RolePermissions): Promise<void> {
-    checkQuotaBeforeWrite('savePermission');
     const path = 'permissions';
     const { id, ...data } = permission as any;
     
@@ -495,14 +526,55 @@ export const api = {
   async getUsers(): Promise<User[]> {
     const path = 'users';
     try {
-      return await getDocsWithCacheFallback(collection(db, path), 'cached_users');
+      // If quota exceeded, return cache immediately
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_users');
+        if (cached) return JSON.parse(cached);
+      }
+
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      const users = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as User;
+      });
+      
+      // Cache users
+      localStorage.setItem('cached_users', JSON.stringify(users));
+      return users;
     } catch (error: any) {
+      // Return cached users if quota exceeded
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        try {
+          const cacheSnapshot = await getDocsFromCache(collection(db, path));
+          if (!cacheSnapshot.empty) {
+            return cacheSnapshot.docs.map(doc => {
+              const data = doc.data();
+              return { 
+                id: doc.id, 
+                ...data,
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+              } as unknown as User;
+            });
+          }
+        } catch (cacheError) {
+          console.warn('Cache fetch failed:', cacheError);
+        }
+        const cached = localStorage.getItem('cached_users');
+        if (cached) return JSON.parse(cached);
+      }
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
-    checkQuotaBeforeWrite('saveUser');
     const path = 'users';
     const { id, ...data } = user;
     
@@ -529,7 +601,6 @@ export const api = {
     }
   },
   async deleteUser(id: string): Promise<void> {
-    checkQuotaBeforeWrite('deleteUser');
     const path = 'users';
     try {
       await this.ensureAuth();
@@ -585,7 +656,6 @@ export const api = {
     }
   },
   async saveSettings(settings: Record<string, string>): Promise<void> {
-    checkQuotaBeforeWrite('saveSettings');
     const path = 'settings';
     try {
       await this.ensureAuth();
@@ -605,7 +675,6 @@ export const api = {
   },
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
-    checkQuotaBeforeWrite('changePassword');
     const path = 'users';
     try {
       await this.ensureAuth();
@@ -711,7 +780,6 @@ export const api = {
   },
 
   async logAction(userId: string, userName: string, action: string, details?: string): Promise<void> {
-    if (quotaExceeded) return;
     const path = 'logs';
     try {
       await this.ensureAuth();
@@ -723,11 +791,6 @@ export const api = {
         timestamp: serverTimestamp()
       });
     } catch (error) {
-      if (isQuotaError(error)) {
-        quotaExceeded = true;
-        localStorage.setItem('fb_quota_exceeded', 'true');
-        window.dispatchEvent(new CustomEvent('firestore_quota_exceeded'));
-      }
       console.error('Error logging action:', error);
     }
   },
@@ -778,6 +841,8 @@ export const api = {
         return {
           id: doc.id,
           ...data,
+          name: String(data.name || ''),
+          phone: String(data.phone || ''),
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
         } as unknown as Pilgrim;
@@ -788,15 +853,20 @@ export const api = {
       }
       return pilgrims;
     } catch (error: any) {
+      console.error('Error fetching pilgrims:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        const cached = localStorage.getItem('cached_pilgrims');
-        if (cached) {
-          const all = JSON.parse(cached) as Pilgrim[];
-          return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
-        }
       }
-      handleFirestoreError(error, OperationType.LIST, path);
+      
+      const cached = localStorage.getItem('cached_pilgrims');
+      if (cached) {
+        try {
+          const all = JSON.parse(cached) as Pilgrim[];
+          if (Array.isArray(all)) {
+            return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
+          }
+        } catch (e) {}
+      }
       return [];
     }
   },
@@ -846,7 +916,6 @@ export const api = {
   },
 
   async addNotification(notification: Partial<Notification>): Promise<void> {
-    if (quotaExceeded) return;
     const path = 'notifications';
     
     // Remove undefined fields to avoid Firestore errors
@@ -862,28 +931,58 @@ export const api = {
         createdAt: serverTimestamp()
       });
     } catch (error) {
-      if (isQuotaError(error)) {
-        quotaExceeded = true;
-        localStorage.setItem('fb_quota_exceeded', 'true');
-        window.dispatchEvent(new CustomEvent('firestore_quota_exceeded'));
-      }
       console.error('Error adding notification:', error);
     }
   },
 
   async markNotificationAsRead(id: string): Promise<void> {
-    if (quotaExceeded) return;
     const path = 'notifications';
     try {
       await this.ensureAuth();
       await updateDoc(doc(db, path, id), { read: true });
     } catch (error) {
-      if (isQuotaError(error)) {
-        quotaExceeded = true;
-        localStorage.setItem('fb_quota_exceeded', 'true');
-        window.dispatchEvent(new CustomEvent('firestore_quota_exceeded'));
-      }
       console.error('Error marking notification as read:', error);
+    }
+  },
+  async bulkAddNotifications(notifications: Partial<Notification>[]): Promise<void> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < notifications.length; i += chunkSize) {
+        const chunk = notifications.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(notification => {
+          const cleanData = Object.fromEntries(
+            Object.entries(notification).filter(([_, v]) => v !== undefined)
+          );
+          batch.set(doc(collection(db, path)), {
+            ...cleanData,
+            read: false,
+            createdAt: serverTimestamp()
+          });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkAddNotifications:', error);
+    }
+  },
+  async bulkMarkNotificationsAsRead(ids: string[]): Promise<void> {
+    const path = 'notifications';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.update(doc(db, path, id), { read: true });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkMarkNotificationsAsRead:', error);
     }
   },
   
@@ -891,9 +990,52 @@ export const api = {
   async getUmrahOffers(): Promise<UmrahOffer[]> {
     const path = 'umrahOffers';
     try {
-      return await getDocsWithCacheFallback(collection(db, path), 'cached_umrah_offers');
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_umrah_offers');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      const offers = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          rows: Array.isArray(data.rows) ? data.rows : [],
+          name: String(data.name || ''),
+          category: String(data.category || 'الاقتصادي'),
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as UmrahOffer;
+      });
+
+      localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
+      return offers;
     } catch (error: any) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      console.error('Error in getUmrahOffers:', error);
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+      }
+      
+      const cached = localStorage.getItem('cached_umrah_offers');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {
+          console.error('Error parsing cached offers:', e);
+        }
+      }
+      
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (e) {
+        console.warn('Silencing error in getUmrahOffers to prevent crash');
+      }
       return [];
     }
   },
@@ -956,7 +1098,6 @@ export const api = {
     }
   },
   async saveUmrahOffer(offer: UmrahOffer): Promise<string> {
-    checkQuotaBeforeWrite('saveUmrahOffer');
     const path = 'umrahOffers';
     const { id, ...data } = offer;
     
@@ -987,7 +1128,6 @@ export const api = {
     }
   },
   async deleteUmrahOffer(id: string): Promise<void> {
-    checkQuotaBeforeWrite('deleteUmrahOffer');
     const path = 'umrahOffers';
     try {
       await this.ensureAuth();
@@ -1007,24 +1147,55 @@ export const api = {
   async getCustomers(): Promise<Customer[]> {
     const path = 'customers';
     try {
+      if (quotaExceeded) {
+        const cached = localStorage.getItem('cached_customers');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      return querySnapshot.docs.map(doc => {
+      const customers = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           ...data,
+          name: String(data.name || 'عميل غير معروف'),
+          phone: String(data.phone || ''),
           createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
           lastBookingDate: data.lastBookingDate?.toDate?.()?.toISOString() || data.lastBookingDate
         } as unknown as Customer;
       });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+
+      localStorage.setItem('cached_customers', JSON.stringify(customers));
+      return customers;
+    } catch (error: any) {
+      console.error('Error in getCustomers:', error);
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+      }
+      
+      const cached = localStorage.getItem('cached_customers');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {
+          console.error('Error parsing cached customers:', e);
+        }
+      }
+
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (e) {
+        console.warn('Silencing error in getCustomers to prevent crash');
+      }
       return [];
     }
   },
   async saveCustomer(customer: Partial<Customer>): Promise<void> {
-    checkQuotaBeforeWrite('saveCustomer');
     const path = 'customers';
     const { id, ...data } = customer;
     
@@ -1059,7 +1230,6 @@ export const api = {
     }
   },
   async deleteCustomer(id: string): Promise<void> {
-    checkQuotaBeforeWrite('deleteCustomer');
     const path = 'customers';
     try {
       await this.ensureAuth();
@@ -1068,8 +1238,25 @@ export const api = {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
   },
+  async bulkDeleteCustomers(ids: string[]): Promise<void> {
+    const path = 'customers';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.delete(doc(db, path, id));
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error('Error in bulkDeleteCustomers:', error);
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
   async bulkSaveCustomers(customers: Partial<Customer>[]): Promise<void> {
-    checkQuotaBeforeWrite('bulkSaveCustomers');
     const path = 'customers';
     try {
       await this.ensureAuth();
@@ -1115,7 +1302,6 @@ export const api = {
 
   // Image Hosting
   async uploadImage(base64Data: string, fileName: string): Promise<string> {
-    checkQuotaBeforeWrite('uploadImage');
     const path = 'hosted_images';
     try {
       // Check data size (Firestore limit is 1MB per document)
@@ -1154,79 +1340,46 @@ export const api = {
   },
 
   async syncCustomersFromBookings(): Promise<Customer[]> {
-    checkQuotaBeforeWrite('syncCustomersFromBookings');
     const path = 'customers';
     try {
       await this.ensureAuth();
       
-      // 1. Get all bookings, pilgrims, users, and existing customers
-      const [bookingsSnap, pilgrimsSnap, usersSnap, customersSnap] = await Promise.all([
-        getDocs(collection(db, 'bookings')),
-        getDocs(collection(db, 'pilgrims')),
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, path))
+      // 1. Get all bookings, pilgrims, and existing customers using resilient methods
+      const [bookings, pilgrims, customers] = await Promise.all([
+        this.getBookings(),
+        this.getPilgrims(),
+        this.getCustomers()
       ]);
-      
-      const normalizePhone = (phone: string) => {
-        let clean = phone.replace(/\D/g, '');
-        if (clean.startsWith('218')) clean = '0' + clean.substring(3);
-        if (clean.startsWith('9')) clean = '0' + clean;
-        return clean;
-      };
 
-      const existingPhones = new Set(customersSnap.docs.map(d => normalizePhone(d.data().phone || '')));
+      const existingPhones = new Set(customers.map(d => d.phone));
       const newContacts: Map<string, { name: string, phone: string, lastDate: string }> = new Map();
 
       // Process bookings
-      bookingsSnap.docs.forEach(d => {
-        const data = d.data();
-        if (data.phone) {
-          const norm = normalizePhone(data.phone);
-          if (norm.length >= 9 && !existingPhones.has(norm)) {
-            newContacts.set(norm, {
-              name: data.contactName || data.name || 'عميل من الحجوزات',
-              phone: norm,
-              lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
-            });
-          }
+      bookings.forEach(data => {
+        if (data.phone && !existingPhones.has(data.phone)) {
+          newContacts.set(data.phone, {
+            name: data.contactName || data.name || 'عميل من الحجوزات',
+            phone: data.phone,
+            lastDate: data.createdAt || new Date().toISOString()
+          });
         }
       });
 
       // Process pilgrims
-      pilgrimsSnap.docs.forEach(d => {
-        const data = d.data();
-        if (data.phone) {
-          const norm = normalizePhone(data.phone);
-          if (norm.length >= 9 && !existingPhones.has(norm) && !newContacts.has(norm)) {
-            newContacts.set(norm, {
-              name: data.name || 'معتمر من الحجوزات',
-              phone: norm,
-              lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
-            });
-          }
-        }
-      });
-
-      // Process users (optional but helpful)
-      usersSnap.docs.forEach(d => {
-        const data = d.data();
-        if (data.phone) {
-          const norm = normalizePhone(data.phone);
-          if (norm.length >= 9 && !existingPhones.has(norm) && !newContacts.has(norm)) {
-            newContacts.set(norm, {
-              name: data.name || 'موظف/مستخدم',
-              phone: norm,
-              lastDate: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString()
-            });
-          }
+      pilgrims.forEach(data => {
+        if (data.phone && !existingPhones.has(data.phone) && !newContacts.has(data.phone)) {
+          newContacts.set(data.phone, {
+            name: data.name || 'معتمر من الحجوزات',
+            phone: data.phone,
+            lastDate: data.createdAt || new Date().toISOString()
+          });
         }
       });
 
       // 2. Add new contacts to customers collection in batches
       const contactsArray = Array.from(newContacts.values());
-      if (contactsArray.length === 0) return this.getCustomers();
-
       const chunkSize = 500;
+      
       for (let i = 0; i < contactsArray.length; i += chunkSize) {
         const chunk = contactsArray.slice(i, i + chunkSize);
         const batch = writeBatch(db);

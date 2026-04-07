@@ -1,126 +1,271 @@
-import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { motion } from 'motion/react';
-import { Plane, MapPin, Calendar, CreditCard, Star, Clock, Share2, Phone, MessageCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { api } from '../services/api';
 import { UmrahOffer } from '../types';
+import { 
+  Phone, 
+  Mail, 
+  Calendar, 
+  CheckCircle2, 
+  Download, 
+  Share2,
+  MapPin,
+  Hotel,
+  Utensils,
+  Zap,
+  AlertCircle
+} from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { motion, AnimatePresence } from 'motion/react';
+import { clsx } from 'clsx';
 
-interface PublicOfferProps {
-  offer: UmrahOffer;
-}
+export default function PublicOffer() {
+  const { id } = useParams<{ id: string }>();
+  const [offer, setOffer] = useState<UmrahOffer | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-const PublicOffer: React.FC<PublicOfferProps> = ({ offer }) => {
-  const { t } = useTranslation();
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  useEffect(() => {
+    if (id) {
+      fetchOffer(id);
+    }
+  }, [id]);
+
+  const fetchOffer = async (offerId: string) => {
+    setIsLoading(true);
+    try {
+      const data = await api.getUmrahOfferById(offerId);
+      setOffer(data);
+    } catch (error) {
+      console.error('Error fetching offer:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDownloadImage = async () => {
+    const element = document.getElementById('offer-design-preview');
+    if (element && offer) {
+      try {
+        const canvas = await html2canvas(element, { 
+          scale: 3, 
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          onclone: (clonedDoc) => {
+            const clonedElement = clonedDoc.getElementById('offer-design-preview');
+            if (clonedElement) {
+              const allTextElements = clonedElement.querySelectorAll('*');
+              allTextElements.forEach((el) => {
+                if (el instanceof HTMLElement) {
+                  el.style.letterSpacing = '0';
+                  el.style.wordSpacing = '0';
+                  el.style.textTransform = 'none';
+                }
+              });
+            }
+          }
+        });
+        const link = document.createElement('a');
+        link.download = `عرض_عمرة_${offer.name}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } catch (e) {
+        console.error('Error generating image:', e);
+      }
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
+        <div className="w-12 h-12 border-4 border-gold/20 border-t-gold rounded-full animate-spin" />
+        <p className="text-white/40 font-bold">جاري تحميل العرض...</p>
+      </div>
+    );
+  }
+
+  if (!offer) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
+          <Share2 className="w-10 h-10 text-white/20" />
+        </div>
+        <h1 className="text-2xl font-bold text-white">العرض غير موجود</h1>
+        <p className="text-white/40 max-w-xs">عذراً، يبدو أن الرابط الذي تتبعه غير صحيح أو أن العرض قد تم حذفه.</p>
+        <a href="/" className="mt-6 px-8 py-3 bg-gold text-black font-bold rounded-xl">العودة للرئيسية</a>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-4xl mx-auto bg-white rounded-3xl overflow-hidden shadow-2xl"
-      >
-        <div className="relative h-96 overflow-hidden">
-          <img
-            src={offer.image || `https://picsum.photos/seed/umrah${offer.id}/1200/800`}
-            alt={offer.title}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-          <div className="absolute bottom-8 right-8 text-white">
-            <h1 className="text-4xl font-bold mb-2">{offer.title}</h1>
-            <div className="flex items-center gap-4 text-sm opacity-90">
-              <div className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                <span>مكة المكرمة & المدينة المنورة</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span>4.9 (120 تقييم)</span>
-              </div>
+    <div className="min-h-screen bg-slate-950 pb-20">
+      {/* Header */}
+      <div className="bg-white/5 border-b border-white/10 p-6 sticky top-0 z-50 backdrop-blur-xl">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center border border-gold/20">
+              <Share2 className="w-5 h-5 text-gold" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white">عرض عمرة احترافي</h2>
+              <p className="text-[10px] text-white/40 font-bold">شركة دار المقام</p>
             </div>
           </div>
+          <button 
+            onClick={handleDownloadImage}
+            className="flex items-center gap-2 px-4 py-2 bg-gold text-black rounded-lg text-xs font-bold"
+          >
+            <Download className="w-4 h-4" />
+            تحميل كصورة
+          </button>
         </div>
+      </div>
 
-        <div className="p-8 lg:p-12 grid grid-cols-1 lg:grid-cols-3 gap-12">
-          <div className="lg:col-span-2 space-y-8">
-            <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">{t('umrahOffers.description')}</h2>
-              <p className="text-gray-600 leading-relaxed text-lg">
-                {offer.description}
-              </p>
-            </section>
+      {/* Content */}
+      <div className="max-w-2xl mx-auto p-4 md:p-8 space-y-8">
+        {offer.imageUrl && (
+          <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+            <img 
+              src={offer.imageUrl} 
+              alt={offer.name} 
+              className="w-full h-auto object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        )}
 
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { label: 'فنادق 5 نجوم', icon: Star },
-                { label: 'طيران مباشر', icon: Plane },
-                { label: 'نقل حديث', icon: Clock },
-                { label: 'إرشاد ديني', icon: Calendar },
-              ].map((item, index) => (
-                <div key={index} className="p-4 rounded-2xl bg-primary/5 border border-primary/10 flex flex-col items-center gap-2 text-center">
-                  <item.icon className="w-6 h-6 text-primary" />
-                  <span className="text-xs font-bold text-gray-700">{item.label}</span>
-                </div>
-              ))}
-            </section>
+        <div id="offer-design-preview" className="bg-white p-6 md:p-12 rounded-3xl text-slate-900 font-serif relative overflow-hidden border-8 border-double border-gold/30 shadow-2xl">
+          {/* Islamic Pattern Background */}
+          <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+          
+          <div className="relative z-10 space-y-8 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <h2 className="text-xl md:text-2xl font-bold text-gold">{offer.documentTitle || 'شركة دار المقام'}</h2>
+              <div className="h-1 w-40 bg-gradient-to-r from-transparent via-gold/50 to-transparent" />
+            </div>
 
-            <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">{t('umrahOffers.itinerary')}</h2>
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">
-                        {i}
-                      </div>
-                      {i < 3 && <div className="w-0.5 flex-1 bg-primary/20 my-1"></div>}
+            <div className="space-y-2">
+              <h1 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tight leading-tight">{offer.name}</h1>
+              <p className="text-sm md:text-lg text-slate-500 font-bold">{offer.category} - رحلات 1447 هـ</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6">
+              {offer.rows.map((row, idx) => (
+                <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-6 md:p-8 flex flex-col gap-4 text-right shadow-sm">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                    <div className="flex items-center gap-3 text-gold font-bold">
+                      <MapPin className="w-5 h-5" />
+                      <span className="text-lg">{row.makkah} / {row.madinah}</span>
                     </div>
-                    <div className="pb-8">
-                      <h3 className="font-bold text-gray-900">اليوم {i === 1 ? 'الأول' : i === 2 ? 'الثاني' : 'الثالث'}</h3>
-                      <p className="text-sm text-gray-500 mt-1">الوصول إلى مطار الملك عبد العزيز بجدة ثم التوجه إلى مكة المكرمة.</p>
+                    <span className="px-3 py-1 rounded-full bg-gold/10 text-gold text-[10px] font-bold">{offer.category}</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3 justify-end">
+                      <p className="text-xl md:text-2xl font-bold text-slate-800">{row.offer}</p>
+                      <Hotel className="w-6 h-6 text-gold mt-1" />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 text-slate-500 font-medium">
+                      <span>{row.meals}</span>
+                      <Utensils className="w-4 h-4 text-emerald-500" />
                     </div>
                   </div>
-                ))}
-              </div>
-            </section>
-          </div>
 
-          <div className="lg:col-span-1">
-            <div className="sticky top-8 bg-gray-50 p-8 rounded-3xl border border-gray-100 space-y-6">
-              <div>
-                <p className="text-sm text-gray-500 mb-1">السعر للشخص يبدأ من</p>
-                <p className="text-4xl font-bold text-primary">
-                  {offer.price} <span className="text-lg font-normal text-gray-500">{offer.currency}</span>
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <button className="w-full bg-primary text-white py-4 rounded-2xl font-bold text-lg hover:bg-primary-dark shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  احجز الآن
-                </button>
-                <button className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold text-lg hover:bg-green-600 shadow-xl shadow-green-500/20 transition-all flex items-center justify-center gap-2">
-                  <MessageCircle className="w-5 h-5" />
-                  تواصل عبر واتساب
-                </button>
-              </div>
-
-              <div className="pt-6 border-t border-gray-200 space-y-4">
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <Phone className="w-4 h-4 text-primary" />
-                  <span>+966 50 123 4567</span>
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    <div className="bg-white border border-slate-100 rounded-xl p-3 text-center shadow-sm">
+                      <p className="text-[10px] text-slate-400 font-bold mb-1">ثنائي</p>
+                      <p className="text-lg font-black text-gold">{row.double}</p>
+                    </div>
+                    <div className="bg-white border border-slate-100 rounded-xl p-3 text-center shadow-sm">
+                      <p className="text-[10px] text-slate-400 font-bold mb-1">ثلاثي</p>
+                      <p className="text-lg font-black text-gold">{row.triple}</p>
+                    </div>
+                    <div className="bg-white border border-slate-100 rounded-xl p-3 text-center shadow-sm">
+                      <p className="text-[10px] text-slate-400 font-bold mb-1">رباعي</p>
+                      <p className="text-lg font-black text-gold">{row.quad}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-sm text-gray-600">
-                  <Share2 className="w-4 h-4 text-primary" />
-                  <span>مشاركة العرض</span>
+              ))}
+            </div>
+
+            {offer.fixedText && (
+              <div className="pt-8 border-t border-slate-100">
+                <p className="text-sm text-slate-500 leading-relaxed whitespace-pre-wrap italic">{offer.fixedText}</p>
+              </div>
+            )}
+
+            <div className="pt-10 flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 border-t border-slate-100 mt-8">
+              <div className="flex items-center gap-3 text-slate-600">
+                <div className="w-8 h-8 rounded-full bg-gold/10 flex items-center justify-center">
+                  <Phone className="w-4 h-4 text-gold" />
                 </div>
+                <span className="text-sm font-bold">0948470011</span>
+              </div>
+              <div className="flex items-center gap-3 text-slate-600">
+                <div className="w-8 h-8 rounded-full bg-gold/10 flex items-center justify-center">
+                  <Phone className="w-4 h-4 text-gold" />
+                </div>
+                <span className="text-sm font-bold">0947470010</span>
               </div>
             </div>
           </div>
         </div>
-      </motion.div>
+
+        {/* CTA Section */}
+        <div className="bg-gold rounded-3xl p-8 text-center space-y-4 shadow-xl shadow-gold/10">
+          <h3 className="text-xl font-black text-black">هل أعجبك العرض؟</h3>
+          <p className="text-black/60 text-sm font-bold">تواصل معنا الآن للحجز أو الاستفسار عن التفاصيل</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <a 
+              href="https://wa.me/218948470011" 
+              className="w-full sm:w-auto px-8 py-4 bg-black text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg"
+            >
+              <Phone className="w-5 h-5" />
+              تواصل عبر واتساب
+            </a>
+            <button 
+              onClick={() => {
+                navigator.share({
+                  title: `عرض عمرة من دار المقام: ${offer.name}`,
+                  url: window.location.href
+                }).catch(() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  showToast('تم نسخ رابط العرض!', 'success');
+                });
+              }}
+              className="w-full sm:w-auto px-8 py-4 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg"
+            >
+              <Share2 className="w-5 h-5" />
+              مشاركة العرض
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={clsx(
+              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
+              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
+              "bg-red-500/90 border-red-500/20 text-white"
+            )}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
-};
-
-export default PublicOffer;
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { User, Role, RolePermissions, Trip, Booking } from './types';
 import { api } from './services/api';
@@ -25,9 +25,77 @@ import Sidebar from './components/Sidebar';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBell from './components/NotificationBell';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu } from 'lucide-react';
+import { Menu, AlertTriangle, RefreshCw } from 'lucide-react';
 
 import { LanguageProvider } from './contexts/LanguageContext';
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: any;
+}
+
+class ErrorBoundary extends Component<any, any> {
+  props: any;
+  state = { hasError: false, error: null };
+
+  constructor(props: any) {
+    super(props);
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error('Application Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = 'حدث خطأ غير متوقع في التطبيق';
+      try {
+        if (this.state.error?.message) {
+          const parsed = JSON.parse(this.state.error.message);
+          if (parsed.error) errorMessage = `خطأ في قاعدة البيانات: ${parsed.error}`;
+        }
+      } catch (e) {
+        errorMessage = this.state.error?.message || errorMessage;
+      }
+
+      return (
+        <div className="min-h-screen bg-matte-black flex items-center justify-center p-6 text-right" dir="rtl">
+          <div className="max-w-md w-full bg-matte-dark border border-white/10 rounded-[2rem] p-8 text-center space-y-6 shadow-2xl">
+            <div className="w-20 h-20 rounded-3xl bg-red-500/10 flex items-center justify-center mx-auto border border-red-500/20">
+              <AlertTriangle className="w-10 h-10 text-red-500" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-black text-white">عذراً، حدث خطأ ما</h2>
+              <p className="text-white/40 text-sm leading-relaxed">
+                {errorMessage}
+              </p>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-gold text-black rounded-2xl font-black hover:bg-gold/90 transition-all shadow-lg shadow-gold/20"
+            >
+              <RefreshCw className="w-5 h-5" />
+              إعادة تحميل التطبيق
+            </button>
+            <p className="text-[10px] text-white/10 font-mono break-all">
+              {String(this.state.error)}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
   const location = useLocation();
@@ -118,21 +186,12 @@ export default function App() {
     const checkQuota = () => {
       if (api.isQuotaExceeded()) {
         setConnectionError('تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). ستتم إعادة تعيين الحصة تلقائياً غداً.');
-      } else {
-        setConnectionError(null);
       }
     };
     checkQuota();
-    
-    const handleQuotaExceeded = () => {
-      setConnectionError('تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). ستتم إعادة تعيين الحصة تلقائياً غداً.');
-    };
-
-    window.addEventListener('firestore_quota_exceeded', handleQuotaExceeded);
-    const interval = setInterval(checkQuota, 30000); // Check every 30 seconds
+    const interval = setInterval(checkQuota, 5000);
     window.addEventListener('focus', checkQuota);
     return () => {
-      window.removeEventListener('firestore_quota_exceeded', handleQuotaExceeded);
       clearInterval(interval);
       window.removeEventListener('focus', checkQuota);
     };
@@ -275,69 +334,48 @@ export default function App() {
     localStorage.removeItem('user');
   };
 
-  const handleRetryConnection = async () => {
-    setConnectionError('جاري محاولة الاتصال...');
-    try {
-      await api.testConnection(true); // Force a server check
-      if (!api.isQuotaExceeded()) {
-        setConnectionError(null);
-        window.location.reload();
-      } else {
-        setConnectionError('لا تزال الحصة متجاوزة. يرجى المحاولة لاحقاً.');
-      }
-    } catch (e) {
-      setConnectionError('فشلت محاولة الاتصال. يرجى المحاولة لاحقاً.');
-    }
-  };
-
   if (isPublicRoute) {
     return (
-      <LanguageProvider>
-        <Router>
-          <Routes>
-            <Route path="/offer/:id" element={<PublicOffer />} />
-            <Route path="/img/:id" element={<PublicImage />} />
-          </Routes>
-        </Router>
-      </LanguageProvider>
+      <ErrorBoundary>
+        <LanguageProvider>
+          <Router>
+            <Routes>
+              <Route path="/offer/:id" element={<PublicOffer />} />
+              <Route path="/img/:id" element={<PublicImage />} />
+            </Routes>
+          </Router>
+        </LanguageProvider>
+      </ErrorBoundary>
     );
   }
 
   if (!user) {
     return (
-      <LanguageProvider>
-        {connectionError && (
-          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-4">
-            <span>⚠️ {connectionError}</span>
-            <button 
-              onClick={handleRetryConnection}
-              className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
-        )}
-        <Login onLogin={handleLogin} />
-      </LanguageProvider>
+      <ErrorBoundary>
+        <LanguageProvider>
+          {connectionError && (
+            <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold">
+              ⚠️ {connectionError}
+            </div>
+          )}
+          <Login onLogin={handleLogin} />
+        </LanguageProvider>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <LanguageProvider>
-      {connectionError && (
-        <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-4">
-          <span>⚠️ {connectionError}</span>
-          <button 
-            onClick={handleRetryConnection}
-            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-          >
-            إعادة المحاولة
-          </button>
-        </div>
-      )}
-      <Router>
-        <AppContent user={user} onLogout={handleLogout} />
-      </Router>
-    </LanguageProvider>
+    <ErrorBoundary>
+      <LanguageProvider>
+        {connectionError && (
+          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold">
+            ⚠️ {connectionError}
+          </div>
+        )}
+        <Router>
+          <AppContent user={user} onLogout={handleLogout} />
+        </Router>
+      </LanguageProvider>
+    </ErrorBoundary>
   );
 }

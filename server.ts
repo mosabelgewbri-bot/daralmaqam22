@@ -457,38 +457,6 @@ app.get("/api/health", (req, res) => {
   }
 });
 
-app.get("/api/prayer-times", async (req, res) => {
-  console.log("Incoming request for prayer times...");
-  try {
-    const apiUrl = 'https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3';
-    console.log(`Fetching from Aladhan API: ${apiUrl}`);
-    const response = await fetch(apiUrl);
-    
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      const text = await response.text();
-      console.error("Aladhan API returned non-JSON response:", text.substring(0, 200));
-      throw new Error(`Aladhan API returned non-JSON response (${contentType})`);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Aladhan API error (${response.status}):`, errorText);
-      throw new Error(`API responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log("Prayer times fetched successfully");
-    res.json(data);
-  } catch (error: any) {
-    console.error("Error proxying prayer times:", error);
-    res.status(500).json({ 
-      error: error.message,
-      details: "Failed to fetch from Aladhan API"
-    });
-  }
-});
-
 app.get("/api/test", (req, res) => {
   res.send("Server is running correctly");
 });
@@ -1094,14 +1062,10 @@ app.post("/api/whatsapp/proxy", async (req, res) => {
 
     clearTimeout(timeout);
 
-    const text = await response.text();
-    let data = null;
-    try {
-      data = JSON.parse(text);
-    } catch (err) {
-      console.warn(`Failed to parse JSON from ${url}. Raw response: ${text.substring(0, 200)}`);
-      data = { raw: text, status: response.statusText, isRaw: true };
-    }
+    const data = await response.json().catch((err) => {
+      console.warn(`Failed to parse JSON from ${url}:`, err.message);
+      return null;
+    });
     
     if (response.ok) {
       console.log(`Proxy request to ${url} succeeded with status ${response.status}`);

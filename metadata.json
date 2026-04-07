@@ -1,5 +1,7 @@
 {
-  "name": "WhatsApp Number Generator & Validator",
-  "description": "Generate and validate phone numbers using Gemini, with optional WhatsApp API integration for status checking.",
-  "requestFramePermissions": []
+  "name": "Dara Al-Maqam Umrah ERP",
+  "description": "Luxury Umrah Management System with Booking, Rooming, Visa, and Financial Reporting features.",
+  "requestFramePermissions": [
+    "camera"
+  ]
 }
