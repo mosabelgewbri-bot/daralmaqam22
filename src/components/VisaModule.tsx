@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Pilgrim, Booking, Trip } from '../types';
 import { api } from '../services/api';
 import { deduplicateBookings } from '../utils/dataUtils';
-import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare, Zap, CheckCircle2 } from 'lucide-react';
+import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare, Zap, CheckCircle2, Eye, X as CloseIcon, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +19,8 @@ export default function VisaModule({ user }: { user: User }) {
   const [filteredPilgrims, setFilteredPilgrims] = useState<(Pilgrim & { bookingId: string, regId: string })[]>([]);
   const [selectedPilgrims, setSelectedPilgrims] = useState<string[]>([]); // Array of passportNo
   const [bulkStatus, setBulkStatus] = useState<Pilgrim['visaStatus'] | ''>('');
+  const [viewingPassport, setViewingPassport] = useState<{ image: string, name: string } | null>(null);
+  const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
 
   const [toast, setToast] = useState<{
     show: boolean;
@@ -492,9 +494,33 @@ export default function VisaModule({ user }: { user: User }) {
                       )}
                     </button>
                   </td>
-                  <td className="px-6 py-4 font-medium">{p.name}</td>
+                  <td className="px-6 py-4 font-medium">
+                    <div className="flex items-center gap-2">
+                      {p.name}
+                      {p.passportImage && (
+                        <button 
+                          onClick={() => setViewingPassport({ image: p.passportImage!, name: p.name })}
+                          className="p-1 hover:bg-gold/10 text-gold rounded transition-colors"
+                          title="عرض صورة الجواز"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 font-mono text-white/60">{p.passportNo}</td>
-                  <td className="px-6 py-4 text-xs text-gold">{p.regId}</td>
+                  <td className="px-6 py-4 text-xs text-gold">
+                    <button 
+                      onClick={() => {
+                        const booking = bookings.find(b => b.id === p.bookingId);
+                        if (booking) setViewingBooking(booking);
+                      }}
+                      className="hover:underline font-mono"
+                      title="عرض تفاصيل الحجز"
+                    >
+                      {p.regId}
+                    </button>
+                  </td>
                   <td className="px-6 py-4">
                     <GroupNoInput 
                       initialValue={p.groupNo || ''} 
@@ -538,6 +564,196 @@ export default function VisaModule({ user }: { user: User }) {
           </tbody>
         </table>
       </div>
+
+      {/* Booking Details Modal */}
+      <AnimatePresence>
+        {viewingBooking && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+            onClick={() => setViewingBooking(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-4xl w-full bg-matte-black rounded-3xl border border-gold/30 overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gold/20 rounded-lg">
+                    <FileText className="w-5 h-5 text-gold" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-xl">تفاصيل الحجز: {viewingBooking.regId}</h3>
+                    <p className="text-xs text-white/40 font-mono">{viewingBooking.id}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setViewingBooking(null)}
+                  className="p-2 hover:bg-white/10 rounded-full text-white/60 hover:text-white transition-all"
+                >
+                  <CloseIcon className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-right">
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-gold/20 pb-2">بيانات العميل</h3>
+                    <div className="space-y-2">
+                      <p className="text-lg font-medium text-white">{viewingBooking.headName}</p>
+                      <p className="text-sm text-white/60">الهاتف: <span dir="ltr">{viewingBooking.phone}</span></p>
+                      <p className="text-sm text-white/60">تاريخ الحجز: {new Date(viewingBooking.createdAt).toLocaleDateString('ar-LY')}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-gold/20 pb-2">تفاصيل الرحلة</h3>
+                    <div className="space-y-2">
+                      <p className="text-lg font-medium text-white">
+                        {trips.find(t => t.id === viewingBooking.tripId)?.name || '---'}
+                      </p>
+                      <p className="text-sm text-white/60">عدد المعتمرين: {viewingBooking.passengerCount}</p>
+                      <p className="text-sm text-white/60">نوع الحجز: {viewingBooking.isVisaOnly ? 'تأشيرة فقط' : 'برنامج كامل'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-gold/20 pb-2">بيانات الإقامة</h3>
+                    <div className="space-y-2">
+                      <p className="text-sm text-white/60">فندق مكة: {viewingBooking.makkahHotel} ({viewingBooking.makkahNights} ليالي)</p>
+                      <p className="text-sm text-white/60">فندق المدينة: {viewingBooking.madinahHotel} ({viewingBooking.madinahNights} ليالي)</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-gold/20 pb-2">قائمة المعتمرين</h3>
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                    <table className="w-full text-right text-sm">
+                      <thead className="bg-white/5 text-[10px] uppercase text-white/40">
+                        <tr>
+                          <th className="px-4 py-3">الاسم</th>
+                          <th className="px-4 py-3">العلاقة</th>
+                          <th className="px-4 py-3">رقم الجواز</th>
+                          <th className="px-4 py-3">تاريخ الانتهاء</th>
+                          <th className="px-4 py-3">الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {viewingBooking.pilgrims.map((p: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-white/5">
+                            <td className="px-4 py-3 font-medium text-white">{p.name}</td>
+                            <td className="px-4 py-3 text-white/60">
+                              {p.relationship === 'Self' ? 'نفسه' : 
+                               p.relationship === 'Spouse' ? 'زوج/ة' : 
+                               p.relationship === 'Child' ? 'ابن/ة' : 
+                               p.relationship === 'Parent' ? 'أب/أم' : 'آخر'}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-white/80">{p.passportNo}</td>
+                            <td className="px-4 py-3 text-white/60">{p.expiryDate || '---'}</td>
+                            <td className="px-4 py-3">
+                              <span className={clsx(
+                                "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                                p.visaStatus === 'Pending' && "bg-yellow-500/10 text-yellow-500",
+                                p.visaStatus === 'Processed' && "bg-blue-500/10 text-blue-500",
+                                p.visaStatus === 'Visa Issued' && "bg-emerald-500/10 text-emerald-500"
+                              )}>
+                                {statusMap[p.visaStatus] || p.visaStatus}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-6 border-t border-white/10">
+                  <div className="text-right">
+                    <p className="text-xs text-white/40">إجمالي الحجز</p>
+                    <div className="flex gap-4 mt-1">
+                      <div className="text-xl font-bold text-gold">{viewingBooking.totals.totalLYD.toLocaleString()} د.ل</div>
+                      <div className="text-xl font-bold text-gold">{viewingBooking.totals.totalUSD.toLocaleString()} $</div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setViewingBooking(null)}
+                    className="btn-gold px-12 py-3 rounded-xl"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Passport Viewer Modal */}
+      <AnimatePresence>
+        {viewingPassport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+            onClick={() => setViewingPassport(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-4xl w-full bg-matte-black rounded-3xl border border-gold/30 overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <h3 className="font-bold text-white">صورة جواز: {viewingPassport.name}</h3>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = viewingPassport.image;
+                      link.download = `passport_${viewingPassport.name.replace(/\s+/g, '_')}.jpg`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="p-2 hover:bg-gold/20 rounded-full text-gold transition-all"
+                    title="حفظ الصورة"
+                  >
+                    <Download className="w-6 h-6" />
+                  </button>
+                  <button 
+                    onClick={() => setViewingPassport(null)}
+                    className="p-2 hover:bg-white/10 rounded-full text-white/60 hover:text-white transition-all"
+                  >
+                    <CloseIcon className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-black/40">
+                <img 
+                  src={viewingPassport.image} 
+                  alt="Passport" 
+                  className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-2xl"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="p-4 bg-white/5 text-center">
+                <button 
+                  onClick={() => setViewingPassport(null)}
+                  className="btn-gold px-8 py-2 rounded-xl"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Toast Notification */}
       <AnimatePresence>
