@@ -19,7 +19,23 @@ export default function PrayerTimes() {
   useEffect(() => {
     const fetchPrayerTimes = async () => {
       try {
-        // Fetch for Tripoli, Libya
+        // Times from the provided image for Tripoli (21 Shawwal 1447 / April 9, 2026)
+        const imageTimings = {
+          Fajr: '05:17',
+          Sunrise: '06:44',
+          Dhuhr: '13:12',
+          Asr: '16:44',
+          Maghrib: '19:36',
+          Isha: '20:58',
+        };
+
+        // We set the image timings as the primary source as requested
+        setTimes(imageTimings);
+        calculateNextPrayer(imageTimings);
+
+        // Optionally still try to fetch to keep it dynamic, but the user requested "according to the image"
+        // so we prioritize those. If we wanted to keep it dynamic we'd do:
+        /*
         const response = await fetch('https://api.aladhan.com/v1/timingsByCity?city=Tripoli&country=Libya&method=3');
         const data = await response.json();
         if (data.code === 200) {
@@ -34,19 +50,9 @@ export default function PrayerTimes() {
           });
           calculateNextPrayer(timings);
         }
+        */
       } catch (error) {
         console.error('Error fetching prayer times:', error);
-        // Fallback to approximate times for Tripoli if API fails
-        const fallbackTimings = {
-          Fajr: '05:30',
-          Sunrise: '07:00',
-          Dhuhr: '13:00',
-          Asr: '16:30',
-          Maghrib: '19:15',
-          Isha: '20:45',
-        };
-        setTimes(fallbackTimings);
-        calculateNextPrayer(fallbackTimings);
       } finally {
         setLoading(false);
       }

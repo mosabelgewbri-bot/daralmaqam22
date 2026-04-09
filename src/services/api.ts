@@ -249,7 +249,11 @@ export const api = {
         } as unknown as Trip;
       });
       
-      localStorage.setItem('cached_trips', JSON.stringify(trips));
+      try {
+        localStorage.setItem('cached_trips', JSON.stringify(trips));
+      } catch (e) {
+        console.warn('Failed to cache trips in localStorage (Quota Exceeded)');
+      }
       return trips;
     } catch (error: any) {
       if (isQuotaError(error)) {
@@ -330,7 +334,11 @@ export const api = {
       });
 
       if (!limitCount) {
-        localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+        try {
+          localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+        } catch (e) {
+          console.warn('Failed to cache bookings in localStorage (Quota Exceeded)');
+        }
       }
       return bookings;
     } catch (error: any) {
@@ -474,7 +482,11 @@ export const api = {
       const perms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
       
       // Cache permissions
-      localStorage.setItem('cached_permissions', JSON.stringify(perms));
+      try {
+        localStorage.setItem('cached_permissions', JSON.stringify(perms));
+      } catch (e) {
+        console.warn('Failed to cache permissions in localStorage (Quota Exceeded)');
+      }
       return perms;
     } catch (error: any) {
       // Return cached permissions if quota exceeded
@@ -545,7 +557,11 @@ export const api = {
       });
       
       // Cache users
-      localStorage.setItem('cached_users', JSON.stringify(users));
+      try {
+        localStorage.setItem('cached_users', JSON.stringify(users));
+      } catch (e) {
+        console.warn('Failed to cache users in localStorage (Quota Exceeded)');
+      }
       return users;
     } catch (error: any) {
       // Return cached users if quota exceeded
@@ -629,7 +645,11 @@ export const api = {
       });
       
       // Cache settings
-      localStorage.setItem('cached_settings', JSON.stringify(settings));
+      try {
+        localStorage.setItem('cached_settings', JSON.stringify(settings));
+      } catch (e) {
+        console.warn('Failed to cache settings in localStorage (Quota Exceeded)');
+      }
       return settings;
     } catch (error: any) {
       // Return cached settings if quota exceeded
@@ -849,7 +869,11 @@ export const api = {
       });
 
       if (!bookingId) {
-        localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
+        try {
+          localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
+        } catch (e) {
+          console.warn('Failed to cache pilgrims in localStorage (Quota Exceeded)');
+        }
       }
       return pilgrims;
     } catch (error: any) {
@@ -898,7 +922,11 @@ export const api = {
       }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       if (!userId) {
-        localStorage.setItem('cached_notifications', JSON.stringify(notifications));
+        try {
+          localStorage.setItem('cached_notifications', JSON.stringify(notifications));
+        } catch (e) {
+          console.warn('Failed to cache notifications in localStorage (Quota Exceeded)');
+        }
       }
       return notifications;
     } catch (error: any) {
@@ -1013,7 +1041,11 @@ export const api = {
         } as unknown as UmrahOffer;
       });
 
-      localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
+      try {
+        localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
+      } catch (e) {
+        console.warn('Failed to cache umrah offers in localStorage (Quota Exceeded)');
+      }
       return offers;
     } catch (error: any) {
       console.error('Error in getUmrahOffers:', error);
@@ -1169,7 +1201,11 @@ export const api = {
         } as unknown as Customer;
       });
 
-      localStorage.setItem('cached_customers', JSON.stringify(customers));
+      try {
+        localStorage.setItem('cached_customers', JSON.stringify(customers));
+      } catch (e) {
+        console.warn('Failed to cache customers in localStorage (Quota Exceeded)');
+      }
       return customers;
     } catch (error: any) {
       console.error('Error in getCustomers:', error);

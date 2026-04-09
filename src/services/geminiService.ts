@@ -1,16 +1,14 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 export async function translateOffer(offerData: any) {
   try {
     const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
 
-    const ai = new GoogleGenerativeAI(apiKey);
-    const model = ai.getGenerativeModel({
-      model: "gemini-1.5-flash",
-    });
+    const ai = new GoogleGenAI({ apiKey });
     
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: [{
         role: "user",
         parts: [{
@@ -24,37 +22,37 @@ export async function translateOffer(offerData: any) {
           Original Data: ${JSON.stringify(offerData)}`
         }]
       }],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: SchemaType.OBJECT,
+          type: Type.OBJECT,
           properties: {
-            name: { type: SchemaType.STRING },
-            category: { type: SchemaType.STRING },
+            name: { type: Type.STRING },
+            category: { type: Type.STRING },
             rows: {
-              type: SchemaType.ARRAY,
+              type: Type.ARRAY,
               items: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                  makkah: { type: SchemaType.STRING },
-                  madinah: { type: SchemaType.STRING },
-                  offer: { type: SchemaType.STRING },
-                  meals: { type: SchemaType.STRING },
-                  double: { type: SchemaType.STRING },
-                  triple: { type: SchemaType.STRING },
-                  quad: { type: SchemaType.STRING },
-                  quint: { type: SchemaType.STRING },
-                  currency: { type: SchemaType.STRING }
+                  makkah: { type: Type.STRING },
+                  madinah: { type: Type.STRING },
+                  offer: { type: Type.STRING },
+                  meals: { type: Type.STRING },
+                  double: { type: Type.STRING },
+                  triple: { type: Type.STRING },
+                  quad: { type: Type.STRING },
+                  quint: { type: Type.STRING },
+                  currency: { type: Type.STRING }
                 }
               }
             },
-            fixedText: { type: SchemaType.STRING }
+            fixedText: { type: Type.STRING }
           }
         }
       }
     });
 
-    return JSON.parse(response.response.text());
+    return JSON.parse(response.text || '{}');
   } catch (error) {
     console.error("Translation Error:", error);
     throw error;
@@ -65,17 +63,15 @@ export async function extractPassportData(base64Image: string) {
   try {
     console.log("OCR Service: Initializing Gemini on frontend...");
     
-    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'undefined') {
-      console.error("OCR Service: GEMINI_API_KEY is missing!");
-      throw new Error("GEMINI_API_KEY is not configured. Please add it to Vercel environment variables.");
+    let apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    
+    // Robust check for API key
+    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.length < 10) {
+      console.error("OCR Service: GEMINI_API_KEY is missing or invalid!", { apiKey });
+      throw new Error("مفتاح API غير مكوّن. يرجى إضافة GEMINI_API_KEY في الإعدادات.");
     }
 
-    const ai = new GoogleGenerativeAI(apiKey);
-    const model = ai.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
-    });
+    const ai = new GoogleGenAI({ apiKey });
     
     // Extract mime type and base64 data
     const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
@@ -84,42 +80,53 @@ export async function extractPassportData(base64Image: string) {
 
     console.log("OCR Service: Sending request to Gemini (flash)...");
     
-    const response = await model.generateContent({
-      contents: [{
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Data,
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Data,
+              },
             },
+            {
+              text: `Extract passport information from this image. 
+              Return ONLY a JSON object with these exact keys:
+              - passportNumber: (the passport number)
+              - expiryDate: (the expiry date in YYYY-MM-DD format)
+              - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+              
+              Do not include any other text or markdown formatting.`,
+            },
+          ],
+        }],
+        config: {
+          systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              passportNumber: { type: Type.STRING },
+              expiryDate: { type: Type.STRING },
+              fullNameArabic: { type: Type.STRING },
+            },
+            required: ["passportNumber", "expiryDate", "fullNameArabic"],
           },
-          {
-            text: `Extract passport information from this image. 
-            Return ONLY a JSON object with these exact keys:
-            - passportNumber: (the passport number)
-            - expiryDate: (the expiry date in YYYY-MM-DD format)
-            - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
-            
-            Do not include any other text or markdown formatting.`,
-          },
-        ],
-      }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            passportNumber: { type: SchemaType.STRING },
-            expiryDate: { type: SchemaType.STRING },
-            fullNameArabic: { type: SchemaType.STRING },
-          },
-          required: ["passportNumber", "expiryDate", "fullNameArabic"],
         },
-      },
-    });
+      });
+    } catch (apiError: any) {
+      console.error("OCR Service: API Call Failed:", apiError);
+      if (apiError.message?.includes("safety")) {
+        throw new Error("تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من أن الصورة واضحة ولا تحتوي على محتوى غير لائق.");
+      }
+      throw apiError;
+    }
 
-    const text = response.response.text();
+    const text = response.text;
     console.log("OCR Service: Raw response text:", text);
     
     if (!text) {

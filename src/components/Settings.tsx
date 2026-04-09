@@ -339,7 +339,7 @@ export default function Settings({ user }: { user: User }) {
       const { extractPassportData } = await import('../services/geminiService');
       // Test with a tiny transparent pixel or a simple prompt
       // Actually, let's just test the connection
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const { GoogleGenAI } = await import('@google/genai');
       const apiKey = process.env.GEMINI_API_KEY;
       
       if (!apiKey) {
@@ -350,14 +350,16 @@ export default function Settings({ user }: { user: User }) {
         return;
       }
 
-      const ai = new GoogleGenerativeAI(apiKey);
-      const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const response = await model.generateContent("Say 'Connection Successful'");
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Say 'Connection Successful'"
+      });
 
       setDiagResult({ 
         status: 'success', 
         message: 'تم الاتصال بخوادم Google بنجاح.',
-        response: response.response.text(),
+        response: response.text,
         keyPrefix: apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4)
       });
     } catch (error: any) {

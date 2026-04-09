@@ -41,32 +41,29 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
         }
       } catch (err: any) {
         console.error('PassportScanner: Scan error:', err);
-        if (err.message && (err.message.includes("API key is not configured") || err.message.includes("غير مكوّن"))) {
-          setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
-        } else if (err.message && (err.message.includes("API key not valid") || err.message.includes("غير صالح"))) {
+        const msg = err.message || '';
+        if (msg.includes("API key") || msg.includes("مفتاح API") || msg.includes("غير مكوّن")) {
           setError(
             <div className="space-y-3">
-              <p className="font-bold text-red-400">مفتاح API المستخدم غير صالح.</p>
-              <ul className="list-disc list-inside text-xs text-white/70 space-y-1 text-right">
-                <li>تأكد من نسخ المفتاح كاملاً من Google AI Studio.</li>
-                <li>المفتاح يجب أن يبدأ بـ <code className="bg-white/20 px-1 rounded">AIza</code>.</li>
-                <li>تأكد من تفعيل <span className="text-gold">Generative Language API</span> في مشروعك.</li>
-                <li>تأكد من عمل <span className="text-gold font-bold">Redeploy</span> في Vercel بعد إضافة المفتاح.</li>
-              </ul>
+              <p className="font-bold text-red-400">مشكلة في مفتاح API</p>
+              <p className="text-xs text-white/70">يبدو أن مفتاح Gemini API غير مكوّن بشكل صحيح أو غير صالح.</p>
               <div className="pt-2 border-t border-white/10">
-                <p className="text-[10px] mb-2 opacity-60">يمكنك فحص حالة المفتاح والاتصال عبر أداة التشخيص:</p>
                 <a 
                   href="/api/ocr/debug" 
                   target="_blank" 
                   className="block w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-center text-xs font-bold transition-all"
                 >
-                  فتح أداة تشخيص الـ API
+                  فحص حالة المفتاح (Debug)
                 </a>
               </div>
             </div>
           );
+        } else if (msg.includes("Quota exceeded") || msg.includes("تجاوز حصة")) {
+          setError("تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.");
+        } else if (msg.includes("safety") || msg.includes("أمان")) {
+          setError("تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة.");
         } else {
-          setError(`حدث خطأ أثناء معالجة الصورة: ${err.message || 'خطأ غير معروف'}`);
+          setError(`حدث خطأ: ${msg || 'خطأ غير معروف'}`);
         }
         setCapturedImage(null);
       } finally {
@@ -111,7 +108,22 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                   screenshotFormat: "image/jpeg",
                   onUserMediaError: (err: any) => {
                     console.error("PassportScanner: Camera error:", err);
-                    setError("فشل الوصول إلى الكاميرا. يرجى التأكد من منح الإذن.");
+                    const isPermissionError = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+                    setError(
+                      <div className="space-y-3">
+                        <p className="font-bold text-red-400">
+                          {isPermissionError ? "تم رفض الوصول إلى الكاميرا" : "خطأ في تشغيل الكاميرا"}
+                        </p>
+                        <p className="text-xs text-white/70">
+                          {isPermissionError 
+                            ? "يرجى التأكد من السماح للموقع باستخدام الكاميرا من إعدادات المتصفح (أيقونة القفل في شريط العنوان)."
+                            : "تأكد من أن الكاميرا غير مستخدمة من قبل تطبيق آخر."}
+                        </p>
+                        <div className="pt-2 border-t border-white/10">
+                          <p className="text-[10px] text-gold/60 mb-2">يمكنك استخدام خيار "رفع صورة الجواز" أدناه كبديل سريع.</p>
+                        </div>
+                      </div>
+                    );
                   },
                   videoConstraints: {
                     facingMode: "environment",
@@ -204,12 +216,16 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                               setCapturedImage(null);
                             }
                           } catch (err: any) {
-                            if (err.message && (err.message.includes("API key is not configured") || err.message.includes("غير مكوّن"))) {
-                              setError('مفتاح API غير مفعّل على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات Vercel (Environment Variables) ثم إعادة النشر.');
-                            } else if (err.message && (err.message.includes("API key not valid") || err.message.includes("غير صالح"))) {
-                              setError('مفتاح API المستخدم غير صالح. يرجى التأكد من نسخ المفتاح الصحيح من Google AI Studio وإعادة وضعه في Vercel.');
+                            console.error('PassportScanner: Upload scan error:', err);
+                            const msg = err.message || '';
+                            if (msg.includes("API key") || msg.includes("مفتاح API") || msg.includes("غير مكوّن")) {
+                              setError('مفتاح API غير مكوّن بشكل صحيح أو غير صالح. يرجى التأكد من إعداد GEMINI_API_KEY.');
+                            } else if (msg.includes("Quota exceeded") || msg.includes("تجاوز حصة")) {
+                              setError("تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.");
+                            } else if (msg.includes("safety") || msg.includes("أمان")) {
+                              setError("تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة.");
                             } else {
-                              setError(`خطأ: ${err.message}`);
+                              setError(`خطأ: ${msg}`);
                             }
                             setCapturedImage(null);
                           } finally {
