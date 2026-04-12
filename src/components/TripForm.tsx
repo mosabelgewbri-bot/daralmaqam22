@@ -19,7 +19,8 @@ import {
   AlertCircle,
   CreditCard,
   CheckCircle,
-  XCircle
+  XCircle,
+  RefreshCw
 } from 'lucide-react';
 
 // Toast Component
@@ -224,12 +225,15 @@ export default function TripForm({ user }: { user: User }) {
             currency: formData.currency as any,
             startDate: formData.startDate,
             departureDate: formData.departureDate,
-            availableSeats: Math.max(0, tripToUpdate.availableSeats + (Number(formData.totalSeats) - tripToUpdate.totalSeats)),
             costs: formData.costs
           };
           console.log('Calling api.saveTrip for update:', updatedTrip);
           await api.saveTrip(updatedTrip);
-          setTrips(prev => prev.map(t => t.id === editingId ? updatedTrip : t));
+          
+          // Re-fetch trips to get the correctly synced availableSeats
+          const refreshedTrips = await api.getTrips();
+          setTrips(refreshedTrips);
+          
           setEditingId(null);
           setSuccessMessage('تم تحديث الرحلة بنجاح!');
           setTimeout(() => {
@@ -355,6 +359,27 @@ export default function TripForm({ user }: { user: User }) {
 
         {canManage && (
           <div className="flex items-center gap-3">
+            <button 
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await api.syncAllTripsSeats();
+                  const data = await api.getTrips();
+                  setTrips(data);
+                  setToast({ message: 'تمت مزامنة جميع المقاعد بنجاح', type: 'success' });
+                } catch (error) {
+                  setToast({ message: 'فشل مزامنة المقاعد', type: 'error' });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+              className="px-6 py-4 rounded-2xl font-bold flex items-center gap-3 transition-all bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 shadow-lg shadow-blue-500/10"
+              title="مزامنة المقاعد المتاحة بناءً على الحجوزات الفعلية"
+            >
+              <RefreshCw className={clsx("w-5 h-5", loading && "animate-spin")} />
+              <span className="hidden md:inline">مزامنة المقاعد</span>
+            </button>
             <button 
               onClick={() => setShowForm(!showForm)}
               className={clsx(

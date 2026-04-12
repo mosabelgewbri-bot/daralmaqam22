@@ -126,7 +126,16 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
           { label: 'إجمالي المعتمرين', value: totalPilgrims.toLocaleString(), icon: Users, color: 'text-blue-400' },
           { label: 'الرحلات النشطة', value: activeTripsCount.toString(), icon: Plane, color: 'text-gold' },
           { label: 'نسبة الإشغال', value: `${occupancy}%`, icon: Hotel, color: 'text-emerald-400' },
+          { label: 'الإيرادات (د.ل)', value: totalRevenue.toLocaleString(), icon: TrendingUp, color: 'text-purple-400' },
         ]);
+
+        // Auto-sync seats once for admin to fix old data
+        if (user.role === 'admin' && !sessionStorage.getItem('initial_sync_done')) {
+          console.log('Running initial seat sync...');
+          api.syncAllTripsSeats().then(() => {
+            sessionStorage.setItem('initial_sync_done', 'true');
+          });
+        }
       } catch (error) {
         console.error('Error loading dashboard data:', error);
       }

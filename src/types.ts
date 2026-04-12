@@ -163,5 +163,6 @@ export interface Customer {
   totalBookings: number;
   createdAt: string;
   hasWhatsApp?: boolean;
+  isVerified?: boolean;
   lastContact?: string;
 }

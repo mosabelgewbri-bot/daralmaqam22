@@ -77,6 +77,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isCopyingNumbers, setIsCopyingNumbers] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr: string | null; user?: any } | null>(null);
+  const [isPollingStatus, setIsPollingStatus] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [generateCount, setGenerateCount] = useState(20000);
   const [isGeneratingAndVerifying, setIsGeneratingAndVerifying] = useState(false);
@@ -84,17 +86,18 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [isImporting, setIsImporting] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string, onConfirm: () => void } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const [isSyncing, setIsSyncing] = useState(false);
   const [showVerificationWizard, setShowVerificationWizard] = useState(false);
   const [verificationIndex, setVerificationIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified'>('all');
+  
+  const itemsPerPage = 50;
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   useEffect(() => {
     if (toast) {
@@ -102,6 +105,28 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  useEffect(() => {
+    let interval: any;
+    if (showSettings && whatsappService === 'local') {
+      const pollStatus = async () => {
+        try {
+          const res = await fetch('/api/whatsapp/status');
+          if (res.ok) {
+            const data = await res.json();
+            setWhatsappStatus(data);
+          }
+        } catch (e) {
+          console.error('Error polling whatsapp status:', e);
+        }
+      };
+      pollStatus();
+      interval = setInterval(pollStatus, 5000);
+    } else {
+      setWhatsappStatus(null);
+    }
+    return () => clearInterval(interval);
+  }, [showSettings, whatsappService]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     setToast({ message, type });
@@ -178,25 +203,20 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       // Update customers list
       setCustomers(prev => prev.filter(c => c.id !== currentId));
       
-      // Update selection list and index together using functional updates
-      setSelectedCustomers(prevSelected => {
-        const newSelected = prevSelected.filter(id => id !== currentId);
-        
-        if (newSelected.length === 0) {
-          setShowVerificationWizard(false);
-          setVerificationIndex(0);
-          showToast('تم الانتهاء من فحص القائمة المختارة', 'success');
-          return [];
+      // Update selection list
+      const newSelected = selectedCustomers.filter(id => id !== currentId);
+      setSelectedCustomers(newSelected);
+      
+      if (newSelected.length === 0) {
+        setShowVerificationWizard(false);
+        setVerificationIndex(0);
+        showToast('تم الانتهاء من فحص القائمة المختارة', 'success');
+      } else {
+        // Adjust index if needed
+        if (verificationIndex >= newSelected.length) {
+          setVerificationIndex(newSelected.length - 1);
         }
-
-        // Calculate next index before updating state
-        setVerificationIndex(prevIndex => {
-          const nextIndex = prevIndex >= newSelected.length ? newSelected.length - 1 : prevIndex;
-          return nextIndex;
-        });
-
-        return newSelected;
-      });
+      }
     } catch (error) {
       console.error('Delete failed:', error);
       showToast('حدث خطأ أثناء الحذف', 'error');
@@ -262,13 +282,22 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     stopGeneratingRef.current = false;
     setVerificationStats({ valid: 0, invalid: 0, total: selectedCustomers.length, current: 0 });
     
-    const libyanPrefixes = ['091', '092', '094', '095', '093', '096', '91', '92', '94', '95', '93', '96', '21891', '21892', '21894', '21895', '21893', '21896'];
+    const libyanPrefixes = [
+      '091', '092', '094', '095', '093', '096', '097', '098', '099',
+      '91', '92', '94', '95', '93', '96', '97', '98', '99',
+      '21891', '21892', '21894', '21895', '21893', '21896', '21897', '21898', '21899'
+    ];
     const validIds: string[] = [];
     const invalidIds: string[] = [];
 
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId.trim();
     let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    
+    // Clean baseUrl for UltraMsg if it already contains instance ID
+    if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
+      baseUrl = baseUrl.split('/instance')[0].replace(/\/+$/, '');
+    }
     
     if (whatsappService === 'whapi' && trimmedToken) {
       const batchSize = 50;
@@ -278,7 +307,26 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         
         setVerificationStats(prev => ({ ...prev, current: i + batchIds.length }));
 
-        const formattedBatch = batchCustomers.map(c => {
+        // Pre-filter by prefix/length to save API calls
+        const customersToDeepCheck: any[] = [];
+        batchCustomers.forEach(c => {
+          let clean = c!.phone.replace(/\D/g, '');
+          if (clean.startsWith('00')) clean = clean.substring(2);
+          
+          const isValidPrefix = libyanPrefixes.some(p => clean.startsWith(p));
+          const isValidLength = (clean.length >= 9 && clean.length <= 14);
+          
+          if (isValidPrefix && isValidLength) {
+            customersToDeepCheck.push(c);
+          } else {
+            invalidIds.push(c!.id);
+            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+          }
+        });
+
+        if (customersToDeepCheck.length === 0) continue;
+
+        const formattedBatch = customersToDeepCheck.map(c => {
           let clean = c!.phone.replace(/\D/g, '');
           if (clean.startsWith('00')) clean = clean.substring(2);
           if (clean.startsWith('0')) return '218' + clean.substring(1);
@@ -322,7 +370,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             const results = Array.isArray(data) ? data : (data.contacts || []);
             
             results.forEach((res: any, idx: number) => {
-              const customer = batchCustomers[idx];
+              const customer = customersToDeepCheck[idx];
               if (!customer) return;
 
               const isValid = res.status === 'valid' || res.valid === true || !!res.wa_id;
@@ -330,13 +378,18 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 validIds.push(customer.id);
                 setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
               } else {
-                invalidIds.push(customer.id);
-                setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+                // Only mark as invalid if it's explicitly not found
+                // If it's processing or unknown, we might want to skip it for now
+                if (res.status === 'invalid' || res.status === 'not_found' || res.valid === false) {
+                  invalidIds.push(customer.id);
+                  setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+                }
               }
             });
           } else {
-            batchIds.forEach(id => invalidIds.push(id));
-            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + batchIds.length }));
+            // If API fails, don't mark as invalid, just log and continue
+            console.error(`Batch verification failed with status: ${response?.status}`);
+            // We don't push to invalidIds here to avoid deleting potentially valid numbers on API failure
           }
         } catch (error) {
           console.error('Batch verification error:', error);
@@ -347,6 +400,38 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         }
 
         await new Promise(r => setTimeout(r, 500));
+      }
+    } else if (whatsappService === 'local') {
+      for (let i = 0; i < selectedCustomers.length; i++) {
+        const id = selectedCustomers[i];
+        const customer = customers.find(c => c.id === id);
+        if (!customer) continue;
+
+        setVerificationStats(prev => ({ ...prev, current: i + 1 }));
+
+        try {
+          const response = await fetch('/api/whatsapp/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: customer.phone })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.exists) {
+              validIds.push(id);
+              setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+            } else {
+              invalidIds.push(id);
+              setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+            }
+          }
+        } catch (e) {
+          console.error('Local verification error:', e);
+        }
+
+        if (stopGeneratingRef.current) break;
+        await new Promise(r => setTimeout(r, 200));
       }
     } else {
       for (let i = 0; i < selectedCustomers.length; i++) {
@@ -418,29 +503,25 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       if (validIds.length > 0) {
         const customersToUpdate = customers
           .filter(c => validIds.includes(c.id))
-          .map(c => ({ ...c, hasWhatsApp: true }));
+          .map(c => ({ ...c, hasWhatsApp: true, isVerified: true }));
         
         await api.bulkSaveCustomers(customersToUpdate);
         
         setCustomers(prev => prev.map(c => 
-          validIds.includes(c.id) ? { ...c, hasWhatsApp: true } : c
+          validIds.includes(c.id) ? { ...c, hasWhatsApp: true, isVerified: true } : c
         ));
       }
 
       if (invalidIds.length > 0) {
-        setConfirmModal({
-          message: `تم العثور على ${invalidIds.length} رقم غير صالح. هل تريد حذفهم الآن؟`,
-          onConfirm: async () => {
-            try {
-              await api.bulkDeleteCustomers(invalidIds);
-              setCustomers(prev => prev.filter(c => !invalidIds.includes(c.id)));
-              setSelectedCustomers(prev => prev.filter(id => !invalidIds.includes(id)));
-              showToast('تم حذف الأرقام غير الصالحة بنجاح', 'success');
-            } catch (e) {
-              showToast('فشل حذف الأرقام غير الصالحة', 'error');
-            }
-          }
-        });
+        // Automatically delete invalid numbers as requested
+        try {
+          await api.bulkDeleteCustomers(invalidIds);
+          setCustomers(prev => prev.filter(c => !invalidIds.includes(c.id)));
+          setSelectedCustomers(prev => prev.filter(id => !invalidIds.includes(id)));
+          showToast(`تم حذف ${invalidIds.length} رقم غير صالح تلقائياً`, 'info');
+        } catch (e) {
+          console.error('Failed to auto-delete invalid numbers:', e);
+        }
       }
 
       showToast(`اكتمل الفحص الذكي بنجاح. أرقام صالحة: ${validIds.length}، أرقام غير صالحة: ${invalidIds.length}`, 'success');
@@ -453,7 +534,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   };
 
   const handleGenerateAndVerify = async () => {
-    if (!whatsappApiKey) {
+    if (whatsappService !== 'local' && !whatsappApiKey) {
       showToast('يرجى إدخال مفتاح الـ API أولاً في الإعدادات.', 'error');
       setShowSettings(true);
       return;
@@ -473,6 +554,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId?.trim();
     let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    
+    // Clean baseUrl for UltraMsg if it already contains instance ID
+    if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
+      baseUrl = baseUrl.split('/instance')[0].replace(/\/+$/, '');
+    }
     
     // For UltraMsg we use smaller batches because it's slower (one-by-one check)
     const batchSize = whatsappService === 'whapi' ? 100 : 20;
@@ -533,6 +619,29 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             if (response && response.ok) {
               const data = await response.json();
               results = Array.isArray(data) ? data : (data.contacts || []);
+            }
+          } else if (whatsappService === 'local') {
+            // Local service logic
+            const subBatchSize = 10;
+            for (let j = 0; j < batchNumbers.length; j += subBatchSize) {
+              if (stopGeneratingRef.current) break;
+              const subBatch = batchNumbers.slice(j, j + subBatchSize);
+              const subResults = await Promise.all(subBatch.map(async (phone) => {
+                try {
+                  const res = await fetch('/api/whatsapp/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone })
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    return { status: data.exists ? 'valid' : 'invalid', phone };
+                  }
+                } catch (e) { console.warn(e); }
+                return { status: 'invalid', phone };
+              }));
+              results.push(...subResults);
+              await new Promise(r => setTimeout(r, 100));
             }
           } else {
             // UltraMsg logic - process in parallel chunks
@@ -661,8 +770,6 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     }
   };
 
-  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp'>('all');
-
   const filteredCustomers = useMemo(() => {
     return (customers || []).filter(c => {
       if (!c) return false;
@@ -675,6 +782,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       if (!matchesSearch) return false;
       if (filter === 'all') return true;
       if (filter === 'whatsapp') return !!c.hasWhatsApp;
+      if (filter === 'verified') return !!c.isVerified;
       return true;
     });
   }, [customers, searchQuery, filter]);
@@ -724,7 +832,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         if (phone.startsWith('9')) phone = '0' + phone;
         if (phone.startsWith('218')) phone = '0' + phone.substring(3);
         
-        return { name, phone, hasWhatsApp: true };
+        return { name, phone, hasWhatsApp: false, isVerified: false };
       }).filter(c => c.phone.length >= 8); // Ensure valid phone length
 
       if (newCustomers.length === 0) {
@@ -824,7 +932,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     // Also validate phone numbers
     const isValidLibyanPhone = (phone: string) => {
       const clean = phone.replace(/\D/g, '');
-      return clean.length >= 9 && (clean.startsWith('9') || clean.startsWith('2189') || clean.startsWith('09'));
+      return clean.length >= 9 && (
+        clean.startsWith('9') || 
+        clean.startsWith('2189') || 
+        clean.startsWith('09')
+      );
     };
 
     const validWhatsAppCustomers = selectedCustData.filter(c => c.hasWhatsApp && isValidLibyanPhone(c.phone));
@@ -891,11 +1003,26 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     });
   };
 
-  const handleSendNext = () => {
+  const handleSendNext = async () => {
     if (currentSendIndex >= sendingQueue.length) return;
     
     const customer = sendingQueue[currentSendIndex];
-    sendWhatsAppMessage(customer.phone, lastSentMessage);
+    
+    if (whatsappService === 'local') {
+      try {
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: customer.phone, message: lastSentMessage })
+        });
+        if (!res.ok) throw new Error('Failed to send via local server');
+      } catch (e) {
+        console.error('Local send failed, falling back to manual:', e);
+        sendWhatsAppMessage(customer.phone, lastSentMessage);
+      }
+    } else {
+      sendWhatsAppMessage(customer.phone, lastSentMessage);
+    }
     
     if (currentSendIndex + 1 < sendingQueue.length) {
       const nextIndex = currentSendIndex + 1;
@@ -1099,8 +1226,64 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                   >
                     <option value="whapi">Whapi.cloud (احترافي)</option>
                     <option value="ultramsg">UltraMsg (سهل)</option>
+                    <option value="local">سيرفر محلي (WPPConnect/Baileys)</option>
                   </select>
                 </div>
+
+                {whatsappService === 'local' && (
+                  <div className="p-6 rounded-3xl bg-white/5 border border-white/10 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={clsx(
+                          "w-2 h-2 rounded-full animate-pulse",
+                          whatsappStatus?.status === 'connected' ? "bg-emerald-500" :
+                          whatsappStatus?.status === 'qr' ? "bg-amber-500" : "bg-red-500"
+                        )} />
+                        <span className="text-xs font-bold text-white">
+                          {whatsappStatus?.status === 'connected' ? 'متصل' :
+                           whatsappStatus?.status === 'qr' ? 'بانتظار مسح الرمز' :
+                           whatsappStatus?.status === 'connecting' ? 'جاري الاتصال...' : 'غير متصل'}
+                        </span>
+                      </div>
+                      {whatsappStatus?.status === 'connected' && (
+                        <button 
+                          onClick={async () => {
+                            try {
+                              await fetch('/api/whatsapp/logout', { method: 'POST' });
+                              showToast('تم تسجيل الخروج بنجاح', 'success');
+                            } catch (e) {
+                              showToast('فشل تسجيل الخروج', 'error');
+                            }
+                          }}
+                          className="text-[10px] font-bold text-red-500 hover:underline"
+                        >
+                          تسجيل الخروج
+                        </button>
+                      )}
+                    </div>
+
+                    {whatsappStatus?.qr && (
+                      <div className="flex flex-col items-center gap-4 bg-white p-4 rounded-2xl">
+                        <img src={whatsappStatus.qr} alt="WhatsApp QR Code" className="w-48 h-48" />
+                        <p className="text-[10px] text-slate-900 font-bold text-center">
+                          افتح واتساب على هاتفك &gt; الأجهزة المرتبطة &gt; ربط جهاز
+                        </p>
+                      </div>
+                    )}
+
+                    {whatsappStatus?.user && (
+                      <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/5">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                          <Smartphone className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-white">{whatsappStatus.user.name || 'الحساب المرتبط'}</p>
+                          <p className="text-[10px] text-white/40">{whatsappStatus.user.id.split(':')[0]}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {whatsappService === 'ultramsg' && (
                   <div className="space-y-3">
@@ -1192,6 +1375,33 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     const trimmedInstance = whatsappInstanceId.trim();
                     let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
                     
+                    // Clean baseUrl for UltraMsg if it already contains instance ID
+                    if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
+                      baseUrl = baseUrl.split('/instance')[0].replace(/\/+$/, '');
+                    }
+                    
+                    if (whatsappService === 'local') {
+                      setIsTestingConnection(true);
+                      try {
+                        const res = await fetch('/api/whatsapp/status');
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.status === 'connected') {
+                            showToast('✅ السيرفر المحلي متصل وجاهز للعمل', 'success');
+                          } else {
+                            showToast('⚠️ السيرفر المحلي يعمل ولكنه غير مرتبط بواتساب حالياً', 'warning');
+                          }
+                        } else {
+                          showToast('❌ تعذر الوصول للسيرفر المحلي', 'error');
+                        }
+                      } catch (e) {
+                        showToast('❌ خطأ في الاتصال بالسيرفر المحلي', 'error');
+                      } finally {
+                        setIsTestingConnection(false);
+                      }
+                      return;
+                    }
+
                     if (!trimmedToken) {
                       showToast('يرجى إدخال الـ Token أولاً', 'error');
                       return;
@@ -1263,19 +1473,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         }
                       } else {
                         // UltraMsg logic
-                        let finalBase = baseUrl.replace(/\/+$/, '');
-                        // If the user provided a URL that already includes the instance ID like https://api.ultramsg.com/instance123
-                        // we want to get just the base https://api.ultramsg.com
-                        if (finalBase.includes('/instance')) {
-                           const parts = finalBase.split('/');
-                           // Find the part that starts with 'instance'
-                           const instanceIdx = parts.findIndex(p => p.startsWith('instance'));
-                           if (instanceIdx !== -1) {
-                             finalBase = parts.slice(0, instanceIdx).join('/');
-                           }
-                        }
-                        
-                        fetchUrl = `${finalBase}/${trimmedInstance}/instance/status?token=${trimmedToken}`;
+                        fetchUrl = `${baseUrl}/${trimmedInstance}/instance/status?token=${trimmedToken}`;
                         console.log('Fetching UltraMsg endpoint:', fetchUrl);
                         response = await fetchWhatsApp(fetchUrl, {
                           headers,
@@ -1697,6 +1895,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               onClick={() => setFilter('whatsapp')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'whatsapp' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >أرقام واتساب</button>
+            <button 
+              onClick={() => setFilter('verified')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'verified' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >واتساب مفحوص</button>
             <button 
               onClick={() => setFilter('active')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'active' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}

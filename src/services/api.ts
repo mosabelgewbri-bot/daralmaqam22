@@ -12,6 +12,7 @@ import {
   setDoc,
   serverTimestamp,
   getDocFromServer,
+  getDocsFromServer,
   getDocsFromCache,
   writeBatch,
   orderBy,
@@ -284,8 +285,10 @@ export const api = {
         } else {
           await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
         }
+        await this.syncTripSeats(id);
       } else {
-        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        const docRef = await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        await this.syncTripSeats(docRef.id);
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -419,13 +422,31 @@ export const api = {
       if (id && id !== 'new') {
         const docRef = doc(db, path, id);
         const docSnap = await getDocFromServer(docRef);
+        
+        // Get old booking to check if tripId changed
+        const oldBooking = docSnap.exists() ? docSnap.data() as Booking : null;
+        const oldTripId = oldBooking?.tripId;
+        
         if (docSnap.exists()) {
           await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
         } else {
           await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
         }
+        
+        // Sync seats for current trip
+        if (booking.tripId) {
+          await this.syncTripSeats(booking.tripId);
+        }
+        
+        // If trip changed, sync old trip too
+        if (oldTripId && oldTripId !== booking.tripId) {
+          await this.syncTripSeats(oldTripId);
+        }
       } else {
         await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        if (booking.tripId) {
+          await this.syncTripSeats(booking.tripId);
+        }
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -435,9 +456,78 @@ export const api = {
     const path = 'bookings';
     try {
       await this.ensureAuth();
-      await deleteDoc(doc(db, path, id));
+      const bookingRef = doc(db, path, id);
+      const bookingSnap = await getDocFromServer(bookingRef);
+      const bookingData = bookingSnap.exists() ? bookingSnap.data() as Booking : null;
+      
+      await deleteDoc(bookingRef);
+      
+      if (bookingData?.tripId) {
+        await this.syncTripSeats(bookingData.tripId);
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+  async syncTripSeats(tripId: string): Promise<void> {
+    try {
+      await this.ensureAuth();
+      
+      // 1. Get all bookings for this trip from server to ensure accuracy
+      const bookingsQuery = query(collection(db, 'bookings'), where("tripId", "==", tripId));
+      const bookingsSnapshot = await getDocsFromServer(bookingsQuery);
+      
+      let totalPilgrims = 0;
+      bookingsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        totalPilgrims += (data.passengerCount || 0);
+      });
+      
+      // 2. Get the trip from server
+      const tripRef = doc(db, 'trips', tripId);
+      const tripSnap = await getDocFromServer(tripRef);
+      
+      if (tripSnap.exists()) {
+        const tripData = tripSnap.data() as Trip;
+        const availableSeats = Math.max(0, tripData.totalSeats - totalPilgrims);
+        
+        // 3. Update the trip
+        await updateDoc(tripRef, { 
+          availableSeats,
+          updatedAt: serverTimestamp()
+        });
+        
+        console.log(`Synced trip ${tripId}: ${totalPilgrims} pilgrims, ${availableSeats} available seats`);
+      }
+    } catch (error) {
+      console.error(`Error syncing trip seats for ${tripId}:`, error);
+    }
+  },
+  async syncAllTripsSeats(): Promise<void> {
+    try {
+      await this.ensureAuth();
+      // Use server-side fetches for full sync to ensure absolute accuracy
+      const tripsSnapshot = await getDocsFromServer(collection(db, 'trips'));
+      const bookingsSnapshot = await getDocsFromServer(collection(db, 'bookings'));
+      
+      const trips = tripsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Trip));
+      const bookings = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Booking));
+      
+      for (const trip of trips) {
+        const tripBookings = bookings.filter(b => b.tripId === trip.id);
+        const totalPilgrims = tripBookings.reduce((acc, b) => acc + (b.passengerCount || 0), 0);
+        const availableSeats = Math.max(0, trip.totalSeats - totalPilgrims);
+        
+        if (trip.availableSeats !== availableSeats) {
+          await updateDoc(doc(db, 'trips', trip.id), { 
+            availableSeats,
+            updatedAt: serverTimestamp()
+          });
+          console.log(`Updated trip ${trip.name}: ${availableSeats} seats available`);
+        }
+      }
+    } catch (error) {
+      console.error('Error syncing all trips seats:', error);
     }
   },
   async bulkSaveBookings(bookings: Partial<Booking>[]): Promise<void> {

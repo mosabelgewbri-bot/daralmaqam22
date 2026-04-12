@@ -5,6 +5,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
+import { whatsappManager } from "./whatsapp-server.js";
 
 console.log("server.ts module loading...");
 
@@ -363,10 +364,10 @@ async function initializeDatabase() {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
-    insertPerm.run('admin', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings']), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 'all');
-    insertPerm.run('staff', JSON.stringify(['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'settings']), 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'own');
+    insertPerm.run('admin', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'users', 'settings', 'marketing']), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 'all');
+    insertPerm.run('staff', JSON.stringify(['dashboard', 'booking', 'rooming', 'tracking', 'finance', 'settings', 'marketing']), 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 'own');
     insertPerm.run('accountant', JSON.stringify(['dashboard', 'reports', 'finance', 'settings']), 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 'all');
-    insertPerm.run('manager', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'settings']), 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 'all');
+    insertPerm.run('manager', JSON.stringify(['dashboard', 'booking', 'rooming', 'finance', 'tracking', 'reports', 'trips', 'settings', 'marketing']), 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 'all');
     insertPerm.run('visa_specialist', JSON.stringify(['dashboard', 'tracking', 'reports', 'settings']), 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 'all');
     insertPerm.run('receptionist', JSON.stringify(['dashboard', 'booking', 'settings']), 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'own');
   }
@@ -1098,6 +1099,45 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     path: req.path
   });
 });
+
+// WhatsApp API Endpoints
+app.get("/api/whatsapp/status", (req, res) => {
+  res.json(whatsappManager.getStatus());
+});
+
+app.post("/api/whatsapp/verify", async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: "Phone number required" });
+    const result = await whatsappManager.verifyNumber(phone);
+    res.json({ exists: !!result, jid: result?.jid });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/whatsapp/send", async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone || !message) return res.status(400).json({ error: "Phone and message required" });
+    const result = await whatsappManager.sendMessage(phone, message);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/whatsapp/logout", async (req, res) => {
+  try {
+    await whatsappManager.logout();
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Initialize WhatsApp Manager
+whatsappManager.init().catch(err => console.error("Failed to init WhatsApp:", err));
 
 async function startServer() {
   const PORT = 3000;

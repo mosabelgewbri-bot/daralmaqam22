@@ -10,6 +10,41 @@ import Logo from './Logo';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+// Optimized input component for Group Number to prevent typing lag
+const GroupNoInput = ({ 
+  initialValue, 
+  onSave 
+}: { 
+  initialValue: string, 
+  onSave: (val: string) => void 
+}) => {
+  const [localValue, setLocalValue] = useState(initialValue || '');
+
+  useEffect(() => {
+    setLocalValue(initialValue || '');
+  }, [initialValue]);
+
+  return (
+    <input 
+      type="text" 
+      className="input-field w-32 py-1 text-sm"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onBlur={() => {
+        if (localValue !== (initialValue || '')) {
+          onSave(localValue);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      placeholder="رقم المجموعة"
+    />
+  );
+};
+
 export default function VisaModule({ user }: { user: User }) {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -206,41 +241,6 @@ export default function VisaModule({ user }: { user: User }) {
       prev.includes(passportNo) 
         ? prev.filter(p => p !== passportNo) 
         : [...prev, passportNo]
-    );
-  };
-
-  // Optimized input component for Group Number to prevent typing lag
-  const GroupNoInput = ({ 
-    initialValue, 
-    onSave 
-  }: { 
-    initialValue: string, 
-    onSave: (val: string) => void 
-  }) => {
-    const [localValue, setLocalValue] = useState(initialValue || '');
-
-    useEffect(() => {
-      setLocalValue(initialValue || '');
-    }, [initialValue]);
-
-    return (
-      <input 
-        type="text" 
-        className="input-field w-32 py-1 text-sm"
-        value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
-        onBlur={() => {
-          if (localValue !== (initialValue || '')) {
-            onSave(localValue);
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        placeholder="رقم المجموعة"
-      />
     );
   };
 

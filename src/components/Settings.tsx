@@ -749,8 +749,27 @@ export default function Settings({ user }: { user: User }) {
                         <Save className="w-4 h-4" />
                         تصدير قاعدة البيانات بالكامل (JSON)
                       </button>
+                      <button 
+                        onClick={async () => {
+                          setDbLoading(true);
+                          try {
+                            await api.syncAllTripsSeats();
+                            showToast('تمت مزامنة جميع المقاعد بنجاح', 'success');
+                            await loadDbStats();
+                          } catch (e) {
+                            showToast('فشل مزامنة المقاعد', 'error');
+                          } finally {
+                            setDbLoading(false);
+                          }
+                        }}
+                        disabled={dbLoading}
+                        className="bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl flex items-center justify-center gap-3 text-sm transition-all shadow-lg shadow-blue-500/20"
+                      >
+                        <RefreshCw className={clsx("w-4 h-4", dbLoading && "animate-spin")} />
+                        مزامنة وتصحيح عدد المقاعد المتاحة
+                      </button>
                       <p className="text-[10px] text-white/30 text-center">
-                        * سيتم تحميل ملف يحتوي على جميع البيانات (الرحلات، الحجوزات، المعتمرين، المستخدمين).
+                        * سيتم إعادة حساب المقاعد المتاحة لكل رحلة بناءً على الحجوزات الفعلية.
                       </p>
                     </div>
                   </div>
