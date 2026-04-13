@@ -6,9 +6,14 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
 import { whatsappManager } from "./whatsapp-server.ts";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 console.log("server.ts module loading...");
+if (process.env.GEMINI_API_KEY) {
+  console.log(`GEMINI_API_KEY is present (length: ${process.env.GEMINI_API_KEY.length})`);
+} else {
+  console.warn("GEMINI_API_KEY is MISSING in process.env");
+}
 
 // Remove global process listeners that might interfere with Vercel
 // process.on('uncaughtException', ...)
@@ -438,6 +443,7 @@ app.post("/api/ocr", async (req, res) => {
   try {
     const { base64Image } = req.body;
     if (!base64Image) {
+      console.warn("OCR: Missing base64Image in request");
       return res.status(400).json({ error: "Image data is required" });
     }
 
@@ -445,59 +451,96 @@ app.post("/api/ocr", async (req, res) => {
     const cleanedKey = cleanGeminiKey(key);
 
     if (!cleanedKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      console.error("OCR: GEMINI_API_KEY is not configured");
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server. Please add it to Vercel environment variables." });
     }
 
-    const ai = new GoogleGenAI({ apiKey: cleanedKey });
+    console.log(`OCR: Initializing Gemini with key (prefix: ${cleanedKey.substring(0, 4)}...)`);
+    const genAI = new GoogleGenerativeAI(cleanedKey);
     
     // Extract mime type and base64 data
     const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
     const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
     const base64Data = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [{
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Data,
-            },
-          },
-          {
-            text: `Extract passport information from this image. 
-            Return ONLY a JSON object with these exact keys:
-            - passportNumber: (the passport number)
-            - expiryDate: (the expiry date in YYYY-MM-DD format)
-            - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
-            
-            Do not include any other text or markdown formatting.`,
-          },
-        ],
-      }],
-      config: {
-        systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            passportNumber: { type: Type.STRING },
-            expiryDate: { type: Type.STRING },
-            fullNameArabic: { type: Type.STRING },
-          },
-          required: ["passportNumber", "expiryDate", "fullNameArabic"],
-        },
-      },
-    });
+    console.log(`OCR: Sending image (${base64Data.length} bytes) to Gemini...`);
 
-    const text = response.text;
-    if (!text) {
-      throw new Error("No text returned from Gemini");
+    // Try with schema first
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: SchemaType.OBJECT,
+            properties: {
+              passportNumber: { type: SchemaType.STRING },
+              expiryDate: { type: SchemaType.STRING },
+              fullNameArabic: { type: SchemaType.STRING },
+            },
+            required: ["passportNumber", "expiryDate", "fullNameArabic"],
+          },
+        }
+      });
+
+      const result = await model.generateContent([
+        {
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data,
+          },
+        },
+        {
+          text: `Extract passport information from this image. 
+          Return ONLY a JSON object with these exact keys:
+          - passportNumber: (the passport number)
+          - expiryDate: (the expiry date in YYYY-MM-DD format)
+          - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+          
+          Do not include any other text or markdown formatting.`,
+        },
+      ]);
+
+      const response = await result.response;
+      const text = response.text();
+      console.log("OCR: Raw response from Gemini (Schema):", text);
+      
+      if (text) {
+        const data = JSON.parse(text);
+        return res.json(data);
+      }
+    } catch (schemaError) {
+      console.warn("OCR: Schema-based generation failed, falling back to plain text prompt:", schemaError);
     }
 
-    const data = JSON.parse(text);
+    // Fallback to plain text prompt if schema fails
+    const fallbackModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const fallbackResult = await fallbackModel.generateContent([
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: base64Data,
+        },
+      },
+      {
+        text: `Extract passport information from this image. 
+        Return ONLY a JSON object with these exact keys:
+        - passportNumber: (the passport number)
+        - expiryDate: (the expiry date in YYYY-MM-DD format)
+        - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+        
+        Return ONLY the JSON object. No markdown, no backticks.`,
+      },
+    ]);
+
+    const fallbackResponse = await fallbackResult.response;
+    let fallbackText = fallbackResponse.text();
+    console.log("OCR: Raw response from Gemini (Fallback):", fallbackText);
+
+    // Clean up potential markdown formatting
+    fallbackText = fallbackText.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    const data = JSON.parse(fallbackText);
     res.json(data);
   } catch (error: any) {
     console.error("Server OCR Error:", error);
@@ -522,54 +565,54 @@ app.post("/api/translate", async (req, res) => {
       return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
     }
 
-    const ai = new GoogleGenAI({ apiKey: cleanedKey });
-    
-    const response = await ai.models.generateContent({
+    const genAI = new GoogleGenerativeAI(cleanedKey);
+    const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
-      contents: [{
-        role: "user",
-        parts: [{
-          text: `Translate this Umrah offer from Arabic to English. 
-          Maintain the structure and return ONLY a JSON object with these exact keys:
-          - name: (translated name)
-          - category: (translated category)
-          - rows: (array of objects with translated 'makkah', 'madinah', 'offer', 'meals')
-          - fixedText: (translated fixed text)
-          
-          Original Data: ${JSON.stringify(offerData)}`
-        }]
-      }],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            name: { type: Type.STRING },
-            category: { type: Type.STRING },
+            name: { type: SchemaType.STRING },
+            category: { type: SchemaType.STRING },
             rows: {
-              type: Type.ARRAY,
+              type: SchemaType.ARRAY,
               items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
-                  makkah: { type: Type.STRING },
-                  madinah: { type: Type.STRING },
-                  offer: { type: Type.STRING },
-                  meals: { type: Type.STRING },
-                  double: { type: Type.STRING },
-                  triple: { type: Type.STRING },
-                  quad: { type: Type.STRING },
-                  quint: { type: Type.STRING },
-                  currency: { type: Type.STRING }
+                  makkah: { type: SchemaType.STRING },
+                  madinah: { type: SchemaType.STRING },
+                  offer: { type: SchemaType.STRING },
+                  meals: { type: SchemaType.STRING },
+                  double: { type: SchemaType.STRING },
+                  triple: { type: SchemaType.STRING },
+                  quad: { type: SchemaType.STRING },
+                  quint: { type: SchemaType.STRING },
+                  currency: { type: SchemaType.STRING }
                 }
               }
             },
-            fixedText: { type: Type.STRING }
+            fixedText: { type: SchemaType.STRING }
           }
         }
       }
     });
+    
+    const result = await model.generateContent([
+      {
+        text: `Translate this Umrah offer from Arabic to English. 
+        Maintain the structure and return ONLY a JSON object with these exact keys:
+        - name: (translated name)
+        - category: (translated category)
+        - rows: (array of objects with translated 'makkah', 'madinah', 'offer', 'meals')
+        - fixedText: (translated fixed text)
+        
+        Original Data: ${JSON.stringify(offerData)}`
+      }
+    ]);
 
-    const text = response.text;
+    const response = await result.response;
+    const text = response.text();
     if (!text) {
       throw new Error("No text returned from Gemini");
     }

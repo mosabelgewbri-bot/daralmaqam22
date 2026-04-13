@@ -49,7 +49,6 @@ class WhatsAppManager {
 
       this.sock = makeWASocket({
         version,
-        printQRInTerminal: true,
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
@@ -71,13 +70,34 @@ class WhatsAppManager {
         }
 
         if (connection === 'close') {
-          const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-          console.log('WhatsAppManager: Connection closed. Reconnecting:', shouldReconnect, 'Error:', lastDisconnect?.error);
+          const error = (lastDisconnect?.error as Boom);
+          const statusCode = error?.output?.statusCode;
+          const errorMessage = error?.stack || error?.message || '';
+          
+          const isQRTimeout = errorMessage.includes('QR refs attempts ended');
+          const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !isQRTimeout;
+          
+          console.log('WhatsAppManager: Connection closed.', {
+            statusCode,
+            errorMessage,
+            shouldReconnect,
+            isQRTimeout
+          });
+
           this.connectionStatus = 'disconnected';
           this.qr = null;
-          if (shouldReconnect) {
-            this.connectToWhatsApp();
-          } else {
+
+          if (isQRTimeout) {
+            console.log('WhatsAppManager: QR timeout detected. Clearing auth and waiting before retry...');
+            this.clearAuth();
+            // Wait 5 seconds before trying again to avoid rapid loops
+            setTimeout(() => this.connectToWhatsApp(), 5000);
+          } else if (shouldReconnect) {
+            // For other errors that warrant a reconnect, wait a bit
+            const delay = statusCode === DisconnectReason.restartRequired ? 500 : 2000;
+            setTimeout(() => this.connectToWhatsApp(), delay);
+          } else if (statusCode === DisconnectReason.loggedOut) {
+            console.log('WhatsAppManager: Logged out. Clearing auth...');
             this.clearAuth();
           }
         } else if (connection === 'open') {
