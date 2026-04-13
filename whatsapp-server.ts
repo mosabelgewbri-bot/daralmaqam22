@@ -33,13 +33,18 @@ class WhatsAppManager {
     }
   }
 
+  private isConnecting = false;
+
   async init() {
-    if (this.sock) return;
+    if (this.sock || this.isConnecting) return;
     console.log('WhatsAppManager: Initializing...');
     await this.connectToWhatsApp();
   }
 
   private async connectToWhatsApp() {
+    if (this.isConnecting) return;
+    this.isConnecting = true;
+
     try {
       console.log('WhatsAppManager: Starting connection...');
       const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
@@ -70,16 +75,21 @@ class WhatsAppManager {
         }
 
         if (connection === 'close') {
+          this.isConnecting = false;
           const error = (lastDisconnect?.error as Boom);
           const statusCode = error?.output?.statusCode;
-          const errorMessage = error?.stack || error?.message || '';
+          const errorMessage = error?.stack || error?.message || String(error || '');
           
-          const isQRTimeout = errorMessage.includes('QR refs attempts ended');
+          // Baileys sometimes puts the error in different places
+          const isQRTimeout = errorMessage.includes('QR refs attempts ended') || 
+                             errorMessage.includes('timed out') ||
+                             statusCode === DisconnectReason.timedOut;
+
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !isQRTimeout;
           
           console.log('WhatsAppManager: Connection closed.', {
             statusCode,
-            errorMessage,
+            errorMessage: errorMessage.substring(0, 200), // Log only start of error
             shouldReconnect,
             isQRTimeout
           });
@@ -88,19 +98,20 @@ class WhatsAppManager {
           this.qr = null;
 
           if (isQRTimeout) {
-            console.log('WhatsAppManager: QR timeout detected. Clearing auth and waiting before retry...');
+            console.log('WhatsAppManager: QR timeout or connection timeout detected. Resetting...');
             this.clearAuth();
-            // Wait 5 seconds before trying again to avoid rapid loops
-            setTimeout(() => this.connectToWhatsApp(), 5000);
+            // Wait 10 seconds before trying again to avoid rapid loops and give system time to breathe
+            setTimeout(() => this.connectToWhatsApp(), 10000);
           } else if (shouldReconnect) {
             // For other errors that warrant a reconnect, wait a bit
-            const delay = statusCode === DisconnectReason.restartRequired ? 500 : 2000;
+            const delay = statusCode === DisconnectReason.restartRequired ? 1000 : 5000;
             setTimeout(() => this.connectToWhatsApp(), delay);
           } else if (statusCode === DisconnectReason.loggedOut) {
             console.log('WhatsAppManager: Logged out. Clearing auth...');
             this.clearAuth();
           }
         } else if (connection === 'open') {
+          this.isConnecting = false;
           console.log('WhatsAppManager: Connection opened successfully');
           this.connectionStatus = 'connected';
           this.qr = null;
@@ -109,6 +120,7 @@ class WhatsAppManager {
 
       this.sock.ev.on('creds.update', saveCreds);
     } catch (error) {
+      this.isConnecting = false;
       console.error('WhatsAppManager: Connection error:', error);
       this.connectionStatus = 'disconnected';
     }
@@ -116,19 +128,37 @@ class WhatsAppManager {
 
   private clearAuth() {
     try {
+      console.log('WhatsAppManager: Clearing authentication data...');
+      if (this.sock) {
+        try {
+          this.sock.ev.removeAllListeners('connection.update');
+          this.sock.ev.removeAllListeners('creds.update');
+          this.sock.end(undefined);
+        } catch (e) {}
+      }
+      
       if (fs.existsSync(this.authPath)) {
         fs.rmSync(this.authPath, { recursive: true, force: true });
       }
+      
       this.sock = null;
       this.qr = null;
       this.connectionStatus = 'disconnected';
-      this.connectToWhatsApp();
+      this.isConnecting = false;
     } catch (e) {
-      console.error('Error clearing auth:', e);
+      console.error('WhatsAppManager: Error clearing auth:', e);
     }
   }
 
   getStatus() {
+    if (process.env.VERCEL) {
+      return {
+        status: 'unsupported',
+        message: 'تشغيل واتساب محلي غير مدعوم على Vercel بسبب طبيعة الخوادم السحابية المؤقتة. يرجى استخدام Whapi أو UltraMsg.',
+        qr: null,
+        user: null
+      };
+    }
     return {
       status: this.connectionStatus,
       qr: this.qr,
@@ -137,10 +167,17 @@ class WhatsAppManager {
   }
 
   async logout() {
+    console.log('WhatsAppManager: Manual logout requested...');
     if (this.sock) {
-      await this.sock.logout();
-      this.clearAuth();
+      try {
+        await this.sock.logout();
+      } catch (e) {
+        console.warn('WhatsAppManager: Logout error (might already be disconnected):', e);
+      }
     }
+    this.clearAuth();
+    // After manual logout/reset, start fresh to show new QR
+    setTimeout(() => this.connectToWhatsApp(), 1000);
   }
 
   async verifyNumber(phone: string) {

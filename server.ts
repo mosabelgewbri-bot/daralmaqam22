@@ -1285,6 +1285,41 @@ app.post("/api/whatsapp/proxy", async (req, res) => {
   }
 });
 
+// Gemini Diagnostic Route
+app.get("/api/diag/gemini", async (req, res) => {
+  try {
+    const key = process.env.GEMINI_API_KEY;
+    const cleanedKey = cleanGeminiKey(key);
+
+    if (!cleanedKey) {
+      return res.status(400).json({ 
+        status: 'error', 
+        message: 'GEMINI_API_KEY غير مكوّن في البيئة. يرجى إضافته في إعدادات Vercel.' 
+      });
+    }
+
+    const genAI = new GoogleGenerativeAI(cleanedKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    const result = await model.generateContent("Say 'Connection Successful'");
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({ 
+      status: 'success', 
+      message: 'تم الاتصال بخوادم Google بنجاح.',
+      response: text,
+      keyPrefix: cleanedKey.substring(0, 4) + '...' + cleanedKey.substring(cleanedKey.length - 4)
+    });
+  } catch (error: any) {
+    console.error("Diagnostic API Error:", error);
+    res.status(500).json({ 
+      status: 'error', 
+      message: error.message || 'فشل الاتصال بخوادم Google.' 
+    });
+  }
+});
+
 // Global error handler for Express
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Unhandled Express Error:", err);
@@ -1331,8 +1366,10 @@ app.post("/api/whatsapp/logout", async (req, res) => {
   }
 });
 
-// Initialize WhatsApp Manager
-whatsappManager.init().catch(err => console.error("Failed to init WhatsApp:", err));
+// Initialize WhatsApp Manager (only if not on Vercel)
+if (!process.env.VERCEL) {
+  whatsappManager.init().catch(err => console.error("Failed to init WhatsApp:", err));
+}
 
 async function startServer() {
   const PORT = 3000;

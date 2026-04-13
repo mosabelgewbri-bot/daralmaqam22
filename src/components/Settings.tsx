@@ -345,32 +345,18 @@ export default function Settings({ user }: { user: User }) {
     setDiagLoading(true);
     setDiagResult(null);
     try {
-      const { extractPassportData } = await import('../services/geminiService');
-      // Test with a tiny transparent pixel or a simple prompt
-      // Actually, let's just test the connection
-      const { GoogleGenAI } = await import('@google/genai');
-      const apiKey = process.env.GEMINI_API_KEY;
+      const response = await fetch('/api/diag/gemini');
+      const data = await response.json();
       
-      if (!apiKey) {
+      if (!response.ok) {
         setDiagResult({ 
           status: 'error', 
-          message: 'GEMINI_API_KEY غير مكوّن في البيئة. يرجى إضافته في الإعدادات (Settings) -> الأسرار (Secrets) باسم GEMINI_API_KEY.' 
+          message: data.message || 'فشل الاتصال بخوادم Google.' 
         });
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "Say 'Connection Successful'"
-      });
-
-      setDiagResult({ 
-        status: 'success', 
-        message: 'تم الاتصال بخوادم Google بنجاح.',
-        response: response.text,
-        keyPrefix: apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4)
-      });
+      setDiagResult(data);
     } catch (error: any) {
       console.error('Diagnostic error:', error);
       setDiagResult({ status: 'error', message: error.message || 'فشل الاتصال بخوادم Google.' });

@@ -52,7 +52,12 @@ interface FirestoreErrorInfo {
 function isQuotaError(error: any): boolean {
   if (!error) return false;
   const msg = (error.message || error.error || String(error)).toLowerCase();
-  return msg.includes('quota') || msg.includes('exhausted') || msg.includes('limit exceeded') || msg.includes('offline') || msg.includes('insufficient permissions');
+  return msg.includes('quota') || 
+         msg.includes('exhausted') || 
+         msg.includes('limit exceeded') || 
+         msg.includes('offline') || 
+         msg.includes('insufficient permissions') ||
+         msg.includes('failed-precondition');
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -261,8 +266,9 @@ export const api = {
         quotaExceeded = true;
         const cached = localStorage.getItem('cached_trips');
         if (cached) return JSON.parse(cached);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
       }
-      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -345,9 +351,10 @@ export const api = {
       }
       return bookings;
     } catch (error: any) {
-      console.error('Error fetching bookings:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
+      } else {
+        console.error('Error fetching bookings:', error);
       }
       
       const cached = localStorage.getItem('cached_bookings');
@@ -588,12 +595,13 @@ export const api = {
             return cacheSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
           }
         } catch (cacheError) {
-          console.warn('Cache fetch failed:', cacheError);
+          // console.warn('Cache fetch failed:', cacheError);
         }
         const cached = localStorage.getItem('cached_permissions');
         if (cached) return JSON.parse(cached);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
       }
-      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -671,12 +679,13 @@ export const api = {
             });
           }
         } catch (cacheError) {
-          console.warn('Cache fetch failed:', cacheError);
+          // console.warn('Cache fetch failed:', cacheError);
         }
         const cached = localStorage.getItem('cached_users');
         if (cached) return JSON.parse(cached);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
       }
-      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -756,12 +765,13 @@ export const api = {
             return settings;
           }
         } catch (cacheError) {
-          console.warn('Cache fetch failed:', cacheError);
+          // console.warn('Cache fetch failed:', cacheError);
         }
         const cached = localStorage.getItem('cached_settings');
         if (cached) return JSON.parse(cached);
+      } else {
+        handleFirestoreError(error, OperationType.LIST, path);
       }
-      handleFirestoreError(error, OperationType.LIST, path);
       return {};
     }
   },
@@ -967,9 +977,10 @@ export const api = {
       }
       return pilgrims;
     } catch (error: any) {
-      console.error('Error fetching pilgrims:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
+      } else {
+        console.error('Error fetching pilgrims:', error);
       }
       
       const cached = localStorage.getItem('cached_pilgrims');

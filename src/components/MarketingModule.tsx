@@ -1490,6 +1490,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                           const data = await res.json();
                           if (data.status === 'connected') {
                             showToast('✅ السيرفر المحلي متصل وجاهز للعمل', 'success');
+                          } else if (data.status === 'unsupported') {
+                            showToast('⚠️ ' + (data.message || 'تشغيل واتساب محلي غير مدعوم على Vercel'), 'warning');
                           } else {
                             showToast('⚠️ السيرفر المحلي يعمل ولكنه غير مرتبط بواتساب حالياً', 'warning');
                           }
