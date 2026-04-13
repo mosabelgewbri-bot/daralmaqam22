@@ -35,9 +35,13 @@ class WhatsAppManager {
 
   private isConnecting = false;
 
+  private qrRetryCount = 0;
+  private maxQrRetries = 3;
+
   async init() {
     if (this.sock || this.isConnecting) return;
     console.log('WhatsAppManager: Initializing...');
+    this.qrRetryCount = 0;
     await this.connectToWhatsApp();
   }
 
@@ -46,6 +50,16 @@ class WhatsAppManager {
     this.isConnecting = true;
 
     try {
+      // Cleanup existing socket if any
+      if (this.sock) {
+        try {
+          this.sock.ev.removeAllListeners('connection.update');
+          this.sock.ev.removeAllListeners('creds.update');
+          this.sock.end(undefined);
+        } catch (e) {}
+        this.sock = null;
+      }
+
       console.log('WhatsAppManager: Starting connection...');
       const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
       const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -63,6 +77,7 @@ class WhatsAppManager {
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 10000,
+        qrTimeout: 40000, // Explicit QR timeout
       });
 
       this.sock.ev.on('connection.update', async (update) => {
@@ -72,6 +87,7 @@ class WhatsAppManager {
           console.log('WhatsAppManager: New QR Code received');
           this.qr = await QRCode.toDataURL(qr);
           this.connectionStatus = 'qr';
+          this.qrRetryCount = 0; // Reset retry count on successful QR
         }
 
         if (connection === 'close') {
@@ -89,7 +105,7 @@ class WhatsAppManager {
           
           console.log('WhatsAppManager: Connection closed.', {
             statusCode,
-            errorMessage: errorMessage.substring(0, 200), // Log only start of error
+            errorMessage: errorMessage.substring(0, 200),
             shouldReconnect,
             isQRTimeout
           });
@@ -98,12 +114,18 @@ class WhatsAppManager {
           this.qr = null;
 
           if (isQRTimeout) {
-            console.log('WhatsAppManager: QR timeout or connection timeout detected. Resetting...');
-            this.clearAuth();
-            // Wait 10 seconds before trying again to avoid rapid loops and give system time to breathe
-            setTimeout(() => this.connectToWhatsApp(), 10000);
+            this.qrRetryCount++;
+            console.log(`WhatsAppManager: QR timeout detected (${this.qrRetryCount}/${this.maxQrRetries}).`);
+            
+            if (this.qrRetryCount >= this.maxQrRetries) {
+              console.log('WhatsAppManager: Max QR retries reached. Clearing auth...');
+              this.clearAuth();
+              this.qrRetryCount = 0;
+            }
+            
+            // Wait before trying again
+            setTimeout(() => this.connectToWhatsApp(), 5000);
           } else if (shouldReconnect) {
-            // For other errors that warrant a reconnect, wait a bit
             const delay = statusCode === DisconnectReason.restartRequired ? 1000 : 5000;
             setTimeout(() => this.connectToWhatsApp(), delay);
           } else if (statusCode === DisconnectReason.loggedOut) {
@@ -112,6 +134,7 @@ class WhatsAppManager {
           }
         } else if (connection === 'open') {
           this.isConnecting = false;
+          this.qrRetryCount = 0;
           console.log('WhatsAppManager: Connection opened successfully');
           this.connectionStatus = 'connected';
           this.qr = null;
