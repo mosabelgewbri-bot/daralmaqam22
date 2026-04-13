@@ -17,65 +17,81 @@ class WhatsAppManager {
   private sock: WASocket | null = null;
   private qr: string | null = null;
   private connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'qr' = 'disconnected';
-  private authPath = path.join(process.cwd(), 'auth_info_baileys');
+  private authPath = process.env.VERCEL 
+    ? path.join('/tmp', 'auth_info_baileys')
+    : path.join(process.cwd(), 'auth_info_baileys');
 
   constructor() {
+    console.log(`WhatsAppManager: Using auth path: ${this.authPath}`);
     // Ensure auth directory exists
-    if (!fs.existsSync(this.authPath)) {
-      fs.mkdirSync(this.authPath, { recursive: true });
+    try {
+      if (!fs.existsSync(this.authPath)) {
+        fs.mkdirSync(this.authPath, { recursive: true });
+      }
+    } catch (e) {
+      console.error('WhatsAppManager: Failed to create auth directory:', e);
     }
   }
 
   async init() {
     if (this.sock) return;
+    console.log('WhatsAppManager: Initializing...');
     await this.connectToWhatsApp();
   }
 
   private async connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    
-    console.log(`Using Baileys v${version.join('.')}, isLatest: ${isLatest}`);
-
-    this.sock = makeWASocket({
-      version,
-      printQRInTerminal: true,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger),
-      },
-      logger,
-      browser: ['Dar Al-Maqam', 'Chrome', '1.0.0']
-    });
-
-    this.sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
+    try {
+      console.log('WhatsAppManager: Starting connection...');
+      const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
+      const { version, isLatest } = await fetchLatestBaileysVersion();
       
-      if (qr) {
-        this.qr = await QRCode.toDataURL(qr);
-        this.connectionStatus = 'qr';
-        console.log('New QR Code generated');
-      }
+      console.log(`WhatsAppManager: Using Baileys v${version.join('.')}, isLatest: ${isLatest}`);
 
-      if (connection === 'close') {
-        const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log('Connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
-        this.connectionStatus = 'disconnected';
-        this.qr = null;
-        if (shouldReconnect) {
-          this.connectToWhatsApp();
-        } else {
-          // Logged out, clear auth
-          this.clearAuth();
+      this.sock = makeWASocket({
+        version,
+        printQRInTerminal: true,
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, logger),
+        },
+        logger,
+        browser: ['Dar Al-Maqam', 'Chrome', '1.0.0'],
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 10000,
+      });
+
+      this.sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr) {
+          console.log('WhatsAppManager: New QR Code received');
+          this.qr = await QRCode.toDataURL(qr);
+          this.connectionStatus = 'qr';
         }
-      } else if (connection === 'open') {
-        console.log('WhatsApp connection opened');
-        this.connectionStatus = 'connected';
-        this.qr = null;
-      }
-    });
 
-    this.sock.ev.on('creds.update', saveCreds);
+        if (connection === 'close') {
+          const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+          console.log('WhatsAppManager: Connection closed. Reconnecting:', shouldReconnect, 'Error:', lastDisconnect?.error);
+          this.connectionStatus = 'disconnected';
+          this.qr = null;
+          if (shouldReconnect) {
+            this.connectToWhatsApp();
+          } else {
+            this.clearAuth();
+          }
+        } else if (connection === 'open') {
+          console.log('WhatsAppManager: Connection opened successfully');
+          this.connectionStatus = 'connected';
+          this.qr = null;
+        }
+      });
+
+      this.sock.ev.on('creds.update', saveCreds);
+    } catch (error) {
+      console.error('WhatsAppManager: Connection error:', error);
+      this.connectionStatus = 'disconnected';
+    }
   }
 
   private clearAuth() {

@@ -1309,6 +1309,14 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
                 {whatsappService === 'local' && (
                   <div className="p-6 rounded-3xl bg-white/5 border border-white/10 space-y-4">
+                    {window.location.hostname.includes('vercel.app') && (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-amber-200/80 leading-relaxed">
+                          تنبيه: تشغيل واتساب محلي على Vercel قد يكون غير مستقر بسبب طبيعة الخوادم السحابية المؤقتة. يفضل استخدام Whapi أو UltraMsg للاستخدام الدائم.
+                        </p>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className={clsx(
@@ -1322,21 +1330,38 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                            whatsappStatus?.status === 'connecting' ? 'جاري الاتصال...' : 'غير متصل'}
                         </span>
                       </div>
-                      {whatsappStatus?.status === 'connected' && (
+                      <div className="flex items-center gap-3">
                         <button 
                           onClick={async () => {
                             try {
+                              showToast('جاري إعادة تشغيل الخدمة...', 'info');
                               await fetch('/api/whatsapp/logout', { method: 'POST' });
-                              showToast('تم تسجيل الخروج بنجاح', 'success');
+                              // The server will automatically restart it
                             } catch (e) {
-                              showToast('فشل تسجيل الخروج', 'error');
+                              showToast('فشل إعادة التشغيل', 'error');
                             }
                           }}
-                          className="text-[10px] font-bold text-red-500 hover:underline"
+                          className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-lg transition-all"
+                          title="إعادة تشغيل الخدمة"
                         >
-                          تسجيل الخروج
+                          <RefreshCw className="w-3 h-3" />
                         </button>
-                      )}
+                        {whatsappStatus?.status === 'connected' && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                await fetch('/api/whatsapp/logout', { method: 'POST' });
+                                showToast('تم تسجيل الخروج بنجاح', 'success');
+                              } catch (e) {
+                                showToast('فشل تسجيل الخروج', 'error');
+                              }
+                            }}
+                            className="text-[10px] font-bold text-red-500 hover:underline"
+                          >
+                            تسجيل الخروج
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {whatsappStatus?.qr && (
