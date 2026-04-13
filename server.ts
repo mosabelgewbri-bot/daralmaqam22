@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
 import { whatsappManager } from "./whatsapp-server.ts";
+import { GoogleGenAI, Type } from "@google/genai";
 
 console.log("server.ts module loading...");
 
@@ -431,6 +432,157 @@ app.get("/api/ocr/debug", (req, res) => {
     timestamp: new Date().toISOString(),
     instructions: "If hasKey is false, add GEMINI_API_KEY to Vercel environment variables and REDEPLOY."
   });
+});
+
+app.post("/api/ocr", async (req, res) => {
+  try {
+    const { base64Image } = req.body;
+    if (!base64Image) {
+      return res.status(400).json({ error: "Image data is required" });
+    }
+
+    const key = process.env.GEMINI_API_KEY;
+    const cleanedKey = cleanGeminiKey(key);
+
+    if (!cleanedKey) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    }
+
+    const ai = new GoogleGenAI({ apiKey: cleanedKey });
+    
+    // Extract mime type and base64 data
+    const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const base64Data = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data,
+            },
+          },
+          {
+            text: `Extract passport information from this image. 
+            Return ONLY a JSON object with these exact keys:
+            - passportNumber: (the passport number)
+            - expiryDate: (the expiry date in YYYY-MM-DD format)
+            - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
+            
+            Do not include any other text or markdown formatting.`,
+          },
+        ],
+      }],
+      config: {
+        systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            passportNumber: { type: Type.STRING },
+            expiryDate: { type: Type.STRING },
+            fullNameArabic: { type: Type.STRING },
+          },
+          required: ["passportNumber", "expiryDate", "fullNameArabic"],
+        },
+      },
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error("No text returned from Gemini");
+    }
+
+    const data = JSON.parse(text);
+    res.json(data);
+  } catch (error: any) {
+    console.error("Server OCR Error:", error);
+    res.status(500).json({ 
+      error: error.message || "Failed to process passport image",
+      details: error.stack
+    });
+  }
+});
+
+app.post("/api/translate", async (req, res) => {
+  try {
+    const { offerData } = req.body;
+    if (!offerData) {
+      return res.status(400).json({ error: "Offer data is required" });
+    }
+
+    const key = process.env.GEMINI_API_KEY;
+    const cleanedKey = cleanGeminiKey(key);
+
+    if (!cleanedKey) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    }
+
+    const ai = new GoogleGenAI({ apiKey: cleanedKey });
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [{
+        role: "user",
+        parts: [{
+          text: `Translate this Umrah offer from Arabic to English. 
+          Maintain the structure and return ONLY a JSON object with these exact keys:
+          - name: (translated name)
+          - category: (translated category)
+          - rows: (array of objects with translated 'makkah', 'madinah', 'offer', 'meals')
+          - fixedText: (translated fixed text)
+          
+          Original Data: ${JSON.stringify(offerData)}`
+        }]
+      }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            category: { type: Type.STRING },
+            rows: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  makkah: { type: Type.STRING },
+                  madinah: { type: Type.STRING },
+                  offer: { type: Type.STRING },
+                  meals: { type: Type.STRING },
+                  double: { type: Type.STRING },
+                  triple: { type: Type.STRING },
+                  quad: { type: Type.STRING },
+                  quint: { type: Type.STRING },
+                  currency: { type: Type.STRING }
+                }
+              }
+            },
+            fixedText: { type: Type.STRING }
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error("No text returned from Gemini");
+    }
+
+    const data = JSON.parse(text);
+    res.json(data);
+  } catch (error: any) {
+    console.error("Server Translation Error:", error);
+    res.status(500).json({ 
+      error: error.message || "Failed to translate offer",
+      details: error.stack
+    });
+  }
 });
 
 // Apply middlewares immediately for Vercel

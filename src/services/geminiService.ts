@@ -1,58 +1,25 @@
-import { GoogleGenAI, Type } from "@google/genai";
+// Gemini Service - Handles OCR and Translation via server-side API
 
 export async function translateOffer(offerData: any) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
-
-    const ai = new GoogleGenAI({ apiKey });
+    console.log("Translation Service: Calling server-side translation...");
     
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{
-        role: "user",
-        parts: [{
-          text: `Translate this Umrah offer from Arabic to English. 
-          Maintain the structure and return ONLY a JSON object with these exact keys:
-          - name: (translated name)
-          - category: (translated category)
-          - rows: (array of objects with translated 'makkah', 'madinah', 'offer', 'meals')
-          - fixedText: (translated fixed text)
-          
-          Original Data: ${JSON.stringify(offerData)}`
-        }]
-      }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            category: { type: Type.STRING },
-            rows: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  makkah: { type: Type.STRING },
-                  madinah: { type: Type.STRING },
-                  offer: { type: Type.STRING },
-                  meals: { type: Type.STRING },
-                  double: { type: Type.STRING },
-                  triple: { type: Type.STRING },
-                  quad: { type: Type.STRING },
-                  quint: { type: Type.STRING },
-                  currency: { type: Type.STRING }
-                }
-              }
-            },
-            fixedText: { type: Type.STRING }
-          }
-        }
-      }
+    const response = await fetch("/api/translate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ offerData }),
     });
 
-    return JSON.parse(response.text || '{}');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Server error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log("Translation Service: Success", data);
+    return data;
   } catch (error) {
     console.error("Translation Error:", error);
     throw error;
@@ -61,92 +28,30 @@ export async function translateOffer(offerData: any) {
 
 export async function extractPassportData(base64Image: string) {
   try {
-    console.log("OCR Service: Initializing Gemini on frontend...");
+    console.log("OCR Service: Calling server-side OCR...");
     
-    let apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    
-    // Robust check for API key
-    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.length < 10) {
-      console.error("OCR Service: GEMINI_API_KEY is missing or invalid!", { apiKey });
-      throw new Error("مفتاح API غير مكوّن. يرجى إضافة GEMINI_API_KEY في الإعدادات.");
+    const response = await fetch("/api/ocr", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ base64Image }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Server error: ${response.status}`);
     }
 
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // Extract mime type and base64 data
-    const mimeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
-    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
-    const base64Data = base64Image.includes(",") ? base64Image.split(",")[1] : base64Image;
-
-    console.log("OCR Service: Sending request to Gemini (flash)...");
-    
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{
-          role: "user",
-          parts: [
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: base64Data,
-              },
-            },
-            {
-              text: `Extract passport information from this image. 
-              Return ONLY a JSON object with these exact keys:
-              - passportNumber: (the passport number)
-              - expiryDate: (the expiry date in YYYY-MM-DD format)
-              - fullNameArabic: (the full name in Arabic characters. If not present in Arabic on the passport, transliterate the English name to Arabic accurately).
-              
-              Do not include any other text or markdown formatting.`,
-            },
-          ],
-        }],
-        config: {
-          systemInstruction: "You are a specialized passport OCR tool. You prioritize accuracy for Arabic names and passport numbers. You always return valid JSON.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              passportNumber: { type: Type.STRING },
-              expiryDate: { type: Type.STRING },
-              fullNameArabic: { type: Type.STRING },
-            },
-            required: ["passportNumber", "expiryDate", "fullNameArabic"],
-          },
-        },
-      });
-    } catch (apiError: any) {
-      console.error("OCR Service: API Call Failed:", apiError);
-      if (apiError.message?.includes("safety")) {
-        throw new Error("تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من أن الصورة واضحة ولا تحتوي على محتوى غير لائق.");
-      }
-      throw apiError;
-    }
-
-    const text = response.text;
-    console.log("OCR Service: Raw response text:", text);
-    
-    if (!text) {
-      throw new Error("No text returned from Gemini");
-    }
-
-    try {
-      const data = JSON.parse(text);
-      console.log("OCR Service: Success", data);
-      return data;
-    } catch (parseError) {
-      console.error("OCR Service: Failed to parse JSON:", text);
-      throw new Error("فشل في تحليل بيانات الجواز المستخرجة. يرجى التأكد من وضوح الصورة.");
-    }
+    const data = await response.json();
+    console.log("OCR Service: Success", data);
+    return data;
   } catch (e: any) {
     console.error("OCR Service Error:", e);
     
     let errorMessage = e.message || "فشل في معالجة صورة الجواز";
     if (e.message && (e.message.includes("API key not valid") || e.message.includes("API_KEY_INVALID"))) {
-      errorMessage = "مفتاح API غير صالح. يرجى التأكد من إعداد GEMINI_API_KEY بشكل صحيح.";
+      errorMessage = "مفتاح API غير صالح على الخادم. يرجى التأكد من إعداد GEMINI_API_KEY بشكل صحيح في إعدادات Vercel.";
     } else if (e.message && e.message.includes("Quota exceeded")) {
       errorMessage = "تم تجاوز حصة الاستخدام لمفتاح API. يرجى المحاولة لاحقاً.";
     }
