@@ -134,6 +134,9 @@ class WhatsAppManager {
     }
 
     try {
+      // Add a small mandatory delay to avoid flooding WhatsApp servers
+      await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
+      
       const [result] = await this.sock.onWhatsApp(jid);
       return result || null;
     } catch (e) {
@@ -164,6 +167,9 @@ class WhatsAppManager {
     }
 
     try {
+      // Add a mandatory delay before sending messages to avoid bans
+      await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
+      
       await this.sock.sendMessage(jid, { text: message });
       return { success: true };
     } catch (e) {

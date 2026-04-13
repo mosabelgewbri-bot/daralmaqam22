@@ -119,6 +119,15 @@ export default function FinanceModule({ user }: { user: User }) {
     
     try {
       await api.saveBooking(booking);
+      
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'تحديث مالي',
+        `تم تحديث المدفوعات للحجز: ${booking.headName} (رقم القيد: ${booking.regId})`
+      );
+
       setSaveStatus({ id: booking.id, status: 'success' });
       setTimeout(() => setSaveStatus({ id: '', status: 'idle' }), 2000);
     } catch (error) {

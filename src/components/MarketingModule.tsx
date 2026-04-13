@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Plus,
   Zap,
+  ShieldCheck,
   Settings as SettingsIcon,
   Activity
 } from 'lucide-react';
@@ -77,10 +78,12 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isCopyingNumbers, setIsCopyingNumbers] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [verifyExistingCount, setVerifyExistingCount] = useState(100);
   const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr: string | null; user?: any } | null>(null);
   const [isPollingStatus, setIsPollingStatus] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [generateCount, setGenerateCount] = useState(20000);
+  const [targetPrefix, setTargetPrefix] = useState<'all' | '091' | '092'>('all');
   const [isGeneratingAndVerifying, setIsGeneratingAndVerifying] = useState(false);
   const stopGeneratingRef = useRef(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -91,7 +94,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [verificationIndex, setVerificationIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified' | 'everything'>('all');
+  const [safetyMode, setSafetyMode] = useState(true);
   
   const itemsPerPage = 50;
 
@@ -283,9 +287,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     setVerificationStats({ valid: 0, invalid: 0, total: selectedCustomers.length, current: 0 });
     
     const libyanPrefixes = [
-      '091', '092', '094', '095', '093', '096', '097', '098', '099',
-      '91', '92', '94', '95', '93', '96', '97', '98', '99',
-      '21891', '21892', '21894', '21895', '21893', '21896', '21897', '21898', '21899'
+      '091', '092',
+      '91', '92',
+      '21891', '21892'
     ];
     const validIds: string[] = [];
     const invalidIds: string[] = [];
@@ -399,7 +403,20 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           clearTimeout(timeoutId);
         }
 
-        await new Promise(r => setTimeout(r, 500));
+        if (stopGeneratingRef.current) break;
+        
+        // Human-like delay between batches
+        const delay = safetyMode 
+          ? Math.floor(Math.random() * 5000) + 3000 // 3-8 seconds
+          : 500;
+        
+        await new Promise(r => setTimeout(r, delay));
+
+        // Random long pause every 5 batches
+        if (safetyMode && (i / batchSize) % 5 === 0 && i > 0) {
+          showToast('وضع الأمان: استراحة قصيرة لمحاكاة السلوك البشري...', 'info');
+          await new Promise(r => setTimeout(r, 10000 + Math.random() * 5000));
+        }
       }
     } else if (whatsappService === 'local') {
       for (let i = 0; i < selectedCustomers.length; i++) {
@@ -431,7 +448,17 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         }
 
         if (stopGeneratingRef.current) break;
-        await new Promise(r => setTimeout(r, 200));
+        
+        // Human-like delay for local (Baileys) - much more sensitive
+        const delay = safetyMode
+          ? Math.floor(Math.random() * 4000) + 2000 // 2-6 seconds
+          : 200;
+        await new Promise(r => setTimeout(r, delay));
+
+        // Long pause every 20 checks
+        if (safetyMode && i % 20 === 0 && i > 0) {
+          await new Promise(r => setTimeout(r, 8000 + Math.random() * 4000));
+        }
       }
     } else {
       for (let i = 0; i < selectedCustomers.length; i++) {
@@ -494,7 +521,15 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
         }
 
-        await new Promise(resolve => setTimeout(resolve, trimmedToken ? 300 : 50));
+        const delay = safetyMode
+          ? Math.floor(Math.random() * 3000) + 1500 // 1.5-4.5 seconds
+          : (trimmedToken ? 300 : 50);
+        await new Promise(resolve => setTimeout(resolve, delay));
+
+        // Long pause every 30 checks
+        if (safetyMode && i % 30 === 0 && i > 0) {
+          await new Promise(r => setTimeout(r, 10000 + Math.random() * 5000));
+        }
       }
     }
 
@@ -525,6 +560,14 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       }
 
       showToast(`اكتمل الفحص الذكي بنجاح. أرقام صالحة: ${validIds.length}، أرقام غير صالحة: ${invalidIds.length}`, 'success');
+
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'فحص ذكي للأرقام',
+        `تم فحص ${selectedCustomers.length} رقم. صالحة: ${validIds.length}، غير صالحة: ${invalidIds.length}`
+      );
     } catch (error) {
       console.error('Error in bulk verification:', error);
     } finally {
@@ -550,7 +593,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     stopGeneratingRef.current = false;
     setVerificationStats({ valid: 0, invalid: 0, total: generateCount, current: 0 });
 
-    const prefixes = ['091', '092', '094', '095', '093', '096'];
+    const prefixes = targetPrefix === 'all' ? ['091', '092'] : [targetPrefix];
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId?.trim();
     let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
@@ -726,6 +769,14 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       } else if (!stopGeneratingRef.current) {
         showToast('لم يتم العثور على أرقام نشطة في هذه المجموعة.', 'info');
       }
+
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'توليد وفحص أرقام',
+        `تم توليد وفحص ${generateCount} رقم. صالحة: ${allValidCustomers.length}`
+      );
     } catch (error) {
       console.error('Generate and verify error:', error);
       showToast('حدث خطأ أثناء التوليد والفحص.', 'error');
@@ -780,7 +831,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       const matchesSearch = name.includes(query) || phone.includes(query);
       
       if (!matchesSearch) return false;
-      if (filter === 'all') return true;
+      if (filter === 'all') return !c.isVerified; // Default 'all' now only shows unverified
+      if (filter === 'everything') return true;
       if (filter === 'whatsapp') return !!c.hasWhatsApp;
       if (filter === 'verified') return !!c.isVerified;
       return true;
@@ -806,6 +858,23 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     } else {
       setSelectedCustomers(filteredCustomers.map(c => c.id));
     }
+  };
+
+  const selectFirst500 = () => {
+    const first500 = filteredCustomers.slice(0, 500).map(c => c.id);
+    setSelectedCustomers(first500);
+    showToast('تم تحديد أول 500 عميل بنجاح', 'info');
+  };
+
+  const handleVerifyExisting = async () => {
+    const unverified = customers.filter(c => !c.isVerified).slice(0, verifyExistingCount);
+    if (unverified.length === 0) {
+      showToast('لا يوجد عملاء غير مفحوصين حالياً', 'warning');
+      return;
+    }
+    setSelectedCustomers(unverified.map(c => c.id));
+    setShowBulkVerifier(true);
+    handleBulkVerify();
   };
 
   const handleBulkImport = async () => {
@@ -866,7 +935,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   };
 
   const generateSampleLibyanNumbers = () => {
-    const prefixes = ['091', '092', '094', '095', '093', '096'];
+    const prefixes = targetPrefix === 'all' ? ['091', '092'] : [targetPrefix];
     const samples = [];
     const count = Math.min(generateCount, 100000); // Increase cap to 100k
     for (let i = 0; i < count; i++) {
@@ -1039,6 +1108,14 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       setSelectedCustomers([]);
       setSelectedOffer(null);
       showToast('تم الانتهاء من عملية الإرسال بنجاح', 'success');
+
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'إرسال عروض تسويقية',
+        `تم إرسال عرض إلى ${sendingQueue.length} عميل بنجاح`
+      );
     }
   };
 
@@ -1190,9 +1267,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-slate-900 border border-white/10 rounded-[2.5rem] p-8"
+              className="w-full max-w-md bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 flex flex-col max-h-[90vh]"
             >
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center justify-between mb-8 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center border border-gold/20">
                     <SettingsIcon className="w-5 h-5 text-gold" />
@@ -1210,7 +1287,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 </button>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar">
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-white/60 flex items-center gap-2">
                     <Globe className="w-4 h-4 text-gold" />
@@ -1548,6 +1625,43 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                   اختبار الاتصال بالخدمة
                 </button>
 
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className={clsx("w-4 h-4", safetyMode ? "text-emerald-500" : "text-white/40")} />
+                      <span className="text-xs font-bold text-white">وضع الأمان (تجنب الحظر)</span>
+                    </div>
+                    <button
+                      onClick={() => setSafetyMode(!safetyMode)}
+                      className={clsx(
+                        "w-10 h-5 rounded-full transition-all relative",
+                        safetyMode ? "bg-emerald-500" : "bg-white/10"
+                      )}
+                    >
+                      <motion.div
+                        animate={{ x: safetyMode ? 20 : 2 }}
+                        className="absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                      />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/40 leading-relaxed text-right">
+                    عند التفعيل، سيقوم النظام بإضافة فواصل زمنية عشوائية بين عمليات الفحص والإرسال لمحاكاة السلوك البشري وتقليل مخاطر حظر الحساب.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 text-right">
+                  <h4 className="text-xs font-bold text-blue-500 mb-2 flex items-center justify-end gap-2">
+                    نصائح لتجنب الحظر
+                    <AlertCircle className="w-3 h-3" />
+                  </h4>
+                  <ul className="text-[9px] text-white/40 space-y-1 list-disc list-inside">
+                    <li>لا تقم بفحص أكثر من 500 رقم في المرة الواحدة</li>
+                    <li>تجنب إرسال رسائل متطابقة لعدد كبير من الأشخاص</li>
+                    <li>استخدم "وضع الأمان" دائماً عند التعامل مع قوائم ضخمة</li>
+                    <li>تأكد من أن حسابك قديم وله نشاط سابق (الارقام الجديدة تُحظر أسرع)</li>
+                  </ul>
+                </div>
+
                 <button
                   onClick={() => setShowSettings(false)}
                   className="w-full py-4 bg-gold text-black rounded-2xl font-bold text-sm hover:bg-gold/90 transition-all shadow-lg shadow-gold/10"
@@ -1635,7 +1749,19 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               </div>
               
               <h2 className="text-2xl font-black text-white mb-2">فحص الأرقام الذكي...</h2>
-              <p className="text-white/40 text-sm mb-8">يتم الآن فحص الأرقام وتصفية الوهمي منها</p>
+              <p className="text-white/40 text-sm mb-4">يتم الآن فحص الأرقام وتصفية الوهمي منها</p>
+
+              {safetyMode && (
+                <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-3 text-right">
+                  <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-amber-500 mb-1">وضع الأمان نشط</p>
+                    <p className="text-[10px] text-amber-500/70 leading-relaxed">
+                      يتم استخدام فواصل زمنية عشوائية لمحاكاة السلوك البشري وتجنب حظر حسابك من قبل واتساب.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
@@ -1647,6 +1773,12 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     <p className="text-[10px] text-red-500/60 font-bold mb-1">غير صالحة</p>
                     <p className="text-2xl font-black text-red-500">{verificationStats.invalid}</p>
                   </div>
+                </div>
+
+                <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-xl">
+                  <p className="text-[10px] text-red-500/60 font-bold">
+                    ⚠️ سيتم حذف الأرقام غير الصالحة تلقائياً عند الانتهاء لتنظيف القائمة.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -1706,7 +1838,17 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 onConfirm: async () => {
                   try {
                     setIsLoading(true);
-                    await api.bulkDeleteCustomers(customers.map(c => c.id));
+                    const idsToDelete = customers.map(c => c.id);
+                    await api.bulkDeleteCustomers(idsToDelete);
+                    
+                    // Audit Log
+                    await api.logAction(
+                      user.id,
+                      user.name,
+                      'مسح قاعدة بيانات العملاء',
+                      `تم مسح جميع العملاء (${idsToDelete.length} عميل)`
+                    );
+
                     setCustomers([]);
                     localStorage.removeItem('cached_customers');
                     showToast('تم مسح جميع العملاء بنجاح', 'success');
@@ -1802,6 +1944,15 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                   try {
                     setIsLoading(true);
                     await api.bulkDeleteCustomers(selectedCustomers);
+
+                    // Audit Log
+                    await api.logAction(
+                      user.id,
+                      user.name,
+                      'حذف عملاء (جملة)',
+                      `تم حذف ${selectedCustomers.length} عميل مختار`
+                    );
+
                     setCustomers(prev => prev.filter(c => !selectedCustomers.includes(c.id)));
                     setSelectedCustomers([]);
                     showToast('تم حذف العملاء المحددين بنجاح', 'success');
@@ -1890,15 +2041,19 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             <button 
               onClick={() => setFilter('all')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'all' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >الجديد (غير مفحوص)</button>
+            <button 
+              onClick={() => setFilter('verified')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'verified' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >واتساب مفحوص</button>
+            <button 
+              onClick={() => setFilter('everything')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'everything' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >الكل</button>
             <button 
               onClick={() => setFilter('whatsapp')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'whatsapp' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >أرقام واتساب</button>
-            <button 
-              onClick={() => setFilter('verified')}
-              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'verified' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
-            >واتساب مفحوص</button>
             <button 
               onClick={() => setFilter('active')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'active' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
@@ -1920,12 +2075,20 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                 {filteredCustomers.length} عميل
               </span>
             </div>
-            <button 
-              onClick={toggleSelectAll}
-              className="text-xs font-bold text-gold hover:underline"
-            >
-              {selectedCustomers.length === filteredCustomers.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={selectFirst500}
+                className="text-xs font-bold text-emerald-500 hover:underline bg-emerald-500/5 px-3 py-1.5 rounded-lg border border-emerald-500/10"
+              >
+                تحديد أول 500
+              </button>
+              <button 
+                onClick={toggleSelectAll}
+                className="text-xs font-bold text-gold hover:underline"
+              >
+                {selectedCustomers.length === filteredCustomers.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+              </button>
+            </div>
           </div>
           
           <div className="overflow-x-auto">
@@ -2251,7 +2414,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               </div>
 
                 <div className="p-8 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">العدد المطلوب توليده</label>
                       <input
@@ -2260,6 +2423,25 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         onChange={(e) => setGenerateCount(parseInt(e.target.value) || 0)}
                         className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all font-mono"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-white/40 uppercase tracking-widest px-2">الشبكة (المقدم)</label>
+                      <div className="flex gap-2">
+                        {(['all', '091', '092'] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setTargetPrefix(p)}
+                            className={clsx(
+                              "flex-1 py-4 rounded-2xl font-bold text-xs transition-all border",
+                              targetPrefix === p 
+                                ? "bg-gold/10 border-gold text-gold" 
+                                : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
+                            )}
+                          >
+                            {p === 'all' ? 'الكل' : p}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex items-end gap-2">
                       <button
@@ -2277,6 +2459,30 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                           {isGeneratingAndVerifying ? 'جاري الفحص...' : 'توليد وفحص تلقائي'}
                         </button>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="p-6 bg-white/5 border border-white/10 rounded-[2rem] space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-white">فحص أرقام موجودة مسبقاً</h3>
+                      <p className="text-[10px] text-white/40">سيتم اختيار الأرقام غير المفحوصة فقط</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <input
+                          type="number"
+                          value={verifyExistingCount}
+                          onChange={(e) => setVerifyExistingCount(parseInt(e.target.value) || 0)}
+                          placeholder="عدد الأرقام للفحص..."
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all font-mono"
+                        />
+                      </div>
+                      <button
+                        onClick={handleVerifyExisting}
+                        className="px-8 py-4 bg-gold text-black rounded-2xl font-bold text-sm hover:bg-gold/90 transition-all shadow-lg shadow-gold/10"
+                      >
+                        بدء فحص الأرقام المختارة
+                      </button>
                     </div>
                   </div>
 

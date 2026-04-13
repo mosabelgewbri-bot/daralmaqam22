@@ -701,6 +701,14 @@ export default function BookingForm({ user }: { user: User }) {
       await api.saveBooking(bookingData);
       console.log('Booking saved successfully');
 
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        id ? 'تعديل حجز' : 'إنشاء حجز جديد',
+        `تم ${id ? 'تعديل' : 'إنشاء'} حجز للعميل: ${bookingData.headName} برقم قيد: ${bookingData.regId}`
+      );
+
       // 3. Save/Update Customer for Marketing
       try {
         await api.saveCustomer({

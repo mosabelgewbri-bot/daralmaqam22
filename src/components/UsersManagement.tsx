@@ -241,6 +241,14 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
       await api.savePermission(updatedRp);
       setRolePermissions(prev => prev.map(p => p.role === role ? updatedRp : p));
       
+      // Audit Log
+      await api.logAction(
+        currentUser.id,
+        currentUser.name,
+        'تحديث صلاحيات',
+        `تم تحديث صلاحية (${field}) للدور: ${role}`
+      );
+      
       // Update localStorage cache for Sidebar
       const saved = localStorage.getItem('role_permissions');
       if (saved) {
@@ -272,6 +280,15 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
 
     try {
       await api.saveUser(userToAdd);
+
+      // Audit Log
+      await api.logAction(
+        currentUser.id,
+        currentUser.name,
+        'إضافة مستخدم جديد',
+        `تم إضافة المستخدم: ${userToAdd.name} (@${userToAdd.username}) بدور: ${userToAdd.role}`
+      );
+
       const updatedUsers = await api.getUsers();
       setUsers(updatedUsers);
       setIsAddModalOpen(false);
@@ -286,7 +303,17 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
     if (!id) return;
     try {
       console.log('Deleting user:', id);
+      const userToDelete = users.find(u => u.id === id);
       await api.deleteUser(id);
+
+      // Audit Log
+      await api.logAction(
+        currentUser.id,
+        currentUser.name,
+        'حذف مستخدم',
+        `تم حذف المستخدم: ${userToDelete?.name || id} (@${userToDelete?.username || 'غير معروف'})`
+      );
+
       setUsers(prev => prev.filter(u => u.id !== id));
       if (selectedUser?.id === id) setSelectedUser(null);
       showToast('تم حذف المستخدم بنجاح', 'success');

@@ -5,7 +5,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
-import { whatsappManager } from "./whatsapp-server.js";
+import { whatsappManager } from "./whatsapp-server.ts";
 
 console.log("server.ts module loading...");
 

@@ -258,6 +258,15 @@ export default function Settings({ user }: { user: User }) {
         pref_theme: preferences.theme,
         backup_frequency: (preferences as any).backupFrequency || 'daily'
       });
+
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'تحديث الإعدادات',
+        'تم تحديث إعدادات النظام ومعلومات الشركة'
+      );
+
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
       // Force a reload of logo components

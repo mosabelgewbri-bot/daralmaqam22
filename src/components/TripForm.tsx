@@ -230,6 +230,14 @@ export default function TripForm({ user }: { user: User }) {
           console.log('Calling api.saveTrip for update:', updatedTrip);
           await api.saveTrip(updatedTrip);
           
+          // Audit Log
+          await api.logAction(
+            user.id,
+            user.name,
+            'تعديل رحلة',
+            `تم تعديل بيانات الرحلة: ${updatedTrip.name} (${updatedTrip.airline})`
+          );
+
           // Re-fetch trips to get the correctly synced availableSeats
           const refreshedTrips = await api.getTrips();
           setTrips(refreshedTrips);
@@ -258,6 +266,15 @@ export default function TripForm({ user }: { user: User }) {
         };
         console.log('Calling api.saveTrip for new trip:', newTrip);
         await api.saveTrip(newTrip);
+
+        // Audit Log
+        await api.logAction(
+          user.id,
+          user.name,
+          'إنشاء رحلة جديدة',
+          `تم إنشاء رحلة جديدة: ${newTrip.name} (${newTrip.airline}) بسعة ${newTrip.totalSeats} مقعد`
+        );
+
         setTrips(prev => [...prev, newTrip]);
         setSuccessMessage('تم حفظ الرحلة بنجاح!');
         setTimeout(() => {
@@ -279,7 +296,17 @@ export default function TripForm({ user }: { user: User }) {
     if (!id) return;
     try {
       console.log('Deleting trip:', id);
+      const tripToDelete = trips.find(t => t.id === id);
       await api.deleteTrip(id);
+
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'حذف رحلة',
+        `تم حذف الرحلة: ${tripToDelete?.name || id}`
+      );
+
       setTrips(prev => prev.filter(t => t.id !== id));
       setConfirmDeleteId(null);
       showToast('تم حذف الرحلة بنجاح', 'success');
