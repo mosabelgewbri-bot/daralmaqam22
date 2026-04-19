@@ -77,6 +77,7 @@ export interface Pilgrim {
   makkahRoom?: string;
   madinahRoom?: string;
   passportImage?: string;
+  englishName?: string;
 }
 
 export type Role = "admin" | "staff" | "accountant" | "manager" | "visa_specialist" | "receptionist";

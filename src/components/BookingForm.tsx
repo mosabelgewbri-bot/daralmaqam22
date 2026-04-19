@@ -1000,7 +1000,8 @@ export default function BookingForm({ user }: { user: User }) {
             <table className="w-full text-right">
               <thead className="bg-white/5 text-xs uppercase text-white/40">
                 <tr>
-                  <th className="px-6 py-4">الاسم</th>
+                  <th className="px-6 py-4">الاسم (عربي)</th>
+                  <th className="px-6 py-4">الاسم (إنجليزي)</th>
                   <th className="px-6 py-4">العلاقة</th>
                   {!isVisaOnly && <th className="px-6 py-4">نوع الغرفة</th>}
                   <th className="px-6 py-4">بيانات الجواز</th>
@@ -1019,13 +1020,27 @@ export default function BookingForm({ user }: { user: User }) {
                           "bg-transparent border-b border-white/10 focus:border-gold outline-none w-full py-1 text-right",
                           errors[`pilgrimName-${idx}`] && "border-red-500 bg-red-500/10"
                         )}
-                        placeholder="أدخل الاسم"
+                        placeholder="الاسم بالعربي"
                         value={p.name || ''}
                         onChange={(e) => {
                           const updated = [...pilgrims];
                           updated[idx].name = e.target.value;
                           setPilgrims(updated);
                           setErrors(prev => ({ ...prev, [`pilgrimName-${idx}`]: false }));
+                        }}
+                      />
+                    </td>
+                    <td className="px-6 py-4">
+                      <input 
+                        type="text" 
+                        className="bg-transparent border-b border-white/10 focus:border-gold outline-none w-full py-1 text-left font-mono text-sm"
+                        placeholder="Full Name (English)"
+                        value={p.englishName || ''}
+                        dir="ltr"
+                        onChange={(e) => {
+                          const updated = [...pilgrims];
+                          updated[idx].englishName = e.target.value;
+                          setPilgrims(updated);
                         }}
                       />
                     </td>

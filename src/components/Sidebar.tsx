@@ -18,6 +18,7 @@ import {
   BarChart3,
   Calculator,
   IdCard,
+  Ticket,
   Plane,
   Megaphone,
   Globe,
@@ -56,6 +57,7 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     { icon: Megaphone, label: 'عروض العمرة', path: '/offers', id: 'offers' },
     { icon: Users, label: 'التسويق والعملاء', path: '/marketing', id: 'marketing' },
     { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
+    { icon: Ticket, label: 'التذاكر والبيانات', path: '/tickets', id: 'tickets' },
     { icon: Users, label: 'المستخدمين', path: '/users', id: 'users' },
     { icon: History, label: 'سجل العمليات', path: '/logs', id: 'logs' },
     { icon: Settings, label: 'الإعدادات', path: '/settings', id: 'settings' },
@@ -78,8 +80,8 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     }
 
     // Fallback to basic logic if no permissions found or role not in saved permissions
-    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'inventory', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs'].includes(item.id);
-    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'logs', 'inventory'].includes(item.id);
+    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'inventory', 'visa', 'finance', 'cards', 'tickets', 'profit-loss', 'analytics', 'logs'].includes(item.id);
+    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'tickets', 'logs', 'inventory'].includes(item.id);
     if (user.role === 'manager') return true;
     if (user.role === 'visa_specialist') return ['dashboard', 'visa', 'reports'].includes(item.id);
     if (user.role === 'receptionist') return ['dashboard', 'booking'].includes(item.id);

@@ -16,6 +16,7 @@ import FinanceModule from './components/FinanceModule';
 import { FinanceAnalytics } from './components/FinanceAnalytics';
 import ProfitLossModule from './components/ProfitLossModule';
 import PilgrimCardsModule from './components/PilgrimCardsModule';
+import TicketsModule from './components/TicketsModule';
 import LogsModule from './components/LogsModule';
 import UmrahOffersModule from './components/UmrahOffersModule';
 import MarketingModule from './components/MarketingModule';
@@ -161,6 +162,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
               <Route path="/users" element={<UsersManagement user={user} />} />
               <Route path="/trips" element={<TripForm user={user} />} />
               <Route path="/cards" element={<PilgrimCardsModule user={user} />} />
+              <Route path="/tickets" element={<TicketsModule user={user} />} />
               <Route path="/settings" element={<Settings user={user} />} />
               <Route path="/logs" element={<LogsModule onBack={() => window.history.back()} />} />
               <Route path="*" element={<Navigate to="/" />} />
@@ -257,7 +259,7 @@ export default function App() {
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
-        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'trips', 'users', 'logs', 'settings'];
+        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'tickets', 'trips', 'users', 'logs', 'settings'];
 
         for (const role of roles) {
           const existingPerm = perms.find(p => p.role === role);
