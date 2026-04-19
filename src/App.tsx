@@ -19,6 +19,7 @@ import PilgrimCardsModule from './components/PilgrimCardsModule';
 import LogsModule from './components/LogsModule';
 import UmrahOffersModule from './components/UmrahOffersModule';
 import MarketingModule from './components/MarketingModule';
+import HotelInventoryModule from './components/HotelInventoryModule';
 import PublicOffer from './components/PublicOffer';
 import PublicImage from './components/PublicImage';
 import Sidebar from './components/Sidebar';
@@ -149,6 +150,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
               <Route path="/" element={<Dashboard user={user} onLogout={onLogout} />} />
               <Route path="/booking/:id?" element={<BookingForm user={user} />} />
               <Route path="/rooming" element={<RoomingModule user={user} />} />
+              <Route path="/inventory" element={<HotelInventoryModule user={user} />} />
               <Route path="/finance" element={<FinanceModule user={user} />} />
               <Route path="/analytics" element={<FinanceAnalytics />} />
               <Route path="/profit-loss" element={<ProfitLossModule user={user} />} />
@@ -185,7 +187,7 @@ export default function App() {
   useEffect(() => {
     const checkQuota = () => {
       if (api.isQuotaExceeded()) {
-        setConnectionError('تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). ستتم إعادة تعيين الحصة تلقائياً غداً.');
+        setConnectionError('تعذر الاتصال بقاعدة البيانات (Quota Exceeded or Offline). يعمل التطبيق الآن في وضع البيانات المخزنة محلياً.');
       }
     };
     checkQuota();
@@ -255,7 +257,7 @@ export default function App() {
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
-        const allScreens = ['dashboard', 'booking', 'rooming', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'cards', 'trips', 'users', 'logs', 'settings'];
+        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'cards', 'trips', 'users', 'logs', 'settings'];
 
         for (const role of roles) {
           const existingPerm = perms.find(p => p.role === role);
@@ -305,8 +307,8 @@ export default function App() {
         }
       } catch (error: any) {
         console.error('Error bootstrapping data:', error);
-        if (error.message.includes('Quota exceeded')) {
-          setConnectionError('تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). ستتم إعادة تعيين الحصة تلقائياً غداً.');
+        if (api.isQuotaExceeded()) {
+          setConnectionError('تعذر الاتصال بقاعدة البيانات (Quota Exceeded or Offline). يعمل التطبيق الآن في وضع البيانات المخزنة محلياً.');
         }
       }
     };

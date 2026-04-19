@@ -37,11 +37,14 @@ class WhatsAppManager {
 
   private qrRetryCount = 0;
   private maxQrRetries = 3;
+  private conflictRetryCount = 0;
+  private maxConflictRetries = 2;
 
   async init() {
-    if (this.sock || this.isConnecting) return;
+    if (this.sock || this.isConnecting || this.connectionStatus === 'connected') return;
     console.log('WhatsAppManager: Initializing...');
     this.qrRetryCount = 0;
+    this.conflictRetryCount = 0;
     await this.connectToWhatsApp();
   }
 
@@ -77,7 +80,9 @@ class WhatsAppManager {
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 10000,
-        qrTimeout: 40000, // Explicit QR timeout
+        qrTimeout: 40000,
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
       });
 
       this.sock.ev.on('connection.update', async (update) => {
@@ -87,7 +92,8 @@ class WhatsAppManager {
           console.log('WhatsAppManager: New QR Code received');
           this.qr = await QRCode.toDataURL(qr);
           this.connectionStatus = 'qr';
-          this.qrRetryCount = 0; // Reset retry count on successful QR
+          this.qrRetryCount = 0;
+          this.conflictRetryCount = 0;
         }
 
         if (connection === 'close') {
@@ -96,18 +102,29 @@ class WhatsAppManager {
           const statusCode = error?.output?.statusCode;
           const errorMessage = error?.stack || error?.message || String(error || '');
           
-          // Baileys sometimes puts the error in different places
           const isQRTimeout = errorMessage.includes('QR refs attempts ended') || 
                              errorMessage.includes('timed out') ||
                              statusCode === DisconnectReason.timedOut;
 
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !isQRTimeout;
+          const isConflict = errorMessage.includes('conflict') || 
+                            statusCode === DisconnectReason.connectionReplaced;
+
+          const isRestartRequired = statusCode === DisconnectReason.restartRequired || 
+                                   errorMessage.includes('restart required');
+
+          const isServerTerminated = statusCode === DisconnectReason.connectionLost || 
+                                    errorMessage.includes('Connection Terminated by Server');
+
+          const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !isQRTimeout && !isConflict;
           
           console.log('WhatsAppManager: Connection closed.', {
             statusCode,
             errorMessage: errorMessage.substring(0, 200),
             shouldReconnect,
-            isQRTimeout
+            isQRTimeout,
+            isConflict,
+            isRestartRequired,
+            isServerTerminated
           });
 
           this.connectionStatus = 'disconnected';
@@ -123,18 +140,34 @@ class WhatsAppManager {
               this.qrRetryCount = 0;
             }
             
-            // Wait before trying again
             setTimeout(() => this.connectToWhatsApp(), 5000);
+          } else if (isConflict) {
+            this.conflictRetryCount++;
+            console.log(`WhatsAppManager: Connection conflict detected (${this.conflictRetryCount}/${this.maxConflictRetries}).`);
+            
+            if (this.conflictRetryCount >= this.maxConflictRetries) {
+              console.log('WhatsAppManager: Persistent conflict. Clearing auth and resetting...');
+              this.clearAuth();
+              this.conflictRetryCount = 0;
+              setTimeout(() => this.connectToWhatsApp(), 10000);
+            } else {
+              console.log('WhatsAppManager: Waiting 30s for conflict to resolve...');
+              setTimeout(() => this.connectToWhatsApp(), 30000);
+            }
+          } else if (isRestartRequired || isServerTerminated) {
+            console.log(`WhatsAppManager: ${isRestartRequired ? 'Restart required' : 'Server terminated connection'}. Reconnecting in 2s...`);
+            setTimeout(() => this.connectToWhatsApp(), 2000);
           } else if (shouldReconnect) {
-            const delay = statusCode === DisconnectReason.restartRequired ? 1000 : 5000;
+            const delay = 5000;
             setTimeout(() => this.connectToWhatsApp(), delay);
-          } else if (statusCode === DisconnectReason.loggedOut) {
-            console.log('WhatsAppManager: Logged out. Clearing auth...');
+          } else if (statusCode === DisconnectReason.loggedOut || statusCode === DisconnectReason.badSession) {
+            console.log('WhatsAppManager: Logged out or bad session. Clearing auth...');
             this.clearAuth();
           }
         } else if (connection === 'open') {
           this.isConnecting = false;
           this.qrRetryCount = 0;
+          this.conflictRetryCount = 0;
           console.log('WhatsAppManager: Connection opened successfully');
           this.connectionStatus = 'connected';
           this.qr = null;
@@ -193,9 +226,14 @@ class WhatsAppManager {
     console.log('WhatsAppManager: Manual logout requested...');
     if (this.sock) {
       try {
-        await this.sock.logout();
+        // Only attempt logout if socket is likely open
+        if (this.connectionStatus === 'connected') {
+          await this.sock.logout();
+        } else {
+          this.sock.end(undefined);
+        }
       } catch (e) {
-        console.warn('WhatsAppManager: Logout error (might already be disconnected):', e);
+        console.warn('WhatsAppManager: Logout error (safe to ignore):', e instanceof Error ? e.message : String(e));
       }
     }
     this.clearAuth();

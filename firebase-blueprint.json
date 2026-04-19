@@ -161,6 +161,34 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["data", "name"]
+    },
+    "Hotel": {
+      "title": "Hotel",
+      "description": "Hotels owned or managed",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "type": "string", "enum": ["Makkah", "Madinah"] },
+        "totalRooms": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "location"]
+    },
+    "HotelRoom": {
+      "title": "HotelRoom",
+      "description": "Individual rooms in a hotel",
+      "type": "object",
+      "properties": {
+        "hotelId": { "type": "string" },
+        "roomNumber": { "type": "string" },
+        "floor": { "type": "string" },
+        "type": { "type": "string", "enum": ["Double", "Triple", "Quad", "Quint"] },
+        "status": { "type": "string", "enum": ["Vacant", "Occupied", "Reserved", "Cleaning", "Maintenance"] },
+        "capacity": { "type": "integer" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hotelId", "roomNumber", "type", "status"]
     }
   },
   "firestore": {
@@ -174,6 +202,8 @@
     "/logs": { "schema": "Log", "description": "Collection of audit logs" },
     "/customers": { "schema": "Customer", "description": "Collection of customer contacts" },
     "/umrah_offers": { "schema": "UmrahOffer", "description": "Collection of Umrah offers" },
-    "/hosted_images": { "schema": "HostedImage", "description": "Collection of hosted images" }
+    "/hosted_images": { "schema": "HostedImage", "description": "Collection of hosted images" },
+    "/hotels": { "schema": "Hotel", "description": "Collection of hotels" },
+    "/hotelRooms": { "schema": "HotelRoom", "description": "Collection of hotel rooms" }
   }
 }

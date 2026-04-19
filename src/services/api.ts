@@ -1,4 +1,4 @@
-import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer } from '../types';
+import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer, Hotel, HotelRoom } from '../types';
 import { 
   collection, 
   getDocs, 
@@ -57,7 +57,12 @@ function isQuotaError(error: any): boolean {
          msg.includes('limit exceeded') || 
          msg.includes('offline') || 
          msg.includes('insufficient permissions') ||
-         msg.includes('failed-precondition');
+         msg.includes('failed-precondition') ||
+         msg.includes('precondition required') ||
+         msg.includes('unavailable') ||
+         msg.includes('could not reach') ||
+         msg.includes('connection terminated') ||
+         msg.includes('network error');
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -66,8 +71,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   
   if (isQuota) {
     quotaExceeded = true;
-    console.warn('Firestore Quota Exceeded (Silently Handled) for path:', path);
-    // Don't throw for quota errors if we can handle them gracefully
+    console.warn('Firestore Transient/Quota Issue (Silently Handled) for path:', path, errorMessage);
+    // Don't throw for quota/transient errors if we can handle them gracefully
     return;
   }
 
@@ -112,6 +117,19 @@ testConnection();
 
 export const api = {
   isQuotaExceeded: () => quotaExceeded,
+  
+  async withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (retries > 0 && isQuotaError(error)) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return this.withRetry(fn, retries - 1);
+      }
+      throw error;
+    }
+  },
+
   // Auth
   async login(username: string, password: string): Promise<{ user: User }> {
     const path = 'users';
@@ -1393,18 +1411,22 @@ export const api = {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
   },
-  async bulkSaveCustomers(customers: Partial<Customer>[]): Promise<void> {
+  async bulkSaveCustomers(customers: Partial<Customer>[], existingMap?: Map<string, string>): Promise<void> {
     const path = 'customers';
     try {
       await this.ensureAuth();
       
-      // 1. Get all existing customers to check for duplicates
-      const querySnapshot = await getDocs(collection(db, path));
-      const existingCustomersMap = new Map<string, string>(); // phone -> id
-      querySnapshot.docs.forEach(doc => {
-        const phone = doc.data().phone;
-        if (phone) existingCustomersMap.set(phone, doc.id);
-      });
+      let existingCustomersMap = existingMap;
+      
+      // 1. Get existing customers only if not provided
+      if (!existingCustomersMap) {
+        const querySnapshot = await getDocs(collection(db, path));
+        existingCustomersMap = new Map<string, string>();
+        querySnapshot.docs.forEach(doc => {
+          const phone = doc.data().phone;
+          if (phone) existingCustomersMap!.set(phone, doc.id);
+        });
+      }
 
       // 2. Process in batches of 500
       const chunkSize = 500;
@@ -1544,5 +1566,104 @@ export const api = {
       handleFirestoreError(error, OperationType.WRITE, 'customers');
       return [];
     }
-  }
+  },
+  // Hotels
+  async getHotels(): Promise<Hotel[]> {
+    const path = 'hotels';
+    try {
+      if (quotaExceeded) return [];
+      await this.ensureAuth();
+      const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+      const querySnapshot = await this.withRetry(() => getDocs(q));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Hotel));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+  async saveHotel(hotel: Partial<Hotel>): Promise<string> {
+    const path = 'hotels';
+    try {
+      await this.ensureAuth();
+      const { id, ...data } = hotel;
+      if (id) {
+        await updateDoc(doc(db, path, id), { ...data, updatedAt: serverTimestamp() });
+        return id;
+      } else {
+        const docRef = await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+        return docRef.id;
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+      throw error;
+    }
+  },
+  async deleteHotel(id: string): Promise<void> {
+    const path = 'hotels';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+  // Rooms
+  async getRooms(hotelId?: string): Promise<HotelRoom[]> {
+    const path = 'hotelRooms';
+    try {
+      if (quotaExceeded) return [];
+      await this.ensureAuth();
+      let q;
+      if (hotelId) {
+        q = query(collection(db, path), where('hotelId', '==', hotelId));
+      } else {
+        q = query(collection(db, path), orderBy('updatedAt', 'desc'));
+      }
+      const querySnapshot = await this.withRetry(() => getDocs(q));
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as HotelRoom));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+  async saveRoom(room: Partial<HotelRoom>): Promise<void> {
+    const path = 'hotelRooms';
+    try {
+      await this.ensureAuth();
+      const { id, ...data } = room;
+      if (id) {
+        await updateDoc(doc(db, path, id), { ...data, updatedAt: serverTimestamp() });
+      } else {
+        await addDoc(collection(db, path), { ...data, updatedAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  },
+  async deleteRoom(id: string): Promise<void> {
+    const path = 'hotelRooms';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+  async bulkDeleteRooms(ids: string[]): Promise<void> {
+    const path = 'hotelRooms';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 500;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.delete(doc(db, path, id));
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
 };

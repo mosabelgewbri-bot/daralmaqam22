@@ -137,9 +137,31 @@ service cloud.firestore {
              (!('userId' in data) || data.userId is string);
     }
 
+    function isValidHotel(data) {
+      return data.keys().hasAll(['name', 'location']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.location in ['Makkah', 'Madinah'];
+    }
+
+    function isValidHotelRoom(data) {
+      return data.keys().hasAll(['hotelId', 'roomNumber', 'type', 'status']) &&
+             data.hotelId is string &&
+             data.roomNumber is string &&
+             data.type in ['Double', 'Triple', 'Quad', 'Quint'] &&
+             data.status in ['Vacant', 'Occupied', 'Reserved', 'Cleaning', 'Maintenance'];
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
+
+    match /hotels/{hotelId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /hotelRooms/{roomId} {
+      allow read, write: if isAuthenticated();
+    }
 
     // Hosted Images
     match /hosted_images/{imageId} {

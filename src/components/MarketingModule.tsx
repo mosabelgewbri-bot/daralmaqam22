@@ -79,6 +79,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [isCopyingNumbers, setIsCopyingNumbers] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [verifyExistingCount, setVerifyExistingCount] = useState(100);
+  const [selectionCount, setSelectionCount] = useState(500);
   const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr: string | null; user?: any } | null>(null);
   const [isPollingStatus, setIsPollingStatus] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
@@ -94,7 +95,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [verificationIndex, setVerificationIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified' | 'everything'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified' | 'everything' | 'unverified'>('everything');
   const [safetyMode, setSafetyMode] = useState(true);
   
   const itemsPerPage = 50;
@@ -254,7 +255,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
     try {
       setIsProcessing(true);
-      const updated = { ...customer, hasWhatsApp: true };
+      const updated = { ...customer, hasWhatsApp: true, isVerified: true };
       await api.saveCustomer(updated);
       setCustomers(prev => prev.map(c => c.id === currentId ? updated : c));
       
@@ -607,6 +608,15 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     const batchSize = whatsappService === 'whapi' ? 100 : 20;
     const totalToGenerate = generateCount;
     const allValidCustomers: any[] = [];
+    
+    // Fetch existing customers once at the start to save quota
+    const existingMap = new Map<string, string>();
+    try {
+      const existing = await api.getCustomers();
+      existing.forEach(c => existingMap.set(c.phone, c.id));
+    } catch (e) {
+      console.warn('Could not fetch existing customers for deduplication:', e);
+    }
 
     try {
       for (let i = 0; i < totalToGenerate; i += batchSize) {
@@ -731,6 +741,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                   name: `عميل ${phone}`,
                   phone: phone,
                   hasWhatsApp: true,
+                  isVerified: true,
                   createdAt: new Date().toISOString()
                 });
                 setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
@@ -740,7 +751,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             });
 
             if (validBatch.length > 0) {
-              await api.bulkSaveCustomers(validBatch);
+              await api.bulkSaveCustomers(validBatch, existingMap);
+              // Update existingMap with new IDs to avoid duplicates in subsequent batches
+              validBatch.forEach(c => existingMap.set(c.phone, c.id));
+              
               // Update local state immediately so user sees valid numbers appearing
               setCustomers(prev => {
                 // Avoid duplicates if any
@@ -831,10 +845,14 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       const matchesSearch = name.includes(query) || phone.includes(query);
       
       if (!matchesSearch) return false;
-      if (filter === 'all') return !c.isVerified; // Default 'all' now only shows unverified
-      if (filter === 'everything') return true;
-      if (filter === 'whatsapp') return !!c.hasWhatsApp;
+      
+      if (filter === 'unverified') return !c.isVerified;
       if (filter === 'verified') return !!c.isVerified;
+      if (filter === 'whatsapp') return !!c.hasWhatsApp;
+      if (filter === 'active') return (c.totalBookings || 0) > 0;
+      if (filter === 'previous') return (c.totalBookings || 0) === 0;
+      if (filter === 'everything' || filter === 'all') return true;
+      
       return true;
     });
   }, [customers, searchQuery, filter]);
@@ -860,10 +878,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     }
   };
 
-  const selectFirst500 = () => {
-    const first500 = filteredCustomers.slice(0, 500).map(c => c.id);
-    setSelectedCustomers(first500);
-    showToast('تم تحديد أول 500 عميل بنجاح', 'info');
+  const selectFirstN = () => {
+    const firstN = filteredCustomers.slice(0, selectionCount).map(c => c.id);
+    setSelectedCustomers(firstN);
+    showToast(`تم تحديد أول ${selectionCount} عميل بنجاح`, 'info');
   };
 
   const handleVerifyExisting = async () => {
@@ -2066,17 +2084,17 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           </div>
           <div className="flex items-center gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
             <button 
-              onClick={() => setFilter('all')}
-              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'all' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+              onClick={() => setFilter('everything')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", (filter === 'everything' || filter === 'all') ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >الكل</button>
+            <button 
+              onClick={() => setFilter('unverified')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'unverified' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >الجديد (غير مفحوص)</button>
             <button 
               onClick={() => setFilter('verified')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'verified' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >واتساب مفحوص</button>
-            <button 
-              onClick={() => setFilter('everything')}
-              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'everything' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
-            >الكل</button>
             <button 
               onClick={() => setFilter('whatsapp')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'whatsapp' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
@@ -2103,12 +2121,21 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               </span>
             </div>
             <div className="flex items-center gap-4">
-              <button 
-                onClick={selectFirst500}
-                className="text-xs font-bold text-emerald-500 hover:underline bg-emerald-500/5 px-3 py-1.5 rounded-lg border border-emerald-500/10"
-              >
-                تحديد أول 500
-              </button>
+              <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
+                <span className="text-[10px] font-bold text-white/40">العدد:</span>
+                <input 
+                  type="number"
+                  value={selectionCount}
+                  onChange={(e) => setSelectionCount(parseInt(e.target.value) || 0)}
+                  className="w-16 bg-transparent text-white text-xs font-bold focus:outline-none text-center"
+                />
+                <button 
+                  onClick={selectFirstN}
+                  className="text-xs font-bold text-emerald-500 hover:underline border-r border-white/10 pr-2 mr-1"
+                >
+                  تحديد
+                </button>
+              </div>
               <button 
                 onClick={toggleSelectAll}
                 className="text-xs font-bold text-gold hover:underline"

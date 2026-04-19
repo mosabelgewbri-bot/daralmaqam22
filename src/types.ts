@@ -154,6 +154,33 @@ export interface UmrahOffer {
   updatedAt?: string;
 }
 
+export interface Hotel {
+  id: string;
+  name: string;
+  location: "Makkah" | "Madinah";
+  totalRooms: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface HotelRoom {
+  id: string;
+  hotelId: string;
+  roomNumber: string;
+  floor: string;
+  type: "Double" | "Triple" | "Quad" | "Quint";
+  status: "Vacant" | "Occupied" | "Reserved" | "Cleaning" | "Maintenance";
+  capacity: number;
+  price: number;
+  notes?: string;
+  availability?: { [date: string]: 'booked' | 'available' | 'inactive' };
+  dailyPrices?: { [date: string]: number };
+  customerNames?: { [date: string]: string };
+  startDate?: string;
+  endDate?: string;
+  updatedAt: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
