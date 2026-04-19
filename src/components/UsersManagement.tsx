@@ -25,7 +25,15 @@ import {
   AlertCircle,
   Zap,
   Info,
-  CheckCircle as CheckCircleIcon
+  CheckCircle as CheckCircleIcon,
+  Hotel,
+  TrendingUp,
+  Activity,
+  Gift,
+  Megaphone,
+  CreditCard,
+  ScrollText,
+  DollarSign
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
@@ -140,12 +148,19 @@ const ConfirmModal = ({
 const PERMISSIONS_LIST = [
   { id: 'dashboard', label: 'لوحة التحكم', icon: Layout },
   { id: 'booking', label: 'الحجوزات', icon: Edit2 },
-  { id: 'finance', label: 'المالية', icon: Check },
+  { id: 'inventory', label: 'المخزون والفنادق', icon: Hotel },
   { id: 'rooming', label: 'تسكين الفنادق', icon: Calendar },
-  { id: 'tracking', label: 'وحدة التأشيرات', icon: Shield },
+  { id: 'finance', label: 'المالية', icon: DollarSign },
+  { id: 'analytics', label: 'تحليلات مالية', icon: TrendingUp },
+  { id: 'profit-loss', label: 'الأرباح والخسائر', icon: Activity },
+  { id: 'visa', label: 'وحدة التأشيرات', icon: Shield },
   { id: 'reports', label: 'التقارير', icon: Eye },
+  { id: 'offers', label: 'العروض الخارجية', icon: Gift },
+  { id: 'marketing', label: 'التسويق', icon: Megaphone },
   { id: 'trips', label: 'إدارة الرحلات', icon: SettingsIcon },
+  { id: 'cards', label: 'بطاقات المعتمرين', icon: CreditCard },
   { id: 'users', label: 'المستخدمين', icon: UserPlus },
+  { id: 'logs', label: 'سجل العمليات', icon: ScrollText },
   { id: 'settings', label: 'الإعدادات', icon: SettingsIcon },
 ];
 

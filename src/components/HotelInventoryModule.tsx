@@ -26,9 +26,19 @@ import {
   FileText,
   Printer,
   Download,
-  Coins
+  Coins,
+  Maximize2,
+  Minimize2,
+  TrendingUp,
+  Activity,
+  DollarSign,
+  Share2,
+  ArrowUpDown,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import domtoimage from 'dom-to-image-more';
+
 import { User, Hotel, HotelRoom } from '../types';
 import { api } from '../services/api';
 import { clsx } from 'clsx';
@@ -73,7 +83,18 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'single' | 'all' | 'hotel'; id?: string; count?: number; name?: string } | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [globalRoomStartDate, setGlobalRoomStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [globalRoomNights, setGlobalRoomNights] = useState(30);
   const [roomConfigs, setRoomConfigs] = useState<{ id: string; type: HotelRoom['type']; count: number; price: number; startFrom: number }[]>([]);
+  
+  // Advanced features states
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: 'roomNumber' | 'occupancy' | 'profit' | 'floor'; direction: 'asc' | 'desc' }>({ key: 'roomNumber', direction: 'asc' });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragRange, setDragRange] = useState<{ start: string; end: string; roomId: string } | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [priceAdjustmentModal, setPriceAdjustmentModal] = useState<{ date: string; rooms: string[] } | null>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadData();
@@ -110,8 +131,13 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
       // If it's a new hotel or we want to add rooms
       if (!editingHotel.id && roomConfigs.some(c => c.count > 0)) {
         const roomPromises = [];
+        const start = parseISO(globalRoomStartDate);
+        const end = addDays(start, globalRoomNights);
+        const formattedEndDate = format(end, 'yyyy-MM-dd');
+
         for (const config of roomConfigs) {
           if (config.count <= 0) continue;
+          
           for (let i = 0; i < config.count; i++) {
             const roomNum = (config.startFrom + i).toString();
             roomPromises.push(api.saveRoom({
@@ -122,6 +148,8 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
               status: 'Vacant',
               floor: '1',
               price: config.price,
+              startDate: globalRoomStartDate,
+              endDate: formattedEndDate,
               updatedAt: new Date().toISOString()
             }));
           }
@@ -133,6 +161,8 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
       setShowAddHotel(false);
       setEditingHotel(null);
       setRoomConfigs([]);
+      setGlobalRoomStartDate(format(new Date(), 'yyyy-MM-dd'));
+      setGlobalRoomNights(30);
       loadData();
     } catch (error) {
       showToast('خطأ في حفظ البيانات', 'error');
@@ -255,11 +285,6 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
     }
   };
 
-  const days = eachDayOfInterval({
-    start: startOfMonth(currentDate),
-    end: endOfMonth(currentDate)
-  });
-
   const filteredRooms = rooms.filter(room => {
     const matchesHotel = selectedHotelId === 'all' || room.hotelId === selectedHotelId;
     const matchesStatus = statusFilter === 'All' || room.status === statusFilter;
@@ -268,6 +293,92 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                           (room.notes || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesHotel && matchesStatus && matchesType && matchesSearch;
   });
+
+  const days = React.useMemo(() => {
+    if (filteredRooms.length === 0) {
+      return eachDayOfInterval({
+        start: startOfMonth(currentDate),
+        end: endOfMonth(currentDate)
+      });
+    }
+
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+
+    filteredRooms.forEach(room => {
+      if (room.startDate) {
+        const d = parseISO(room.startDate);
+        if (!minDate || d < minDate) minDate = d;
+      }
+      if (room.endDate) {
+        const d = parseISO(room.endDate);
+        if (!maxDate || d > maxDate) maxDate = d;
+      }
+    });
+
+    if (!minDate || !maxDate) {
+      return eachDayOfInterval({
+        start: startOfMonth(currentDate),
+        end: endOfMonth(currentDate)
+      });
+    }
+
+    return eachDayOfInterval({ start: minDate, end: maxDate });
+  }, [filteredRooms, currentDate]);
+
+  const sortedRooms = React.useMemo(() => {
+    return [...filteredRooms].sort((a, b) => {
+      let valA: any = a[sortConfig.key as keyof HotelRoom] || '';
+      let valB: any = b[sortConfig.key as keyof HotelRoom] || '';
+
+      if (sortConfig.key === 'roomNumber') {
+        const numA = parseInt(a.roomNumber) || 0;
+        const numB = parseInt(b.roomNumber) || 0;
+        return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredRooms, sortConfig]);
+
+  const handleExport = async () => {
+    if (!contentRef.current) return;
+    setIsExporting(true);
+    try {
+      // Small delay to ensure any hover states or animations settle
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const dataUrl = await domtoimage.toPng(contentRef.current, {
+        bgcolor: '#0a0a0a',
+        quality: 1.0,
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left'
+        }
+      });
+      
+      const link = document.createElement('a');
+      link.download = `inventory-export-${format(new Date(), 'yyyy-MM-dd-HHmm')}.png`;
+      link.href = dataUrl;
+      link.click();
+      showToast('تم تصدير الشاشة بنجاح كصورة');
+    } catch (error) {
+      console.error('Export error:', error);
+      showToast('خطأ في تصدير الصورة، يرجى المحاولة مرة أخرى', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const getRange = (start: string, end: string) => {
+    const s = start < end ? start : end;
+    const e = start > end ? start : end;
+    return days
+      .map(d => format(d, 'yyyy-MM-dd'))
+      .filter(d => d >= s && d <= e);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -327,10 +438,13 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
     <motion.div 
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
-      className="min-h-screen bg-matte-black p-8 space-y-8"
+      className={clsx(
+        "min-h-screen bg-matte-black transition-all",
+        isFocusMode ? "p-4 fixed inset-0 z-[100] overflow-auto" : "p-8 space-y-8"
+      )}
     >
       {/* Header */}
-      <div className="flex justify-between items-end">
+      <div className={clsx("flex justify-between items-end", isFocusMode && "p-6 bg-matte-dark border-b border-white/10")}>
         <div className="flex items-center gap-6">
           <Logo iconSize={40} textSize="text-4xl" className="hidden md:flex" />
           <div className="h-12 w-px bg-white/10 hidden md:block" />
@@ -339,8 +453,53 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
             <p className="text-white/60">متابعة الغرف الشاغرة وحالة الإشغال في فنادقك</p>
           </div>
         </div>
-        <div className="flex gap-3">
-          <div className="flex bg-white/5 rounded-xl border border-white/10 p-1 mr-4">
+        <div className="flex items-center gap-3">
+          <div className="hidden lg:flex bg-white/5 rounded-xl border border-white/10 p-1">
+            <button 
+              onClick={() => {
+                setSortConfig(prev => ({ 
+                  key: sortConfig.key, 
+                  direction: prev.direction === 'asc' ? 'desc' : 'asc' 
+                }));
+              }}
+              className="p-2 text-white/40 hover:text-gold transition-all"
+              title="تغيير اتجاه الترتيب"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+            </button>
+            <select 
+              value={sortConfig.key}
+              onChange={(e) => setSortConfig({ ...sortConfig, key: e.target.value as any })}
+              className="bg-transparent border-none text-[10px] text-white font-bold px-2 py-1 outline-none cursor-pointer"
+            >
+              <option value="roomNumber">رقم الغرفة</option>
+              <option value="floor">الطابق</option>
+            </select>
+          </div>
+
+          <button 
+            onClick={() => setIsFocusMode(!isFocusMode)}
+            className={clsx(
+              "w-10 h-10 rounded-xl flex items-center justify-center transition-all border",
+              isFocusMode ? "bg-gold text-matte-black border-gold" : "bg-white/5 text-white/40 border-white/10 hover:border-gold/30 hover:text-gold"
+            )}
+            title={isFocusMode ? "خروج من وضع التركيز" : "وضع التركيز (كامل الشاشة)"}
+          >
+            {isFocusMode ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
+
+          <button 
+            onClick={handleExport}
+            disabled={isExporting}
+            className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/40 hover:text-gold border border-white/10 hover:border-gold/30 transition-all disabled:opacity-50"
+            title="تصدير الشاشة كصورة"
+          >
+            {isExporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Share2 className="w-5 h-5" />}
+          </button>
+
+          <div className="bg-white/10 w-px h-8 mx-2 hidden lg:block" />
+
+          <div className="flex bg-white/5 rounded-xl border border-white/10 p-1">
             <button 
               onClick={() => setViewMode('grid')}
               className={clsx(
@@ -370,7 +529,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
           </div>
           <button 
             onClick={() => {
+              const defaultStartDate = format(new Date(), 'yyyy-MM-dd');
               setEditingHotel({ name: '', location: 'Makkah', totalRooms: 0 });
+              setGlobalRoomStartDate(defaultStartDate);
+              setGlobalRoomNights(30);
               setRoomConfigs([
                 { id: Math.random().toString(36).substring(7), type: 'Double', count: 0, price: 0, startFrom: 101 },
                 { id: Math.random().toString(36).substring(7), type: 'Triple', count: 0, price: 0, startFrom: 201 },
@@ -543,12 +705,13 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
       </div>
 
       {/* Content Area */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <Loader2 className="w-12 h-12 text-gold animate-spin" />
-          <p className="text-white/40 animate-pulse">جاري تحميل البيانات...</p>
-        </div>
-      ) : viewMode === 'grid' ? (
+      <div ref={contentRef} className="space-y-6">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Loader2 className="w-12 h-12 text-gold animate-spin" />
+            <p className="text-white/40 animate-pulse">جاري تحميل البيانات...</p>
+          </div>
+        ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           <AnimatePresence mode="popLayout">
             {filteredRooms.map((room) => {
@@ -673,21 +836,13 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
         <div className="glass-card overflow-hidden">
           <div className="p-6 border-b border-white/10 flex flex-wrap justify-between items-center gap-6 bg-white/[0.02]">
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-                className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-              <h3 className="text-xl font-bold text-white min-w-[180px] text-center">
-                {format(currentDate, 'MMMM yyyy', { locale: ar })}
-              </h3>
-              <button 
-                onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-                className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
+              <div className="w-12 h-12 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20">
+                <CalendarIcon className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white tracking-tight">جدول التسكين والمخزون</h3>
+                <p className="text-xs text-white/40 mt-1">عرض كامل المدة المملوكة لجميع الغرف المختارة</p>
+              </div>
             </div>
               <div className="flex gap-6">
                 <div className="flex items-center gap-2">
@@ -714,29 +869,46 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                   <th className="sticky right-0 z-30 bg-matte-dark p-2 border-b border-l border-white/10 text-white/40 text-[9px] font-black uppercase tracking-tighter min-w-[140px]">
                     الغرفة
                   </th>
-                  {days.map(day => (
-                    <th key={day.toISOString()} className={clsx(
-                      "p-1 border-b border-l border-white/10 text-center min-w-[32px] transition-colors",
-                      isToday(day) ? "bg-gold/10" : isWeekend(day) ? "bg-white/[0.01]" : ""
-                    )}>
-                      <p className={clsx(
-                        "text-[7px] font-black uppercase leading-none",
-                        isToday(day) ? "text-gold" : "text-white/20"
+                  {days.map((day, idx) => {
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const showMonth = idx === 0 || day.getDate() === 1;
+                    return (
+                      <th key={day.toISOString()} className={clsx(
+                        "p-1 border-b border-l border-white/10 text-center min-w-[36px] transition-colors relative group/h",
+                        isToday(day) ? "bg-gold/10" : isWeekend(day) ? "bg-white/[0.01]" : ""
                       )}>
-                        {format(day, 'EEE', { locale: ar })}
-                      </p>
-                      <p className={clsx(
-                        "text-xs font-black",
-                        isToday(day) ? "text-gold" : "text-white/60"
-                      )}>
-                        {format(day, 'd')}
-                      </p>
-                    </th>
-                  ))}
+                        {showMonth && (
+                          <div className="absolute -top-5 right-0 whitespace-nowrap text-[8px] font-black text-gold/60 bg-matte-dark px-1">
+                            {format(day, 'MMM', { locale: ar })}
+                          </div>
+                        )}
+                        <button 
+                          onClick={() => {
+                            const roomsOnDate = sortedRooms.filter(r => (!r.startDate || dateStr >= r.startDate) && (!r.endDate || dateStr <= r.endDate)).map(r => r.id);
+                            setPriceAdjustmentModal({ date: dateStr, rooms: roomsOnDate });
+                          }}
+                          className="w-full text-center hover:bg-gold/5 rounded transition-all py-1 group-hover/h:bg-gold/10"
+                        >
+                          <p className={clsx(
+                            "text-[7px] font-black uppercase leading-none mt-1",
+                            isToday(day) ? "text-gold" : "text-white/20"
+                          )}>
+                            {format(day, 'EEE', { locale: ar })}
+                          </p>
+                          <p className={clsx(
+                            "text-xs font-black",
+                            isToday(day) ? "text-gold" : "text-white/60"
+                          )}>
+                            {format(day, 'd')}
+                          </p>
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {filteredRooms.map(room => (
+                {sortedRooms.map(room => (
                   <tr key={room.id} className="hover:bg-white/[0.01] transition-colors group">
                     <td className="sticky right-0 z-20 bg-matte-dark p-4 border-l border-white/10 shadow-[20px_0_30px_rgba(0,0,0,0.5)]">
                       <div className="flex flex-col gap-1">
@@ -755,7 +927,6 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                       const dateStr = format(day, 'yyyy-MM-dd');
                       let status = room.availability?.[dateStr] || 'available';
                       
-                      // Check ownership domain
                       if ((room.startDate && dateStr < room.startDate) || (room.endDate && dateStr > room.endDate)) {
                         status = 'inactive';
                       }
@@ -763,27 +934,38 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                       const dailyPrice = room.dailyPrices?.[dateStr] ?? room.price ?? 0;
                       const customerName = room.customerNames?.[dateStr] || '';
                       
-                      const isSelected = selectionStart?.roomId === room.id && (
-                        (dateStr >= selectionStart.date && dateStr <= (selectionStart.date > dateStr ? selectionStart.date : dateStr)) ||
-                        (dateStr <= selectionStart.date && dateStr >= (selectionStart.date < dateStr ? selectionStart.date : dateStr))
+                      // Drag range calc
+                      const isInDrag = isDragging && dragRange?.roomId === room.id && (
+                        (dateStr >= dragRange.start && dateStr <= dragRange.end) ||
+                        (dateStr <= dragRange.start && dateStr >= dragRange.end)
                       );
 
-                      // Helper to get range
-                      const getRange = (start: string, end: string) => {
-                        const s = start < end ? start : end;
-                        const e = start > end ? start : end;
-                        return days
-                          .map(d => format(d, 'yyyy-MM-dd'))
-                          .filter(d => d >= s && d <= e);
-                      };
+                      const isSelected = selectionStart?.roomId === room.id && selectionStart.date === dateStr;
+
+                      // Heatmap Calculation (Simple: Higher price = more intensity)
+                      const maxPossiblePrice = sortedRooms.reduce((max, r) => Math.max(max, r.price || 0), 1000);
+                      const intensity = Math.min(1, dailyPrice / maxPossiblePrice);
 
                       return (
                         <td 
                           key={dateStr}
-                          className="p-0.5 border-l border-white/5 cursor-pointer group/cell relative"
-                          onClick={(e) => {
-                            if (e.shiftKey && selectionStart && selectionStart.roomId === room.id) {
-                              const range = getRange(selectionStart.date, dateStr);
+                          className={clsx(
+                            "p-0.5 border-l border-white/5 relative group/cell",
+                            status === 'inactive' ? "opacity-0 pointer-events-none" : "cursor-pointer"
+                          )}
+                          onMouseDown={() => {
+                            if (status === 'inactive') return;
+                            setIsDragging(true);
+                            setDragRange({ start: dateStr, end: dateStr, roomId: room.id });
+                          }}
+                          onMouseEnter={() => {
+                            if (isDragging && dragRange?.roomId === room.id) {
+                              setDragRange({ ...dragRange, end: dateStr });
+                            }
+                          }}
+                          onMouseUp={() => {
+                            if (isDragging && dragRange?.roomId === room.id) {
+                              const range = getRange(dragRange.start, dragRange.end);
                               setActiveCell({ 
                                 roomId: room.id, 
                                 dates: range, 
@@ -791,29 +973,37 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                                 price: dailyPrice,
                                 customerName 
                               });
-                            } else {
-                              setSelectionStart({ roomId: room.id, date: dateStr });
-                              setActiveCell({ 
-                                roomId: room.id, 
-                                dates: [dateStr], 
-                                status, 
-                                price: dailyPrice,
-                                customerName 
-                              });
                             }
+                            setIsDragging(false);
+                            setDragRange(null);
+                          }}
+                          onClick={() => {
+                            if (status === 'inactive') return;
+                            setSelectionStart({ roomId: room.id, date: dateStr });
+                            setActiveCell({ 
+                              roomId: room.id, 
+                              dates: [dateStr], 
+                              status, 
+                              price: dailyPrice,
+                              customerName 
+                            });
                           }}
                         >
                           <motion.div 
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
+                            style={{
+                              backgroundColor: status === 'available' ? `rgba(16, 185, 129, ${0.05 + intensity * 0.2})` : undefined,
+                              borderColor: status === 'available' ? `rgba(16, 185, 129, ${0.1 + intensity * 0.4})` : undefined
+                            }}
                             className={clsx(
                               "h-10 rounded-lg transition-all border flex flex-col items-center justify-center gap-0.5 overflow-hidden",
                               status === 'available' 
-                                ? "bg-emerald-500/5 border-emerald-500/10 group-hover/cell:bg-emerald-500/20 group-hover/cell:border-emerald-500/40" 
+                                ? "group-hover/cell:bg-emerald-500/20 group-hover/cell:border-emerald-500/40" 
                                 : status === 'booked'
                                   ? "bg-red-500/10 border-red-500/20 group-hover/cell:bg-red-500/20 group-hover/cell:border-red-500/40"
                                   : "bg-white/5 border-white/10 opacity-30 cursor-not-allowed",
-                              selectionStart?.roomId === room.id && selectionStart.date === dateStr && "ring-2 ring-gold shadow-lg shadow-gold/20"
+                              (isSelected || isInDrag) && "ring-2 ring-gold shadow-lg shadow-gold/20 z-10"
                             )}
                           >
                             <div className={clsx(
@@ -857,6 +1047,7 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
           )}
         </div>
       )}
+    </div>
 
       {/* Add/Edit Hotel Modal */}
       <AnimatePresence>
@@ -921,11 +1112,38 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
 
                 {!editingHotel?.id && (
                   <div className="space-y-4 pt-4 border-t border-white/5">
+                    <div className="grid grid-cols-2 gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/5">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-white/40 uppercase tracking-widest font-bold px-1">بداية التاريخ لكل الغرف</label>
+                        <input 
+                          type="date"
+                          className="input-field w-full text-xs py-2 px-3"
+                          value={globalRoomStartDate}
+                          onChange={(e) => setGlobalRoomStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-white/40 uppercase tracking-widest font-bold px-1">عدد ليالي الملكية</label>
+                        <input 
+                          type="number"
+                          className="input-field w-full text-xs py-2 px-3 text-center"
+                          value={globalRoomNights}
+                          onChange={(e) => setGlobalRoomNights(parseInt(e.target.value) || 0)}
+                        />
+                      </div>
+                    </div>
+
                     <div className="flex justify-between items-center px-2">
                       <h4 className="text-sm font-bold text-white/60">توصيف الغرف</h4>
                       <button 
                         type="button"
-                        onClick={() => setRoomConfigs(prev => [...prev, { id: Math.random().toString(36).substring(7), type: 'Double', count: 0, price: 0, startFrom: 101 }])}
+                        onClick={() => setRoomConfigs(prev => [...prev, { 
+                          id: Math.random().toString(36).substring(7), 
+                          type: 'Double', 
+                          count: 0, 
+                          price: 0, 
+                          startFrom: 101
+                        }])}
                         className="text-[10px] font-black text-gold hover:underline flex items-center gap-1"
                       >
                         <Plus className="w-3 h-3" /> إضافة نوع يدوي
@@ -933,7 +1151,7 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                     </div>
                     <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-1">
                       {roomConfigs.map((config, idx) => (
-                        <div key={config.id} className="grid grid-cols-12 gap-2 items-end bg-white/[0.02] p-3 rounded-2xl border border-white/5 relative group">
+                        <div key={config.id} className="grid grid-cols-12 gap-x-2 gap-y-3 items-end bg-white/[0.02] p-3 rounded-2xl border border-white/5 relative group">
                           <div className="col-span-4 space-y-1">
                             <label className="text-[10px] text-white/20 font-bold px-1">{getTypeArabic(config.type)}</label>
                             <select 
@@ -979,7 +1197,7 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                               }}
                             />
                           </div>
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-3 space-y-1">
                             <label className="text-[10px] text-white/20 font-bold px-1">يبدأ من</label>
                             <input 
                               type="number"
@@ -991,12 +1209,13 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                               }}
                             />
                           </div>
-                          <div className="col-span-1 pt-1 flex justify-center">
+
+                          <div className="col-span-1 pt-1 flex justify-center absolute -top-1 -left-1">
                             {(roomConfigs.length > 1 || config.count > 0) && (
                               <button 
                                 type="button"
                                 onClick={() => setRoomConfigs(prev => prev.filter(c => c.id !== config.id))}
-                                className="p-1.5 rounded-lg text-red-500/40 hover:text-red-500 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+                                className="p-1 w-6 h-6 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center border border-red-500/20"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -1633,6 +1852,66 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
                       }, 0).toLocaleString()} <span className="text-sm font-normal">ريال</span>
                     </p>
                   </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Price Adjustment Modal */}
+      <AnimatePresence>
+        {priceAdjustmentModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPriceAdjustmentModal(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="relative w-full max-w-md bg-matte-black border border-white/10 rounded-3xl p-6 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-white mb-4">تحديث السعر الجماعي - {format(parseISO(priceAdjustmentModal.date), 'dd MMMM', { locale: ar })}</h3>
+              <p className="text-xs text-white/40 mb-6">سيتم تحديث السعر لعدد {priceAdjustmentModal.rooms.length} غرفة في هذا التاريخ.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-white/40 font-bold block mb-2">السعر الجديد (ريال)</label>
+                  <input 
+                    type="number"
+                    className="input-field w-full text-center text-lg"
+                    placeholder="أدخل السعر..."
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        const price = parseInt((e.target as HTMLInputElement).value) || 0;
+                        try {
+                          const promises = priceAdjustmentModal.rooms.map(id => {
+                            const room = rooms.find(r => r.id === id);
+                            if (room) {
+                              return api.saveRoom({
+                                ...room,
+                                dailyPrices: { ...room.dailyPrices, [priceAdjustmentModal.date]: price }
+                              });
+                            }
+                            return Promise.resolve();
+                          });
+                          await Promise.all(promises);
+                          showToast('تم تحديث الأسعار بنجاح');
+                          setPriceAdjustmentModal(null);
+                          loadData();
+                        } catch (err) {
+                          showToast('فشل تحديث الأسعار', 'error');
+                        }
+                      }
+                    }}
+                  />
+                  <p className="text-[10px] text-white/20 mt-2">اضغط Enter للحفظ</p>
                 </div>
               </div>
             </motion.div>

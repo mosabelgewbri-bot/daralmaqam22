@@ -257,7 +257,7 @@ export default function App() {
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
-        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'cards', 'trips', 'users', 'logs', 'settings'];
+        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'trips', 'users', 'logs', 'settings'];
 
         for (const role of roles) {
           const existingPerm = perms.find(p => p.role === role);
