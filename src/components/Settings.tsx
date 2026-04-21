@@ -818,6 +818,9 @@ export default function Settings({ user }: { user: User }) {
                     {diagResult.status === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                     {diagResult.message}
                   </div>
+                  {diagResult.env && (
+                    <div className="opacity-60 italic">البيئة: {diagResult.env}</div>
+                  )}
                   {diagResult.keyPrefix && (
                     <div className="opacity-60">المفتاح: {diagResult.keyPrefix}</div>
                   )}

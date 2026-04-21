@@ -1062,17 +1062,13 @@ export default function BookingForm({ user }: { user: User }) {
             {(globalServiceType === 'Full' || globalServiceType.includes('Visa')) && (
               <div className="space-y-2 text-right">
                 <label className="text-xs text-white/60">نوع المواصلات</label>
-                <select
+                <input
+                  type="text"
                   value={transportType}
                   onChange={(e) => setTransportType(e.target.value)}
+                  placeholder="مثال: حافلة، خاص، قطار..."
                   className="input-field w-full"
-                >
-                  <option value="">اختر نوع المواصلات...</option>
-                  <option value="Bus">حافلة</option>
-                  <option value="Private">خاص</option>
-                  <option value="Train">قطار</option>
-                  <option value="Other">آخر</option>
-                </select>
+                />
               </div>
             )}
             <div className="space-y-2 text-right">

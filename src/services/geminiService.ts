@@ -34,7 +34,13 @@ export async function translateOffer(offerData: any) {
       throw new Error("No response from translation model");
     }
 
-    const data = JSON.parse(response.text.trim());
+    const textResponse = response.text.trim();
+    // Strip markdown formatting if present
+    const jsonString = textResponse.startsWith('```') 
+      ? textResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '')
+      : textResponse;
+      
+    const data = JSON.parse(jsonString);
     console.log("Translation Service: Success", data);
     return data;
   } catch (error: any) {
@@ -65,25 +71,23 @@ export async function extractPassportData(base64Image: string) {
 
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: [
-        {
-          parts: [
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: dataPart,
-              },
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: dataPart,
             },
-            {
-              text: `Extract passport information from this image. 
-              - Identify the passport number.
-              - Identify the expiry date (convert to YYYY-MM-DD format).
-              - Identify the full name in Arabic. If only English is present, transliterate the name accurately to Arabic.
-              - Identify the full name in English.`,
-            },
-          ],
-        },
-      ],
+          },
+          {
+            text: `Extract passport information from this image. 
+            - Identify the passport number.
+            - Identify the expiry date (convert to YYYY-MM-DD format).
+            - Identify the full name in Arabic. If only English is present, transliterate the name accurately to Arabic.
+            - Identify the full name in English.`,
+          },
+        ],
+      },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -109,7 +113,13 @@ export async function extractPassportData(base64Image: string) {
       throw new Error("لم يتمكن النظام من قراءة بيانات الجواز. يرجى التأكد من وضوح الصورة.");
     }
 
-    const data = JSON.parse(response.text.trim());
+    const textResponse = response.text.trim();
+    // Strip markdown formatting if present
+    const jsonString = textResponse.startsWith('```') 
+      ? textResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '')
+      : textResponse;
+      
+    const data = JSON.parse(jsonString);
     console.log("OCR Service: Success", data);
     return data;
   } catch (e: any) {

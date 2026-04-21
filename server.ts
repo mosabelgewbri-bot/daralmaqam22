@@ -1062,6 +1062,24 @@ app.post("/api/whatsapp/proxy", async (req, res) => {
   }
 });
 
+// Diagnostics
+app.get("/api/diag/gemini", (req, res) => {
+  const key = process.env.GEMINI_API_KEY || "";
+  if (!key) {
+    return res.status(404).json({ 
+      status: 'error', 
+      message: 'مفتاح Gemini API غير مكوّن في البيئة (Environment Variable missing).' 
+    });
+  }
+  
+  res.json({ 
+    status: 'success', 
+    message: 'مفتاح API مكوّن في البيئة.',
+    keyPrefix: key.substring(0, 4) + '...' + key.substring(key.length - 4),
+    env: process.env.NODE_ENV
+  });
+});
+
 // Global error handler for Express
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Unhandled Express Error:", err);
