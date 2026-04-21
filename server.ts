@@ -1,11 +1,12 @@
 import express from "express";
-// import { createServer as createViteServer } from "vite"; // Moved to dynamic import
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
-import { whatsappManager } from "./whatsapp-server.ts";
+
+// Lazy-load WhatsApp to prevent top-level crashes on Vercel
+let whatsappManager: any;
 
 console.log("server.ts module loading...");
 if (process.env.GEMINI_API_KEY) {
@@ -396,7 +397,29 @@ async function initializeDatabase() {
 
 const app = express();
 
-// VERY SIMPLE ROUTE AT THE TOP
+// --- DIAGNOSTICS AT THE VERY TOP ---
+app.get("/api/diag/gemini", (req, res) => {
+  const key = process.env.GEMINI_API_KEY || "";
+  const isVercel = !!process.env.VERCEL;
+  
+  if (!key) {
+    return res.status(200).json({ 
+      status: 'error', 
+      message: 'مفتاح Gemini API غير مكوّن في البيئة (Environment Variable missing).',
+      env: process.env.NODE_ENV,
+      isVercel
+    });
+  }
+  
+  res.json({ 
+    status: 'success', 
+    message: 'مفتاح API مكوّن في البيئة.',
+    keyPrefix: key.substring(0, 4) + '...' + key.substring(key.length - 4),
+    env: process.env.NODE_ENV,
+    isVercel
+  });
+});
+
 app.get("/api/ping-simple", (req, res) => {
   res.json({ status: "alive", timestamp: new Date().toISOString() });
 });
@@ -1062,24 +1085,6 @@ app.post("/api/whatsapp/proxy", async (req, res) => {
   }
 });
 
-// Diagnostics
-app.get("/api/diag/gemini", (req, res) => {
-  const key = process.env.GEMINI_API_KEY || "";
-  if (!key) {
-    return res.status(404).json({ 
-      status: 'error', 
-      message: 'مفتاح Gemini API غير مكوّن في البيئة (Environment Variable missing).' 
-    });
-  }
-  
-  res.json({ 
-    status: 'success', 
-    message: 'مفتاح API مكوّن في البيئة.',
-    keyPrefix: key.substring(0, 4) + '...' + key.substring(key.length - 4),
-    env: process.env.NODE_ENV
-  });
-});
-
 // Global error handler for Express
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Unhandled Express Error:", err);
@@ -1097,6 +1102,7 @@ app.get("/api/whatsapp/status", (req, res) => {
 
 app.post("/api/whatsapp/verify", async (req, res) => {
   try {
+    if (!whatsappManager) return res.status(503).json({ error: "WhatsApp service not available" });
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: "Phone number required" });
     const result = await whatsappManager.verifyNumber(phone);
@@ -1108,6 +1114,7 @@ app.post("/api/whatsapp/verify", async (req, res) => {
 
 app.post("/api/whatsapp/send", async (req, res) => {
   try {
+    if (!whatsappManager) return res.status(503).json({ error: "WhatsApp service not available" });
     const { phone, message } = req.body;
     if (!phone || !message) return res.status(400).json({ error: "Phone and message required" });
     const result = await whatsappManager.sendMessage(phone, message);
@@ -1119,6 +1126,7 @@ app.post("/api/whatsapp/send", async (req, res) => {
 
 app.post("/api/whatsapp/logout", async (req, res) => {
   try {
+    if (!whatsappManager) return res.status(503).json({ error: "WhatsApp service not available" });
     await whatsappManager.logout();
     res.json({ success: true });
   } catch (error: any) {
@@ -1126,13 +1134,19 @@ app.post("/api/whatsapp/logout", async (req, res) => {
   }
 });
 
-// Initialize WhatsApp Manager (only if not on Vercel)
-if (!process.env.VERCEL) {
-  whatsappManager.init().catch(err => console.error("Failed to init WhatsApp:", err));
-}
-
 async function startServer() {
   const PORT = 3000;
+
+  // Initialize WhatsApp Manager (Lazy Load)
+  if (!process.env.VERCEL) {
+    try {
+      const { whatsappManager: wm } = await import("./whatsapp-server.ts");
+      whatsappManager = wm;
+      whatsappManager.init().catch((err: any) => console.error("Failed to init WhatsApp:", err));
+    } catch (e) {
+      console.warn("Could not load whatsapp-server.ts. Skipping WhatsApp init.");
+    }
+  }
 
   // Initialize database before starting server
   await initializeDatabase();

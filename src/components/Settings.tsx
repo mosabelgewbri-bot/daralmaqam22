@@ -344,22 +344,50 @@ export default function Settings({ user }: { user: User }) {
   const runDiagnostic = async () => {
     setDiagLoading(true);
     setDiagResult(null);
+    
+    // Step 1: Check frontend key
+    const frontendKey = process.env.GEMINI_API_KEY || "";
+    const frontendResult = {
+      hasFrontendKey: !!frontendKey,
+      frontendPrefix: frontendKey ? frontendKey.substring(0, 4) + '...' + frontendKey.substring(frontendKey.length - 4) : null
+    };
+
     try {
       const response = await fetch('/api/diag/gemini');
-      const data = await response.json();
+      const text = await response.text();
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        // Not JSON - probably a server error page
+        setDiagResult({ 
+          status: 'error', 
+          message: 'خطأ في الخادم (غير قادر على الاتصال بالخلفية).',
+          details: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+          ...frontendResult
+        });
+        return;
+      }
       
       if (!response.ok) {
         setDiagResult({ 
           status: 'error', 
-          message: data.message || 'فشل الاتصال بخوادم Google.' 
+          message: data.message || 'فشل الاتصال بخوادم Google.',
+          ...data,
+          ...frontendResult
         });
         return;
       }
 
-      setDiagResult(data);
+      setDiagResult({ ...data, ...frontendResult });
     } catch (error: any) {
       console.error('Diagnostic error:', error);
-      setDiagResult({ status: 'error', message: error.message || 'فشل الاتصال بخوادم Google.' });
+      setDiagResult({ 
+        status: 'error', 
+        message: error.message || 'فشل الاتصال بخوادم Google.',
+        ...frontendResult
+      });
     } finally {
       setDiagLoading(false);
     }
@@ -811,21 +839,44 @@ export default function Settings({ user }: { user: User }) {
 
               {diagResult && (
                 <div className={clsx(
-                  "p-3 rounded-lg border text-[10px] space-y-2",
-                  diagResult.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-red-500/10 border-red-500/20 text-red-500"
+                  "p-3 rounded-xl border text-[10px] space-y-3 bg-black/20",
+                  diagResult.status === 'success' ? "border-emerald-500/20" : "border-red-500/20"
                 )}>
-                  <div className="flex items-center gap-2 font-bold">
-                    {diagResult.status === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                    {diagResult.message}
-                  </div>
+                  {diagResult.hasFrontendKey ? (
+                    <div className="flex items-center gap-2 text-green-400">
+                      <CheckCircle className="w-3 h-3" />
+                      <span>متوفر في الواجهة الأمامية (Browser)</span>
+                      {diagResult.frontendPrefix && <span className="opacity-60 text-[8px]">({diagResult.frontendPrefix})</span>}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-red-300">
+                      <AlertCircle className="w-3 h-3" />
+                      <span>غير متوفر في الواجهة الأمامية (Browser)</span>
+                    </div>
+                  )}
+
+                  {diagResult.status === 'success' ? (
+                    <div className="flex items-center gap-2 text-green-400">
+                      <CheckCircle className="w-3 h-3" />
+                      <span>متوفر في الخلفية (Server)</span>
+                      {diagResult.keyPrefix && <span className="opacity-60 text-[8px]">({diagResult.keyPrefix})</span>}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-orange-400">
+                        <AlertCircle className="w-3 h-3" />
+                        <span>{diagResult.message || 'مشكلة في الخلفية'}</span>
+                      </div>
+                      {diagResult.details && (
+                        <div className="text-[8px] bg-black/40 p-2 rounded font-mono text-white/50 break-all max-h-20 overflow-y-auto">
+                          {diagResult.details}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {diagResult.env && (
-                    <div className="opacity-60 italic">البيئة: {diagResult.env}</div>
-                  )}
-                  {diagResult.keyPrefix && (
-                    <div className="opacity-60">المفتاح: {diagResult.keyPrefix}</div>
-                  )}
-                  {diagResult.response && (
-                    <div className="opacity-60 italic">الاستجابة: {diagResult.response}</div>
+                    <div className="opacity-60 italic text-[10px]">البيئة: {diagResult.env} {diagResult.isVercel ? '(Vercel)' : ''}</div>
                   )}
                 </div>
               )}
