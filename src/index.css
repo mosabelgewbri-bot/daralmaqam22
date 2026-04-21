@@ -143,6 +143,36 @@
 }
 
 @media print {
+  .arrival-notice-page {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  
+  .arrival-notice-page .no-print {
+    display: none !important;
+  }
+  
+  .arrival-notice-page .print-only-layout {
+    transform: scale(1) !important;
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    position: static !important;
+    width: 210mm !important;
+    height: auto !important;
+    min-height: 297mm !important;
+  }
+
+  .arrival-notice-page .no-print-bg {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
   body {
     background: white !important;
     color: black !important;
@@ -186,4 +216,72 @@
   .bg-white\/5, .bg-white\/\[0.02\] {
     background: transparent !important;
   }
+}
+
+/* Fix for html2canvas and jsPDF with Tailwind v4 OKLCH colors */
+.print-section, .print-section * {
+    color: #000000;
+    border-color: #000000;
+}
+
+.print-section .bg-gray-50 {
+    background-color: #f8f9fa !important;
+}
+
+.print-section .bg-gray-100 {
+    background-color: #f1f3f5 !important;
+}
+
+.print-section .bg-gray-200 {
+    background-color: #e9ecef !important;
+}
+
+.print-section .text-gray-500 {
+    color: #6c757d !important;
+}
+
+.print-section .text-gray-600 {
+    color: #495057 !important;
+}
+
+.print-section .bg-white {
+    background-color: #ffffff !important;
+}
+
+.print-section .border-black {
+    border-color: #000000 !important;
+}
+
+.print-section .text-black {
+    color: #000000 !important;
+}
+
+.print-section .bg-gray-100\/30 {
+    background-color: rgba(241, 243, 245, 0.3) !important;
+}
+
+.print-section .bg-gray-50\/10 {
+    background-color: rgba(248, 249, 250, 0.1) !important;
+}
+
+/* Extended Fix for other potentially injected oklch colors */
+.print-section .text-white\/40 { color: rgba(255, 255, 255, 0.4) !important; }
+.print-section .text-white\/60 { color: rgba(255, 255, 255, 0.6) !important; }
+.print-section .bg-white\/5 { background-color: rgba(255, 255, 255, 0.05) !important; }
+.print-section .bg-gold\/5 { background-color: rgba(212, 175, 55, 0.05) !important; }
+.print-section .bg-gold\/20 { background-color: rgba(212, 175, 55, 0.2) !important; }
+
+/* Force standard colors for all common slate/gray/zinc utilities if they leak into print-section */
+.print-section [class*="bg-slate-"],
+.print-section [class*="bg-gray-"],
+.print-section [class*="bg-zinc-"],
+.print-section [class*="bg-neutral-"] {
+    background-color: #f8f9fa; /* Safe fallback */
+}
+
+.print-section [class*="text-slate-"],
+.print-section [class*="text-gray-"],
+.print-section [class*="text-zinc-"],
+.print-section [class*="text-neutral-"] {
+    color: #212529; /* Safe fallback */
 }

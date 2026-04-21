@@ -247,7 +247,11 @@ export default function RoomingModule({ user }: { user: User }) {
   const filteredBookings = bookings
     .map(b => ({
       ...b,
-      pilgrims: b.pilgrims.filter(p => p.roomType !== 'VisaOnly')
+      pilgrims: (b.pilgrims || []).filter(p => {
+        const type = p.serviceType || 'Full';
+        const hasAccommodation = type === 'Full' || type === 'AccommodationOnly' || type === 'TicketAndAccommodation' || type === 'AccommodationAndVisa';
+        return hasAccommodation && p.roomType !== 'VisaOnly' && p.roomType !== 'None';
+      })
     }))
     .filter(b => {
       if (b.pilgrims.length === 0) return false;

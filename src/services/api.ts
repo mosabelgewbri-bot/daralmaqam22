@@ -62,17 +62,23 @@ function isQuotaError(error: any): boolean {
          msg.includes('unavailable') ||
          msg.includes('could not reach') ||
          msg.includes('connection terminated') ||
-         msg.includes('network error');
+         msg.includes('terminated by server') ||
+         msg.includes('network error') ||
+         msg.includes('internal error');
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
-  const isQuota = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
+  const isTransient = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
   
-  if (isQuota) {
+  if (isTransient) {
+    // If it's a transient connection error, we might not want to block the whole app immediately
+    if (errorMessage.toLowerCase().includes('connection terminated') || errorMessage.toLowerCase().includes('terminated by server')) {
+       console.warn('Firestore Connection Terminated (Retrying or Handled) for path:', path);
+       return;
+    }
     quotaExceeded = true;
     console.warn('Firestore Transient/Quota Issue (Silently Handled) for path:', path, errorMessage);
-    // Don't throw for quota/transient errors if we can handle them gracefully
     return;
   }
 
@@ -101,10 +107,18 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 // Test connection on boot
 let quotaExceeded = false;
 
-async function testConnection() {
+async function testConnection(retries = 3) {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection test successful");
+    quotaExceeded = false;
   } catch (error: any) {
+    if (retries > 0 && isQuotaError(error)) {
+      console.warn(`Connection test failed, retrying (${retries} left)...`, error.message);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return testConnection(retries - 1);
+    }
+
     if(error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration. ");
     }
@@ -502,10 +516,22 @@ export const api = {
       const bookingsQuery = query(collection(db, 'bookings'), where("tripId", "==", tripId));
       const bookingsSnapshot = await getDocsFromServer(bookingsQuery);
       
-      let totalPilgrims = 0;
+      let totalSeatsDeducted = 0;
       bookingsSnapshot.docs.forEach(doc => {
         const data = doc.data();
-        totalPilgrims += (data.passengerCount || 0);
+        const pilgrims = (data.pilgrims || []) as Pilgrim[];
+        
+        if (pilgrims.length > 0) {
+          // Count only pilgrims that have a service type involving a ticket
+          const ticketPilgrims = pilgrims.filter(p => {
+            const type = p.serviceType || 'Full';
+            return type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation' || type === 'TicketAndVisa';
+          });
+          totalSeatsDeducted += ticketPilgrims.length;
+        } else {
+          // Fallback for very old data or malformed bookings
+          totalSeatsDeducted += (data.passengerCount || 0);
+        }
       });
       
       // 2. Get the trip from server
@@ -514,7 +540,7 @@ export const api = {
       
       if (tripSnap.exists()) {
         const tripData = tripSnap.data() as Trip;
-        const availableSeats = Math.max(0, tripData.totalSeats - totalPilgrims);
+        const availableSeats = Math.max(0, tripData.totalSeats - totalSeatsDeducted);
         
         // 3. Update the trip
         await updateDoc(tripRef, { 
@@ -522,7 +548,7 @@ export const api = {
           updatedAt: serverTimestamp()
         });
         
-        console.log(`Synced trip ${tripId}: ${totalPilgrims} pilgrims, ${availableSeats} available seats`);
+        console.log(`Synced trip ${tripId}: ${totalSeatsDeducted} tickets, ${availableSeats} available seats`);
       }
     } catch (error) {
       console.error(`Error syncing trip seats for ${tripId}:`, error);
@@ -540,8 +566,22 @@ export const api = {
       
       for (const trip of trips) {
         const tripBookings = bookings.filter(b => b.tripId === trip.id);
-        const totalPilgrims = tripBookings.reduce((acc, b) => acc + (b.passengerCount || 0), 0);
-        const availableSeats = Math.max(0, trip.totalSeats - totalPilgrims);
+        
+        let totalSeatsDeducted = 0;
+        tripBookings.forEach(b => {
+          const pilgrims = (b.pilgrims || []) as Pilgrim[];
+          if (pilgrims.length > 0) {
+            const ticketPilgrims = pilgrims.filter(p => {
+              const type = p.serviceType || 'Full';
+              return type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation';
+            });
+            totalSeatsDeducted += ticketPilgrims.length;
+          } else {
+            totalSeatsDeducted += (b.passengerCount || 0);
+          }
+        });
+
+        const availableSeats = Math.max(0, trip.totalSeats - totalSeatsDeducted);
         
         if (trip.availableSeats !== availableSeats) {
           await updateDoc(doc(db, 'trips', trip.id), { 

@@ -15,7 +15,8 @@ import {
   CreditCard,
   Image as ImageIcon,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -69,21 +70,134 @@ export default function TicketsModule({ user }: { user: User }) {
     loadData();
   }, []);
 
-  const filteredBookings = bookings.filter(b => {
-    const matchesTrip = !selectedTripId || b.tripId === selectedTripId;
-    const matchesSearch = !searchTerm || 
-      b.headName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.regId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (b.pilgrims || []).some(p => 
-        p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        p.passportNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.englishName?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    return matchesTrip && matchesSearch;
-  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const filteredBookings = bookings
+    .map(b => ({
+      ...b,
+      pilgrims: (b.pilgrims || []).filter(p => {
+        const type = p.serviceType || 'Full';
+        return type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation';
+      })
+    }))
+    .filter(b => {
+      if (b.pilgrims.length === 0) return false;
+      const matchesTrip = !selectedTripId || b.tripId === selectedTripId;
+      const matchesSearch = !searchTerm || 
+        b.headName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.regId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.pilgrims.some(p => 
+          p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+          p.passportNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          p.englishName?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      return matchesTrip && matchesSearch;
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const handlePrint = () => {
+    // Better print handling for iframes
+    const printContent = printRef.current;
+    if (!printContent) return;
+
     window.print();
+  };
+
+  const handleExportPDF = async () => {
+    if (!printRef.current) return;
+    setExporting(true);
+    showToast('جاري تجهيز ملف PDF...', 'info');
+
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const { jsPDF } = await import('jspdf');
+
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          // 1. Remove ALL existing stylesheets to prevent html2canvas from parsing OKLCH/OKLAB values
+          const styles = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
+          styles.forEach(s => s.remove());
+
+          // 2. Force a global high-contrast reset via a fresh style tag
+          const style = clonedDoc.createElement('style');
+          style.innerHTML = `
+            * { 
+              color: #000000 !important; 
+              border-color: #dddddd !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              text-shadow: none !important;
+              font-family: Arial, sans-serif !important;
+              background-image: none !important;
+            }
+            body { background: #ffffff !important; }
+            table { width: 100% !important; border-collapse: collapse !important; border: 1px solid #000000 !important; }
+            th, td { border: 1px solid #dddddd !important; padding: 8px !important; color: #000000 !important; }
+            th { background-color: #f3f4f6 !important; font-weight: bold !important; }
+            .glass-card { 
+              background: #ffffff !important; 
+              border: 1px solid #dddddd !important; 
+              box-shadow: none !important;
+              color: #000000 !important;
+              border-radius: 8px !important;
+              margin-bottom: 20px !important;
+            }
+            .text-gold { color: #856404 !important; font-weight: bold !important; }
+            .bg-emerald-500 { background-color: #10b981 !important; color: #ffffff !important; }
+            .font-mono { font-family: monospace !important; font-weight: bold !important; }
+            img { border: 1px solid #eeeeee !important; max-width: 100% !important; }
+            .no-print { display: none !important; }
+          `;
+          clonedDoc.head.appendChild(style);
+
+          // 3. Final DOM scrub to ensure no inline okl colors remain
+          const all = clonedDoc.getElementsByTagName('*');
+          for (let i = 0; i < all.length; i++) {
+            const el = all[i] as HTMLElement;
+            if (el.style) {
+              // Reset problematic inline styles if they exist
+              if (el.style.color?.includes('okl')) el.style.color = '#000000';
+              if (el.style.backgroundColor?.includes('okl')) el.style.backgroundColor = 'transparent';
+              if (el.style.borderColor?.includes('okl')) el.style.borderColor = '#000000';
+            }
+          }
+        }
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      let heightLeft = pdfHeight;
+      let position = 0;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`تذاكر-وبياناب-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+      showToast('تم تصدير ملف PDF بنجاح', 'success');
+    } catch (error) {
+      console.error('PDF Export Error:', error);
+      showToast('فشل في تصدير PDF', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const selectedTrip = trips.find(t => t.id === selectedTripId);
@@ -108,6 +222,14 @@ export default function TicketsModule({ user }: { user: User }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleExportPDF}
+            disabled={filteredBookings.length === 0 || exporting}
+            className="flex items-center gap-2 px-6 py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition-all disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5 text-gold" />}
+            تصدير PDF
+          </button>
           <button
             onClick={handlePrint}
             disabled={filteredBookings.length === 0}
@@ -160,127 +282,121 @@ export default function TicketsModule({ user }: { user: User }) {
           <p className="text-white/40 animate-pulse font-bold">جاري تحميل بيانات التذاكر...</p>
         </div>
       ) : filteredBookings.length > 0 ? (
-        <div ref={printRef} className="space-y-12">
+        <div ref={printRef} className="space-y-16">
+          {/* Global Summary Header (Printed only one) */}
+          <div className="p-6 glass-card bg-gold/5 border-gold/20 flex justify-between items-center no-print">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <FileText className="w-5 h-5 text-gold" />
+              تقرير بيانات المسافرين (كافة المجموعات)
+            </h3>
+            <span className="text-xs bg-gold/10 px-4 py-2 rounded-full text-gold font-bold border border-gold/20">
+              إجمالي المجموعات: {filteredBookings.length} | إجمالي المسجلين: {filteredBookings.reduce((acc, b) => acc + (b.pilgrims?.length || 0), 0)}
+            </span>
+          </div>
+
           {filteredBookings.map((booking) => (
             <motion.div 
               key={booking.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-card overflow-hidden print:shadow-none print:border-none print:bg-white print:text-black print:p-0"
+              className="space-y-6 break-after-page"
             >
-              {/* Booking Header (Family Group) */}
-              <div className="p-6 bg-white/[0.03] border-b border-white/10 flex flex-wrap justify-between items-center gap-4 print:bg-gray-100 print:border-gray-300">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20 print:bg-gold/20">
-                    <CreditCard className="w-6 h-6" />
+              {/* Group Header */}
+              <div className="glass-card overflow-hidden">
+                <div className="p-4 bg-white/[0.05] border-b border-white/10 flex justify-between items-center print:bg-gray-100 print:border-black">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-bold text-white print:text-black">فاتورة رقم: {booking.regId}</h4>
+                      <p className="text-xs text-white/40 print:text-gray-600">مسؤول المجموعة: <span className="text-gold font-bold">{booking.headName}</span></p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white print:text-black">فاتورة رقم: {booking.regId}</h3>
-                    <p className="text-xs text-white/40 mt-1 print:text-gray-500">مسؤول المجموعة: <span className="text-gold font-bold">{booking.headName}</span></p>
-                  </div>
-                </div>
-                <div className="flex gap-4 print:text-xs">
-                  <div className="text-right">
-                    <p className="text-[10px] text-white/40 uppercase font-black print:text-gray-400">عدد الركاب</p>
-                    <p className="text-lg font-bold text-white print:text-black">{booking.passengerCount} فرد</p>
-                  </div>
-                  <div className="w-px h-10 bg-white/10 print:bg-gray-300" />
-                  <div className="text-right">
-                    <p className="text-[10px] text-white/40 uppercase font-black print:text-gray-400">تاريخ الحجز</p>
-                    <p className="text-lg font-bold text-white print:text-black">
+                  <div className="text-left">
+                    <p className="text-[10px] text-white/40 uppercase font-black print:text-gray-500">تاريخ الحجز</p>
+                    <p className="text-sm font-bold text-white print:text-black">
                       {booking.createdAt ? format(new Date(booking.createdAt), 'yyyy/MM/dd') : '---'}
                     </p>
                   </div>
                 </div>
+
+                {/* Data Table for this specific group */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right border-collapse">
+                    <thead>
+                      <tr className="bg-white/5 text-[10px] uppercase text-white/40 font-black tracking-widest border-b border-white/10 print:bg-gray-50 print:text-black print:border-black">
+                        <th className="px-4 py-4 text-center">#</th>
+                        <th className="px-4 py-4">تاريخ الرحلة</th>
+                        <th className="px-4 py-4">الرحلة</th>
+                        <th className="px-4 py-4">الاسم بالعربي</th>
+                        <th className="px-4 py-4">English Name</th>
+                        <th className="px-4 py-4">رقم الجواز</th>
+                        <th className="px-4 py-4">صلاحية الجواز</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 print:divide-gray-300">
+                      {(booking.pilgrims || []).map((pilgrim, pIdx) => {
+                        const trip = trips.find(t => t.id === booking.tripId);
+                        return (
+                          <tr key={`${booking.id}-${pIdx}`} className="hover:bg-white/[0.02] transition-colors group print:text-black">
+                            <td className="px-4 py-4 text-center text-[10px] text-white/20 group-hover:text-gold print:text-gray-400">
+                              {pIdx + 1}
+                            </td>
+                            <td className="px-4 py-4 text-sm text-white/60 font-mono print:text-black">
+                              {trip?.startDate ? format(new Date(trip.startDate), 'yyyy/MM/dd') : '---'}
+                            </td>
+                            <td className="px-4 py-4 text-sm text-white font-bold group-hover:text-gold transition-colors print:text-black">
+                              {trip?.name || '---'}
+                            </td>
+                            <td className="px-4 py-4 text-sm text-white print:text-black select-all">
+                              {pilgrim.name}
+                            </td>
+                            <td className="px-4 py-4 text-sm font-mono uppercase text-gold font-black print:text-black select-all tracking-tight">
+                              {pilgrim.englishName || '---'}
+                            </td>
+                            <td className="px-4 py-4 text-sm font-mono font-black text-white bg-white/[0.02] group-hover:bg-gold/10 transition-all print:text-black select-all">
+                              {pilgrim.passportNo || '---'}
+                            </td>
+                            <td className="px-4 py-4 text-sm text-white/60 font-bold print:text-black">
+                              {pilgrim.expiryDate || '---'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              {/* Pilgrims List (Tickets) */}
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 print:grid-cols-1">
-                {(booking.pilgrims || []).map((pilgrim, pIdx) => (
-                  <div 
-                    key={pIdx} 
-                    className="flex gap-6 p-6 rounded-[2rem] bg-white/[0.02] border border-white/5 hover:border-gold/20 transition-all group print:bg-white print:border-gray-200 print:text-black print:rounded-none print:border-b last:print:border-b-0 print:p-4"
-                  >
-                    {/* Passport/Pilgrim Image */}
-                    <div className="relative w-32 h-40 flex-shrink-0 bg-white/5 rounded-2xl border border-white/10 overflow-hidden group-hover:border-gold/30 transition-all print:w-24 print:h-32 print:border-gray-300">
+              {/* Passport Images for this specific group */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {(booking.pilgrims || []).map((pilgrim, idx) => (
+                  <div key={`${booking.id}-img-${idx}`} className="glass-card overflow-hidden group hover:border-gold/30 transition-all print:border-gray-200">
+                    <div className="aspect-[4/3] bg-black/40 relative group-hover:bg-black/20 transition-all overflow-hidden border-b border-white/5">
                       {pilgrim.passportImage ? (
                         <img 
                           src={pilgrim.passportImage} 
                           alt={pilgrim.name} 
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           referrerPolicy="no-referrer"
                         />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-white/10">
                           <ImageIcon className="w-10 h-10" />
-                          <span className="text-[8px] font-bold uppercase">لا يوجد صورة</span>
+                          <span className="text-[10px] font-black uppercase">No Image</span>
                         </div>
                       )}
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        {pilgrim.passportNo && (
-                           <div className="px-2 py-0.5 rounded bg-emerald-500 text-white text-[8px] font-black uppercase shadow-lg">متوفر</div>
-                        )}
-                      </div>
                     </div>
-
-                    {/* Ticket Details */}
-                    <div className="flex-1 space-y-4">
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-start">
-                           <p className="text-[10px] text-gold font-black uppercase tracking-widest print:text-gray-500">الاسم بالإنجليزية</p>
-                           <span className="text-[8px] bg-white/5 px-2 py-0.5 rounded text-white/20 print:hidden">{pilgrim.relationship === 'Self' ? 'رئيسي' : 'تابع'}</span>
-                        </div>
-                        <h4 className="text-xl font-black text-white uppercase tracking-tight font-mono print:text-black">
-                          {pilgrim.englishName || pilgrim.name || '---'}
-                        </h4>
-                        <p className="text-sm text-white/40 print:text-gray-600">{pilgrim.name} (عربي)</p>
+                    <div className="p-3 bg-white/[0.02] flex flex-col gap-1 print:bg-white print:text-black">
+                      <p className="text-[10px] font-black text-white uppercase truncate font-mono print:text-black">{pilgrim.englishName || '---'}</p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-[9px] text-white/40 font-bold print:text-gray-600 truncate">{pilgrim.name}</p>
+                        <p className="text-[9px] font-mono text-gold print:text-black">{pilgrim.passportNo || '---'}</p>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-4 pt-2">
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-white/40 uppercase font-bold print:text-gray-500">رقم الجواز</p>
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-3 h-3 text-gold print:text-gray-400" />
-                            <p className="text-sm font-black text-white font-mono print:text-black">{pilgrim.passportNo || '---'}</p>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-white/40 uppercase font-bold print:text-gray-500">نوع الغرفة</p>
-                          <div className="flex items-center gap-2">
-                            <UserCheck className="w-3 h-3 text-gold print:text-gray-400" />
-                            <p className="text-sm font-bold text-white print:text-black">
-                              {pilgrim.roomType === 'Double' ? 'ثنائية' : 
-                               pilgrim.roomType === 'Triple' ? 'ثلاثية' : 
-                               pilgrim.roomType === 'Quad' ? 'رباعية' : 
-                               pilgrim.roomType === 'Quint' ? 'خماسية' : 'تأشيرة فقط'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {pilgrim.expiryDate && (
-                        <div className="pt-2">
-                           <p className="text-[10px] text-white/40 uppercase font-bold print:text-gray-500">تاريخ انتهاء الجواز</p>
-                           <p className="text-xs font-bold text-white/60 print:text-black">{pilgrim.expiryDate}</p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
-              </div>
-
-              {/* Footer Section (Flight Info) */}
-              <div className="p-4 bg-white/5 border-t border-white/10 flex justify-between items-center print:bg-gray-50 print:border-gray-200">
-                <div className="flex items-center gap-3">
-                  <Plane className="w-4 h-4 text-gold" />
-                  <span className="text-xs font-bold text-white/60 print:text-black">
-                    {selectedTrip?.name || trips.find(t => t.id === booking.tripId)?.name || 'رحلة غير معروفة'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] uppercase font-black text-white/20 print:text-gray-400">
-                   <Logo iconSize={20} hideText={true} />
-                   <span>دار المقام للخدمات السياحية</span>
-                </div>
               </div>
             </motion.div>
           ))}
@@ -313,26 +429,29 @@ export default function TicketsModule({ user }: { user: User }) {
             background: white !important; 
             color: black !important;
             padding: 0 !important;
+            width: 100% !important;
           }
           .no-print { display: none !important; }
-          .print\\:shadow-none { box-shadow: none !important; }
-          .print\\:border-none { border: none !important; }
-          .print\\:bg-white { background: white !important; }
-          .print\\:text-black { color: black !important; }
-          .print\\:p-0 { padding: 0 !important; }
-          .print\\:grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
           .glass-card { 
             background: white !important; 
-            border: 1px solid #eee !important;
+            border: 2px solid #000 !important;
+            margin-bottom: 2rem !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
             box-shadow: none !important;
+            color: black !important;
           }
+          .print-bg-gray { background: #f9fafb !important; }
+          .print-border { border: 1px solid #e5e7eb !important; }
+          h1, h2, h3, h4, p, span { color: black !important; }
+          .text-gold { color: #856404 !important; }
           @page {
-            margin: 10mm;
-            size: A4;
+            margin: 15mm;
+            size: auto;
           }
-          .motion-div {
-            opacity: 1 !important;
-            transform: none !important;
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}} />

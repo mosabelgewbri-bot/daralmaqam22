@@ -50,12 +50,16 @@ export default function BookingForm({ user }: { user: User }) {
   const [madinahHotel, setMadinahHotel] = useState('');
   const [madinahNights, setMadinahNights] = useState(0);
   const [manualTicketPrice, setManualTicketPrice] = useState<number>(0);
-  const [isVisaOnly, setIsVisaOnly] = useState(false);
+  const [globalServiceType, setGlobalServiceType] = useState<Pilgrim['serviceType']>('Full');
+  const isVisaOnly = globalServiceType === 'VisaOnly';
+  const hasAccommodation = globalServiceType === 'Full' || globalServiceType === 'AccommodationOnly' || globalServiceType === 'TicketAndAccommodation' || globalServiceType === 'AccommodationAndVisa';
   
   // Head of Family State
   const [headName, setHeadName] = useState('');
+  const [headNameEnglish, setHeadNameEnglish] = useState('');
   const [regId, setRegId] = useState('');
   const [phone, setPhone] = useState('');
+  const [transportType, setTransportType] = useState('');
   const [isDuplicateRegId, setIsDuplicateRegId] = useState(false);
   
   // Room Pricing State
@@ -65,6 +69,7 @@ export default function BookingForm({ user }: { user: User }) {
     Quad: { price: 0, currency: 'LYD' },
     Quint: { price: 0, currency: 'LYD' },
     VisaOnly: { price: 0, currency: 'LYD' },
+    None: { price: 0, currency: 'LYD' },
   });
 
   useEffect(() => {
@@ -100,9 +105,12 @@ export default function BookingForm({ user }: { user: User }) {
             setMadinahHotel(bookingToEdit.madinahHotel || '');
             setMadinahNights(bookingToEdit.madinahNights || 0);
             setHeadName(bookingToEdit.headName || '');
+            setHeadNameEnglish(bookingToEdit.headNameEnglish || '');
             setRegId(bookingToEdit.regId || '');
             setPhone(bookingToEdit.phone || '');
-            setIsVisaOnly(bookingToEdit.isVisaOnly || false);
+            setTransportType(bookingToEdit.transportType || '');
+            const gType = bookingToEdit.pilgrims?.[0]?.serviceType || (bookingToEdit.isVisaOnly ? 'VisaOnly' : 'Full');
+            setGlobalServiceType(gType);
           }
         }
       } catch (error) {
@@ -116,21 +124,37 @@ export default function BookingForm({ user }: { user: User }) {
     setPilgrims(prev => {
       let current = [...prev];
       
+      const getRoomTypeForType = (type: Pilgrim['serviceType']) => {
+        if (type === 'VisaOnly') return 'VisaOnly';
+        if (type === 'TicketOnly') return 'None';
+        return 'Double';
+      };
+
       if (current.length < passengerCount) {
         for (let i = current.length; i < passengerCount; i++) {
-          current.push({ relationship: 'Self', roomType: isVisaOnly ? 'VisaOnly' : 'Double', visaStatus: 'Pending' });
+          current.push({ 
+            relationship: 'Self', 
+            roomType: getRoomTypeForType(globalServiceType), 
+            visaStatus: 'Pending',
+            serviceType: globalServiceType
+          });
         }
       } else if (current.length > passengerCount) {
         current = current.slice(0, passengerCount);
       }
       
-      if (isVisaOnly) {
-        current = current.map(p => ({ ...p, roomType: 'VisaOnly' }));
-      }
+      // Update all pilgrims if global type changed
+      current = current.map(p => ({ 
+        ...p, 
+        serviceType: globalServiceType,
+        roomType: (p.roomType === 'VisaOnly' || p.roomType === 'None' || globalServiceType === 'VisaOnly' || globalServiceType === 'TicketOnly') 
+          ? getRoomTypeForType(globalServiceType) 
+          : p.roomType 
+      }));
       
       return current;
     });
-  }, [passengerCount, isVisaOnly]);
+  }, [passengerCount, globalServiceType]);
 
   const isExpiredSoon = (dateStr?: string) => {
     if (!dateStr) return false;
@@ -203,8 +227,9 @@ export default function BookingForm({ user }: { user: User }) {
     const extractedNo = data.passportNumber || data.passport_number || data.passportNo || data.number || '';
     const extractedExpiry = data.expiryDate || data.expiry_date || data.expiry || '';
     const extractedName = data.fullNameArabic || data.nameArabic || data.name_arabic || data.name || '';
+    const extractedNameEn = data.fullNameEnglish || data.nameEnglish || data.name_english || data.englishName || '';
     
-    console.log("BookingForm: Extracted fields:", { extractedNo, extractedExpiry, extractedName });
+    console.log("BookingForm: Extracted fields:", { extractedNo, extractedExpiry, extractedName, extractedNameEn });
     
     const expiryDate = extractedExpiry || updated[index].expiryDate || '';
     const isInvalid = isExpiredSoon(expiryDate);
@@ -212,6 +237,7 @@ export default function BookingForm({ user }: { user: User }) {
     updated[index] = { 
       ...updated[index], 
       name: extractedName || updated[index].name || '',
+      englishName: extractedNameEn || updated[index].englishName || '',
       passportNo: isInvalid ? 'الجواز منتهي الصلاحية' : (extractedNo || updated[index].passportNo || ''), 
       expiryDate: expiryDate,
       passportImage: image
@@ -220,6 +246,11 @@ export default function BookingForm({ user }: { user: User }) {
     if (index === 0 && !headName && extractedName) {
       console.log("BookingForm: Setting headName to", extractedName);
       setHeadName(extractedName);
+    }
+    
+    if (index === 0 && extractedNameEn) {
+      console.log("BookingForm: Setting headNameEnglish to", extractedNameEn);
+      setHeadNameEnglish(extractedNameEn);
     }
     
     setPilgrims(updated);
@@ -235,13 +266,19 @@ export default function BookingForm({ user }: { user: User }) {
     let packageLYD = 0;
     let packageUSD = 0;
 
-    if (selectedTrip) {
-      if (selectedTrip.currency === 'LYD') ticketsLYD = manualTicketPrice * passengerCount;
-      else ticketsUSD = manualTicketPrice * passengerCount;
-    }
-
     pilgrims.forEach(p => {
-      if (p.roomType) {
+      const type = p.serviceType || 'Full';
+      
+      // 1. Calculate Tickets
+      const hasTicket = type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation' || type === 'TicketAndVisa';
+      if (hasTicket && selectedTrip) {
+        if (selectedTrip.currency === 'LYD') ticketsLYD += manualTicketPrice;
+        else ticketsUSD += manualTicketPrice;
+      }
+
+      // 2. Calculate Package (Accommodation / Visa)
+      const hasPackage = type === 'Full' || type === 'AccommodationOnly' || type === 'TicketAndAccommodation' || type === 'VisaOnly' || type === 'AccommodationAndVisa' || type === 'TicketAndVisa';
+      if (hasPackage && p.roomType && roomPrices[p.roomType]) {
         const pricing = roomPrices[p.roomType];
         if (pricing.currency === 'LYD') packageLYD += pricing.price;
         else packageUSD += pricing.price;
@@ -569,6 +606,7 @@ export default function BookingForm({ user }: { user: User }) {
                   setPassengerCount(1);
                   setPilgrims([{ relationship: 'Self', roomType: 'Double', visaStatus: 'Pending' }]);
                   setHeadName('');
+                  setHeadNameEnglish('');
                   setRegId('');
                   setPhone('');
                   setMakkahHotel('');
@@ -629,7 +667,7 @@ export default function BookingForm({ user }: { user: User }) {
     }
 
     if (!phone) setError('phone');
-    if (!isVisaOnly) {
+    if (hasAccommodation) {
       if (!makkahHotel) setError('makkahHotel');
       if (makkahNights <= 0) setError('makkahNights');
       if (!madinahHotel) setError('madinahHotel');
@@ -642,7 +680,7 @@ export default function BookingForm({ user }: { user: User }) {
       if (!p.expiryDate || isExpiredSoon(p.expiryDate)) setError(`pilgrimExpiryDate-${idx}`);
       
       // Validate room price for the selected room type (only for new bookings)
-      if (!id && roomPrices[p.roomType].price <= 0) {
+      if (!id && p.roomType !== 'None' && roomPrices[p.roomType].price <= 0) {
         setError(`roomPrice-${p.roomType}`);
       }
     });
@@ -674,16 +712,19 @@ export default function BookingForm({ user }: { user: User }) {
         id: id || `BK-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
         tripId: selectedTripId,
         headName,
+        headNameEnglish,
         regId,
         phone,
+        transportType,
         passengerCount,
-        pilgrims: isVisaOnly ? pilgrims.map(p => ({ ...p, roomType: 'VisaOnly' })) : pilgrims,
+        pilgrims: !hasAccommodation ? pilgrims.map(p => ({ ...p, roomType: globalServiceType === 'VisaOnly' ? 'VisaOnly' : 'None' })) : pilgrims,
         totals,
-        makkahHotel: isVisaOnly ? 'تأشيرة فقط' : makkahHotel,
-        makkahNights: isVisaOnly ? 0 : makkahNights,
-        madinahHotel: isVisaOnly ? 'تأشيرة فقط' : madinahHotel,
-        madinahNights: isVisaOnly ? 0 : madinahNights,
+        makkahHotel: !hasAccommodation ? (globalServiceType === 'VisaOnly' ? 'تأشيرة فقط' : 'تذكرة فقط') : makkahHotel,
+        makkahNights: !hasAccommodation ? 0 : makkahNights,
+        madinahHotel: !hasAccommodation ? (globalServiceType === 'VisaOnly' ? 'تأشيرة فقط' : 'تذكرة فقط') : madinahHotel,
+        madinahNights: !hasAccommodation ? 0 : madinahNights,
         isVisaOnly,
+        globalServiceType,
         paidLYD: (oldBooking?.paidLYD || 0),
         paidUSD: (oldBooking?.paidUSD || 0),
         paidCashLYD: (oldBooking?.paidCashLYD || 0),
@@ -800,27 +841,66 @@ export default function BookingForm({ user }: { user: User }) {
 
             <div className="pt-4 border-t border-white/10 space-y-3">
               <h4 className="text-xs font-bold text-gold uppercase tracking-widest">نوع الحجز</h4>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button 
-                  onClick={() => {
-                    setIsVisaOnly(false);
-                    setPilgrims(prev => prev.map(p => ({ ...p, roomType: 'Double' })));
-                  }}
+                  onClick={() => setGlobalServiceType('Full')}
                   className={clsx(
-                    "flex-1 py-2 rounded-lg text-xs font-bold transition-all border",
-                    !isVisaOnly ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'Full' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
                   )}
                 >
                   برنامج كامل
                 </button>
                 <button 
-                  onClick={() => {
-                    setIsVisaOnly(true);
-                    setPilgrims(prev => prev.map(p => ({ ...p, roomType: 'VisaOnly' })));
-                  }}
+                  onClick={() => setGlobalServiceType('TicketOnly')}
                   className={clsx(
-                    "flex-1 py-2 rounded-lg text-xs font-bold transition-all border",
-                    isVisaOnly ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'TicketOnly' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                  )}
+                >
+                  تذكرة فقط
+                </button>
+                <button 
+                  onClick={() => setGlobalServiceType('AccommodationOnly')}
+                  className={clsx(
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'AccommodationOnly' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                  )}
+                >
+                  سكن فقط
+                </button>
+                <button 
+                  onClick={() => setGlobalServiceType('TicketAndAccommodation')}
+                  className={clsx(
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'TicketAndAccommodation' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                  )}
+                >
+                  تذكرة وسكن
+                </button>
+                <button 
+                  onClick={() => setGlobalServiceType('AccommodationAndVisa')}
+                  className={clsx(
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'AccommodationAndVisa' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                  )}
+                >
+                  سكن وتأشيرة
+                </button>
+                <button 
+                  onClick={() => setGlobalServiceType('TicketAndVisa')}
+                  className={clsx(
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'TicketAndVisa' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
+                  )}
+                >
+                  تذكرة وتأشيرة
+                </button>
+                <button 
+                  onClick={() => setGlobalServiceType('VisaOnly')}
+                  className={clsx(
+                    "py-2 rounded-lg text-[10px] font-bold transition-all border",
+                    globalServiceType === 'VisaOnly' ? "bg-gold/20 border-gold text-gold" : "bg-white/5 border-white/10 text-white/40"
                   )}
                 >
                   تأشيرة فقط
@@ -854,10 +934,10 @@ export default function BookingForm({ user }: { user: User }) {
             )}
           </div>
 
-          <div className={clsx("glass-card p-6 space-y-4 md:col-span-3 transition-all duration-500", isVisaOnly && "opacity-50 pointer-events-none grayscale")}>
+          <div className={clsx("glass-card p-6 space-y-4 md:col-span-3 transition-all duration-500", !hasAccommodation && "opacity-50 pointer-events-none grayscale")}>
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-gold">تفاصيل الإقامة والفندق</h3>
-              {isVisaOnly && <span className="text-[10px] bg-gold/20 text-gold px-2 py-1 rounded-full font-bold">غير مطلوب (تأشيرة فقط)</span>}
+              {!hasAccommodation && <span className="text-[10px] bg-gold/20 text-gold px-2 py-1 rounded-full font-bold">غير مطلوب حسب نوع الحجز</span>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-1 text-right">
@@ -924,17 +1004,28 @@ export default function BookingForm({ user }: { user: User }) {
           <h3 className="font-semibold text-gold">بيانات رب الأسرة</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2 text-right">
-              <label className="text-xs text-white/60">الاسم بالكامل</label>
+              <label className="text-xs text-white/60">الاسم بالكامل (رئيس المجموعة)</label>
               <input 
                 ref={(el) => { if (el) fieldRefs.current['headName'] = el; }}
                 type="text" 
                 className={clsx("input-field w-full", errors.headName && "border-red-500 bg-red-500/10")}
-                placeholder="الاسم بالكامل" 
+                placeholder="الاسم بالعربي" 
                 value={headName}
                 onChange={(e) => {
                   setHeadName(e.target.value);
                   setErrors(prev => ({ ...prev, headName: false }));
                 }}
+              />
+            </div>
+            <div className="space-y-2 text-left">
+              <label className="text-xs text-white/60">Leader Name (English)</label>
+              <input 
+                type="text" 
+                className="input-field w-full font-mono uppercase tracking-tight"
+                placeholder="Full Name in English" 
+                value={headNameEnglish}
+                dir="ltr"
+                onChange={(e) => setHeadNameEnglish(e.target.value)}
               />
             </div>
             <div className="space-y-2 text-right">
@@ -968,6 +1059,22 @@ export default function BookingForm({ user }: { user: User }) {
                 }}
               />
             </div>
+            {(globalServiceType === 'Full' || globalServiceType.includes('Visa')) && (
+              <div className="space-y-2 text-right">
+                <label className="text-xs text-white/60">نوع المواصلات</label>
+                <select
+                  value={transportType}
+                  onChange={(e) => setTransportType(e.target.value)}
+                  className="input-field w-full"
+                >
+                  <option value="">اختر نوع المواصلات...</option>
+                  <option value="Bus">حافلة</option>
+                  <option value="Private">خاص</option>
+                  <option value="Train">قطار</option>
+                  <option value="Other">آخر</option>
+                </select>
+              </div>
+            )}
             <div className="space-y-2 text-right">
               <label className="text-xs text-white/60">عدد المعتمرين</label>
               <input 
@@ -1003,7 +1110,7 @@ export default function BookingForm({ user }: { user: User }) {
                   <th className="px-6 py-4">الاسم (عربي)</th>
                   <th className="px-6 py-4">الاسم (إنجليزي)</th>
                   <th className="px-6 py-4">العلاقة</th>
-                  {!isVisaOnly && <th className="px-6 py-4">نوع الغرفة</th>}
+                  <th className="px-6 py-4">نوع الغرفة</th>
                   <th className="px-6 py-4">بيانات الجواز</th>
                   <th className="px-6 py-4">رفع</th>
                   <th className="px-6 py-4">إجراء</th>
@@ -1061,8 +1168,8 @@ export default function BookingForm({ user }: { user: User }) {
                         <option value="Other">آخر</option>
                       </select>
                     </td>
-                    {!isVisaOnly && (
-                      <td className="px-6 py-4">
+                    <td className="px-6 py-4">
+                      { hasAccommodation ? (
                         <select 
                           className="bg-transparent border-b border-white/10 focus:border-gold outline-none w-full py-1 text-right"
                           value={p.roomType}
@@ -1076,10 +1183,11 @@ export default function BookingForm({ user }: { user: User }) {
                           <option value="Triple">ثلاثية</option>
                           <option value="Quad">رباعية</option>
                           <option value="Quint">خماسية</option>
-                          <option value="VisaOnly">تأشيرة فقط</option>
                         </select>
-                      </td>
-                    )}
+                      ) : (
+                        <span className="text-white/20 text-xs font-bold">غير مطلوب</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="space-y-2">
                         <div className="relative">

@@ -11,6 +11,7 @@ import VisaModule from './components/VisaModule';
 import ReportsModule from './components/ReportsModule';
 import UsersManagement from './components/UsersManagement';
 import TripForm from './components/TripForm';
+import ArrivalNoticeModule from './components/ArrivalNoticeModule';
 import Settings from './components/Settings';
 import FinanceModule from './components/FinanceModule';
 import { FinanceAnalytics } from './components/FinanceAnalytics';
@@ -59,13 +60,19 @@ class ErrorBoundary extends Component<any, any> {
   render() {
     if (this.state.hasError) {
       let errorMessage = 'حدث خطأ غير متوقع في التطبيق';
-      try {
-        if (this.state.error?.message) {
-          const parsed = JSON.parse(this.state.error.message);
-          if (parsed.error) errorMessage = `خطأ في قاعدة البيانات: ${parsed.error}`;
+      const rawError = String(this.state.error).toLowerCase();
+      
+      if (rawError.includes('connection terminated') || rawError.includes('terminated by server')) {
+        errorMessage = 'تعذر الاتصال بالخادم مؤقتاً. جاري المحاولة مرة أخرى...';
+      } else {
+        try {
+          if (this.state.error?.message) {
+            const parsed = JSON.parse(this.state.error.message);
+            if (parsed.error) errorMessage = `خطأ في قاعدة البيانات: ${parsed.error}`;
+          }
+        } catch (e) {
+          errorMessage = this.state.error?.message || errorMessage;
         }
-      } catch (e) {
-        errorMessage = this.state.error?.message || errorMessage;
       }
 
       return (
@@ -161,6 +168,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
               <Route path="/visa" element={<VisaModule user={user} />} />
               <Route path="/users" element={<UsersManagement user={user} />} />
               <Route path="/trips" element={<TripForm user={user} />} />
+              <Route path="/arrival-notice" element={<ArrivalNoticeModule />} />
               <Route path="/cards" element={<PilgrimCardsModule user={user} />} />
               <Route path="/tickets" element={<TicketsModule user={user} />} />
               <Route path="/settings" element={<Settings user={user} />} />
@@ -259,7 +267,7 @@ export default function App() {
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
-        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'tickets', 'trips', 'users', 'logs', 'settings'];
+        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'tickets', 'trips', 'users', 'logs', 'settings', 'arrival-notice'];
 
         for (const role of roles) {
           const existingPerm = perms.find(p => p.role === role);

@@ -2,7 +2,7 @@
  * Resizes a base64 image to a maximum width and height while maintaining aspect ratio.
  * Returns a promise that resolves to the resized base64 image (JPEG format).
  */
-export const resizeImage = (base64: string, maxWidth = 1200, maxHeight = 1200): Promise<string> => {
+export const resizeImage = (base64: string, maxWidth = 1600, maxHeight = 1600): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {

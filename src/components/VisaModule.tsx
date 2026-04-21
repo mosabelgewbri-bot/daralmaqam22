@@ -122,7 +122,11 @@ export default function VisaModule({ user }: { user: User }) {
         booking.pilgrims.some(p => (p.passportNo || '').toLowerCase().includes(lowerSearch));
       
       if (matchesTrip && matchesSearch) {
-        booking.pilgrims.forEach(p => {
+        (booking.pilgrims || []).forEach(p => {
+          const type = p.serviceType || 'Full';
+          const needsVisa = type === 'Full' || type === 'VisaOnly' || type === 'AccommodationAndVisa' || type === 'TicketAndVisa';
+          if (!needsVisa) return;
+
           // If search term is passport, only show matching pilgrims
           if (searchTerm && (p.passportNo || '').toLowerCase().includes(lowerSearch)) {
             results.push({

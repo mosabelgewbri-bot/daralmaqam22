@@ -46,15 +46,9 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
           setError(
             <div className="space-y-3">
               <p className="font-bold text-red-400">مشكلة في مفتاح API</p>
-              <p className="text-xs text-white/70">يبدو أن مفتاح Gemini API غير مكوّن بشكل صحيح أو غير صالح.</p>
+              <p className="text-xs text-white/70">يبدو أن مفتاح Gemini API غير مكوّن بشكل صحيح أو غير متاح في المتصفح حالياً.</p>
               <div className="pt-2 border-t border-white/10">
-                <a 
-                  href="/api/ocr/debug" 
-                  target="_blank" 
-                  className="block w-full py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-center text-xs font-bold transition-all"
-                >
-                  فحص حالة المفتاح (Debug)
-                </a>
+                <p className="text-[10px] text-white/40">يرجى التأكد من إضافة GEMINI_API_KEY في إعدادات النظام.</p>
               </div>
             </div>
           );
@@ -102,36 +96,40 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
           {!capturedImage ? (
             <>
               <Webcam
-                {...({
-                  audio: false,
-                  ref: webcamRef,
-                  screenshotFormat: "image/jpeg",
-                  onUserMediaError: (err: any) => {
-                    console.error("PassportScanner: Camera error:", err);
-                    const isPermissionError = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
-                    setError(
-                      <div className="space-y-3">
-                        <p className="font-bold text-red-400">
-                          {isPermissionError ? "تم رفض الوصول إلى الكاميرا" : "خطأ في تشغيل الكاميرا"}
-                        </p>
-                        <p className="text-xs text-white/70">
-                          {isPermissionError 
-                            ? "يرجى التأكد من السماح للموقع باستخدام الكاميرا من إعدادات المتصفح (أيقونة القفل في شريط العنوان)."
-                            : "تأكد من أن الكاميرا غير مستخدمة من قبل تطبيق آخر."}
-                        </p>
-                        <div className="pt-2 border-t border-white/10">
-                          <p className="text-[10px] text-gold/60 mb-2">يمكنك استخدام خيار "رفع صورة الجواز" أدناه كبديل سريع.</p>
-                        </div>
+                audio={false}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                onUserMediaError={(err: any) => {
+                  console.error("PassportScanner: Camera error:", err);
+                  const isPermissionError = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+                  setError(
+                    <div className="space-y-3">
+                      <p className="font-bold text-red-400">
+                        {isPermissionError ? "تم رفض الوصول إلى الكاميرا" : "خطأ في تشغيل الكاميرا"}
+                      </p>
+                      <p className="text-xs text-white/70">
+                        {isPermissionError 
+                          ? "يرجى التأكد من السماح للموقع باستخدام الكاميرا من إعدادات المتصفح (أيقونة القفل في شريط العنوان)."
+                          : "تأكد من أن الكاميرا غير مستخدمة من قبل تطبيق آخر."}
+                      </p>
+                      <div className="pt-2 border-t border-white/10 flex flex-wrap gap-2">
+                        <button 
+                          onClick={() => window.location.reload()}
+                          className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-[10px] font-bold"
+                        >
+                          إعادة تحميل الصفحة
+                        </button>
+                        <p className="text-[10px] text-gold/60">يمكنك استخدام خيار "رفع صورة الجواز" كبديل سريع.</p>
                       </div>
-                    );
-                  },
-                  videoConstraints: {
-                    facingMode: "environment",
-                    width: 1920,
-                    height: 1080
-                  },
-                  className: "w-full h-full object-cover"
-                } as any)}
+                    </div>
+                  );
+                }}
+                videoConstraints={{
+                  facingMode: "environment",
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 }
+                }}
+                className="w-full h-full object-cover"
               />
               {/* Scanner Overlay */}
               <div className="absolute inset-0 pointer-events-none">

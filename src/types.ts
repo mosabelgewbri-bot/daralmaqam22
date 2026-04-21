@@ -28,6 +28,7 @@ export interface Booking {
   id: string;
   tripId: string;
   headName: string;
+  headNameEnglish?: string;
   regId: string;
   phone: string;
   passengerCount: number;
@@ -58,6 +59,7 @@ export interface Booking {
   madinahBookingNo?: string;
   madinahCheckIn?: string;
   groupNo?: string;
+  transportType?: string;
   isVisaOnly?: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -69,7 +71,7 @@ export interface Pilgrim {
   bookingId: string;
   name: string;
   relationship: string;
-  roomType: "Double" | "Triple" | "Quad" | "Quint" | "VisaOnly";
+  roomType: "Double" | "Triple" | "Quad" | "Quint" | "VisaOnly" | "None";
   passportNo: string;
   expiryDate: string;
   groupNo?: string;
@@ -78,6 +80,7 @@ export interface Pilgrim {
   madinahRoom?: string;
   passportImage?: string;
   englishName?: string;
+  serviceType?: "Full" | "TicketOnly" | "AccommodationOnly" | "TicketAndAccommodation" | "VisaOnly" | "AccommodationAndVisa" | "TicketAndVisa";
 }
 
 export type Role = "admin" | "staff" | "accountant" | "manager" | "visa_specialist" | "receptionist";
