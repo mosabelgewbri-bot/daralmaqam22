@@ -4,6 +4,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import "dotenv/config";
+import { GoogleGenAI, Type } from "@google/genai";
 
 // Lazy-load WhatsApp to prevent top-level crashes on Vercel
 let whatsappManager: any;
@@ -1096,12 +1097,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 // Initialize the Gemini API client for server-side use
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 const getGeminiClient = () => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  return new GoogleGenerativeAI(key);
+  return new GoogleGenAI({ apiKey: key });
 };
 
 app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
@@ -1116,34 +1115,58 @@ app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No image file provided." });
     }
 
-    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    console.log("OCR: Processing image with Gemini 1.5 Flash...");
+    
+    // Prepare image for Gemini
     const imagePart = {
       inlineData: {
         data: req.file.buffer.toString("base64"),
-        mimeType: req.file.mimetype
+        mimeType: req.file.mimetype || "image/jpeg"
       },
     };
 
     const prompt = `Extract passport information from this image. 
-    Return ONLY a JSON object with the following fields:
+    Return a JSON object with the following fields:
     - passportNumber: The alphanumeric passport number.
-    - expiryDate: Expiry date in YYYY-MM-DD format.
+    - expiryDate: Expiry date in YYYY-MM-DD format. Ensure it's the date of expiry, not issue.
     - fullNameArabic: Full name in Arabic. If only English is present, transliterate accurately to Arabic.
     - fullNameEnglish: Full name in English.`;
 
-    const result = await model.generateContent([prompt, imagePart]);
-    const text = result.response.text();
-    
-    // Simple JSON extraction
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      res.json(JSON.parse(jsonMatch[0]));
-    } else {
-      res.status(500).json({ error: "Failed to parse OCR result", raw: text });
+    const response = await client.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [{
+        parts: [
+          imagePart,
+          { text: prompt }
+        ]
+      }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            passportNumber: { type: Type.STRING },
+            expiryDate: { type: Type.STRING },
+            fullNameArabic: { type: Type.STRING },
+            fullNameEnglish: { type: Type.STRING },
+          },
+          required: ["passportNumber", "expiryDate", "fullNameArabic", "fullNameEnglish"]
+        }
+      }
+    });
+
+    if (!response.text) {
+      throw new Error("No text response from Gemini");
     }
+
+    console.log("OCR: Success");
+    res.json(JSON.parse(response.text));
   } catch (error: any) {
     console.error("Server-side OCR Error:", error);
-    res.status(500).json({ error: error.message || "Failed to process image with Gemini" });
+    res.status(500).json({ 
+      error: error.message || "Failed to process image with Gemini",
+      details: error.stack
+    });
   }
 });
 

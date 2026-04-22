@@ -17,10 +17,10 @@ export async function translateOffer(offerData: any) {
       throw new Error("GEMINI_API_KEY_MISSING");
     }
 
-    console.log("Translation Service: Translating via Gemini 3 Flash...");
+    console.log("Translation Service: Translating via Gemini 1.5 Flash...");
     
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       contents: `Translate the following Umrah offer details to Arabic. Ensure the terminology is accurate for the Saudi Umrah industry (e.g., use 'رباعي', 'ثلاثي', 'ثنائي', 'كبير', 'صغير').
       Return ONLY a JSON object with the translated fields.
       

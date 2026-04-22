@@ -194,7 +194,7 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
   const [agentFee, setAgentFee] = useState(0);
   const [ticketPrice, setTicketPrice] = useState(0);
   const [profitMargin, setProfitMargin] = useState(0);
-  const [exchangeRate, setExchangeRate] = useState(4.85); // Default exchange rate
+  const [exchangeRate, setExchangeRate] = useState(0); // Default exchange rate
   const [notes, setNotes] = useState('');
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -416,21 +416,33 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
   };
 
   const exportToExcel = () => {
-    const data = filteredPricings.map(p => ({
-      'اسم العرض': p.name || 'بدون اسم',
-      'اسم الرحلة': p.tripName || '',
-      'فندق مكة': p.makkah?.hotelName || '',
-      'ليالي مكة': p.makkah?.nights || 0,
-      'فندق المدينة': p.madinah?.hotelName || '',
-      'ليالي المدينة': p.madinah?.nights || 0,
-      'سعر الصرف': p.exchangeRate || 1,
-      'العملة': p.currency || 'USD',
-      'ثنائي': p.results?.double || 0,
-      'ثلاثي': p.results?.triple || 0,
-      'رباعي': p.results?.quad || 0,
-      'خماسي': p.results?.quint || 0,
-      'التاريخ': new Date(p.createdAt).toLocaleDateString('ar-SA')
-    }));
+    const data = filteredPricings.map(p => {
+      const makkahNet = ((p.makkah?.type === 'flat' ? p.makkah?.roomPriceFlat : p.makkah?.doublePrice) || 0) / 2 * (p.makkah?.nights || 0);
+      const madinahNet = ((p.madinah?.type === 'flat' ? p.madinah?.roomPriceFlat : p.madinah?.doublePrice) || 0) / 2 * (p.madinah?.nights || 0);
+      const netUsd = Number(((makkahNet + madinahNet) / 3.7 + (p.visaPrice || 0) + (p.giftsCost || 0) + (p.agentFee || 0)).toFixed(2));
+      
+      const isLYD = p.currency === 'LYD';
+      const currSymbol = isLYD ? ' د.ل' : ' $';
+      
+      return {
+        'اسم العرض': p.name || (p as any).offerName || 'بدون اسم',
+        'اسم الرحلة': p.tripName || '',
+        'فندق مكة': p.makkah?.hotelName || (p as any).makkahHotel || '',
+        'ليالي مكة': p.makkah?.nights ?? (p as any).makkahNights ?? 0,
+        'فندق المدينة': p.madinah?.hotelName || (p as any).madinahHotel || '',
+        'ليالي المدينة': p.madinah?.nights ?? (p as any).madinahNights ?? 0,
+        'سعر الصرف': p.exchangeRate || 1,
+        'التكلفة ($)': netUsd,
+        'الربح ($)': p.profitMargin || 0,
+        'التذكرة (LYD)': p.ticketPrice || 0,
+        'العملة': p.currency || 'USD',
+        'ثنائي': (isLYD ? p.results?.doubleLYD : p.results?.double) + currSymbol,
+        'ثلاثي': (isLYD ? p.results?.tripleLYD : p.results?.triple) + currSymbol,
+        'رباعي': (isLYD ? p.results?.quadLYD : p.results?.quad) + currSymbol,
+        'خماسي': (isLYD ? p.results?.quintLYD : p.results?.quint) + currSymbol,
+        'التاريخ': new Date(p.createdAt).toLocaleDateString('ar-SA')
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -446,8 +458,9 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
     printContainer.style.position = 'fixed';
     printContainer.style.left = '-9999px';
     printContainer.style.top = '0';
-    printContainer.style.width = '1120px'; // A4 Landscape width approx
+    printContainer.style.width = '1200px'; 
     printContainer.style.backgroundColor = '#ffffff';
+    printContainer.style.color = '#333333'; // Explicit dark text for PDF
     printContainer.style.padding = '40px';
     printContainer.style.direction = 'rtl';
     printContainer.style.fontFamily = 'Arial, sans-serif';
@@ -469,38 +482,52 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
 
       <h2 style="text-align: center; color: #333; margin-bottom: 25px; font-size: 22px;">سجل تسعيرات العمرة</h2>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px; font-size: 12px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px; font-size: 10px;">
         <thead>
           <tr style="background-color: #d4af37; color: #ffffff;">
-            <th style="border: 1px solid #333; padding: 12px; text-align: right;">اسم العرض</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: right;">الرحلة</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: right;">فندق مكة</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">ل.مكة</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: right;">فندق المدينة</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">ل.المدينة</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">الصرف</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">ثنائي</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">ثلاثي</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">رباعي</th>
-            <th style="border: 1px solid #333; padding: 12px; text-align: center;">خماسي</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: right;">اسم العرض</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: right;">الرحلة</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: right;">فندق مكة</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">ل.مكة</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: right;">فندق المدينة</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">ل.المدينة</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">الصرف</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">التكلفة ($)</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">الربح ($)</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">ثنائي</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">ثلاثي</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">رباعي</th>
+            <th style="border: 1px solid #333; padding: 8px; text-align: center;">خماسي</th>
           </tr>
         </thead>
         <tbody>
-          ${filteredPricings.map((p, idx) => `
-            <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold;">${p.name || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; color: #d4af37;">${p.tripName || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${p.makkah?.hotelName || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.makkah?.nights || 0}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px;">${p.madinah?.hotelName || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.madinah?.nights || 0}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.exchangeRate || 1}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #2563eb;">${p.results?.double || 0}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #059669;">${p.results?.triple || 0}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #7c3aed;">${p.results?.quad || 0}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold; color: #ea580c;">${p.results?.quint || 0}</td>
-            </tr>
-          `).join('')}
+          ${filteredPricings.map((p, idx) => {
+            const makkahNights = p.makkah?.nights ?? (p as any).makkahNights ?? 0;
+            const madinahNights = p.madinah?.nights ?? (p as any).madinahNights ?? 0;
+            const makkahNet = ((p.makkah?.type === 'flat' ? p.makkah?.roomPriceFlat : p.makkah?.doublePrice) || (p as any).makkahDouble || 0) / 2 * makkahNights;
+            const madinahNet = ((p.madinah?.type === 'flat' ? p.madinah?.roomPriceFlat : p.madinah?.doublePrice) || (p as any).madinahDouble || 0) / 2 * madinahNights;
+            const netUsd = Number(((makkahNet + madinahNet) / 3.7 + (p.visaPrice || 0) + (p.giftsCost || 0) + (p.agentFee || 0)).toFixed(2));
+            const isLYD = p.currency === 'LYD';
+            const currSymbol = isLYD ? 'د.ل' : '$';
+            
+            return `
+              <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'}; color: #1a1a1a;">
+                <td style="border: 1px solid #dee2e6; padding: 8px; font-weight: bold;">${p.name || (p as any).offerName || 'بدون اسم'}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; color: #d4af37;">${p.tripName || '---'}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px;">${p.makkah?.hotelName || (p as any).makkahHotel || '---'}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">${makkahNights}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px;">${p.madinah?.hotelName || (p as any).madinahHotel || '---'}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">${madinahNights}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; color: #666; font-weight: bold;">${p.exchangeRate || 1}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: bold; color: #444;">$${netUsd}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: bold; color: #10b981;">$${p.profitMargin || 0}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: bold; color: #2563eb;">${isLYD ? p.results?.doubleLYD : p.results?.double}${currSymbol}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: bold; color: #059669;">${isLYD ? p.results?.tripleLYD : p.results?.triple}${currSymbol}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: bold; color: #7c3aed;">${isLYD ? p.results?.quadLYD : p.results?.quad}${currSymbol}</td>
+                <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: bold; color: #ea580c;">${isLYD ? p.results?.quintLYD : p.results?.quint}${currSymbol}</td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
 
@@ -533,7 +560,7 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
-        width: 1120
+        width: 1200
       });
 
       const imgData = canvas.toDataURL('image/png');
@@ -874,7 +901,7 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
                     >
                       <td className="px-6 py-4 rounded-r-2xl border-y border-r border-white/5">
                         <div className="flex flex-col">
-                          <span className="text-sm font-black text-white">{p.name || 'بدون اسم'}</span>
+                          <span className="text-sm font-black text-white">{p.name || (p as any).offerName || 'بدون اسم'}</span>
                           <span className="text-[9px] text-white/20">{new Date(p.createdAt).toLocaleDateString('ar-SA')}</span>
                         </div>
                       </td>
@@ -882,16 +909,16 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
                         <span className="text-xs font-bold text-gold">{p.tripName || '---'}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5">
-                        <span className="text-[10px] text-white font-medium truncate max-w-[120px] block">{p.makkah?.hotelName || 'مكة'}</span>
+                        <span className="text-[10px] text-white font-medium truncate max-w-[120px] block">{p.makkah?.hotelName || (p as any).makkahHotel || 'مكة'}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5 text-center">
-                        <span className="text-xs font-black text-gold">{p.makkah?.nights || 0}</span>
+                        <span className="text-xs font-black text-gold">{p.makkah?.nights ?? (p as any).makkahNights ?? 0}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5">
-                        <span className="text-[10px] text-white font-medium truncate max-w-[120px] block">{p.madinah?.hotelName || 'المدينة'}</span>
+                        <span className="text-[10px] text-white font-medium truncate max-w-[120px] block">{p.madinah?.hotelName || (p as any).madinahHotel || 'المدينة'}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5 text-center">
-                        <span className="text-xs font-black text-white/80">{p.madinah?.nights || 0}</span>
+                        <span className="text-xs font-black text-white/80">{p.madinah?.nights ?? (p as any).madinahNights ?? 0}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5 text-center">
                         <span className="text-xs font-bold text-white">{p.exchangeRate || '4.85'}</span>
