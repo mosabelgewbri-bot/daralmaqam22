@@ -1,4 +1,4 @@
-import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer, Hotel, HotelRoom } from '../types';
+import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer, Hotel, HotelRoom, UmrahPricing } from '../types';
 import { 
   collection, 
   getDocs, 
@@ -1702,6 +1702,55 @@ export const api = {
         });
         await batch.commit();
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  // Umrah Pricing
+  async getUmrahPricings(): Promise<UmrahPricing[]> {
+    const path = 'umrah_pricing';
+    try {
+      await this.ensureAuth();
+      const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+      const querySnapshot = await this.withRetry(() => getDocs(q));
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        } as unknown as UmrahPricing;
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+  async saveUmrahPricing(pricing: UmrahPricing): Promise<void> {
+    const path = 'umrah_pricing';
+    const { id, ...data } = pricing;
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined)
+    );
+    try {
+      await this.ensureAuth();
+      if (id && id !== 'new') {
+        const docRef = doc(db, path, id);
+        await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+      } else {
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
+  },
+  async deleteUmrahPricing(id: string): Promise<void> {
+    const path = 'umrah_pricing';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }

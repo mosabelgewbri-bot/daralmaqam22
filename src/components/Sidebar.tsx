@@ -57,6 +57,7 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     { icon: Calculator, label: 'الأرباح والخسائر', path: '/profit-loss', id: 'profit-loss' },
     { icon: FileText, label: 'التقرير الشامل', path: '/reports', id: 'reports' },
     { icon: Megaphone, label: 'عروض العمرة', path: '/offers', id: 'offers' },
+    { icon: Calculator, label: 'حاسبة التسعير', path: '/umrah-pricing', id: 'umrah-pricing' },
     { icon: Users, label: 'التسويق والعملاء', path: '/marketing', id: 'marketing' },
     { icon: IdCard, label: 'بطاقات المعتمرين', path: '/cards', id: 'cards' },
     { icon: Ticket, label: 'التذاكر والبيانات', path: '/tickets', id: 'tickets' },

@@ -650,7 +650,7 @@ const ArrivalNoticeModule: React.FC = () => {
             {/* The Print Layout (Mimicking Image) */}
             <div ref={reportRef} className="font-sans print-section text-black print-section-container" style={{ width: '210mm', minHeight: '297mm', height: 'auto', background: 'white', padding: '2mm', boxSizing: 'border-box', position: 'relative', overflow: 'hidden' }}>
               {/* Report Header */}
-              <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-4" style={{ direction: 'rtl' }}>
+              <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-2" style={{ direction: 'rtl' }}>
                 <div className="w-28 h-20 flex items-center justify-center border border-black rounded p-1 overflow-hidden bg-white">
                   <img 
                     src={logoBase64 || settings.app_logo || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23000000' fill-opacity='0.1' stroke='%23000000' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='none' stroke='%23000000' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23000000'/%3E%3C/svg%3E"} 
@@ -665,34 +665,34 @@ const ArrivalNoticeModule: React.FC = () => {
                   <p className="text-sm font-bold" style={{ margin: '0', padding: '0' }}>Arrival Notice</p>
                 </div>
                 <div className="text-left w-28 pt-2">
-                  <p className="text-[10px] font-bold" style={{ whiteSpace: 'nowrap' }}>التاريخ: {format(new Date(), 'yyyy/MM/dd')}</p>
+                  <p className="text-[14px] font-bold" style={{ whiteSpace: 'nowrap' }}>التاريخ: {format(new Date(), 'yyyy/MM/dd')}</p>
                 </div>
               </div>
 
               {/* Top Info Table */}
-              <table className="w-full border-collapse border-[3px] border-black mb-3 text-[10px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
+              <table className="w-full border-collapse border-[3px] border-black mb-1 text-[12px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                 <thead>
                   <tr className="bg-gray-100 font-bold border-b-[3px] border-black">
-                    <th className="border-l-2 border-black py-3 px-1 w-1/4 text-center leading-none">الوكيل</th>
-                    <th className="border-l-2 border-black py-3 px-1 w-1/4 text-center leading-none">رقم المجموعة</th>
-                    <th className="border-l-2 border-black py-3 px-1 w-1/4 text-center leading-none">نوع المركبة</th>
-                    <th className="border-black py-3 px-1 w-1/4 text-center leading-none">اسم المطوف</th>
+                    <th className="border-l-2 border-black py-3 px-1 w-1/4 text-center leading-none text-sm">الوكيل</th>
+                    <th className="border-l-2 border-black py-3 px-1 w-1/4 text-center leading-none text-sm">رقم المجموعة</th>
+                    <th className="border-l-2 border-black py-3 px-1 w-1/4 text-center leading-none text-sm">نوع المركبة</th>
+                    <th className="border-black py-3 px-1 w-1/4 text-center leading-none text-sm">اسم المطوف</th>
                   </tr>
                 </thead>
                 <tbody>
                   {editableTransportRows.map((row, idx) => (
                     <tr key={idx} className={idx < editableTransportRows.length - 1 ? 'border-b-2 border-black' : ''}>
                       {idx === 0 ? (
-                        <td className="border-l-2 border-black p-2 text-center text-sm font-bold bg-white" rowSpan={editableTransportRows.length} style={{ verticalAlign: 'middle' }}>
-                          <div className="w-full h-full flex items-center justify-center min-h-[50px] leading-relaxed text-base font-black px-2">{agencyName}</div>
+                        <td className="border-l-2 border-black p-2 text-center text-base font-bold bg-white" rowSpan={editableTransportRows.length} style={{ verticalAlign: 'middle' }}>
+                          <div className="w-full h-full flex items-center justify-center min-h-[50px] leading-relaxed text-lg font-black px-2">{agencyName}</div>
                         </td>
                       ) : null}
-                      <td className="border-l-2 border-black p-2 text-center font-mono whitespace-pre-wrap leading-tight text-[11px]" style={{ verticalAlign: 'middle' }}>
+                      <td className="border-l-2 border-black p-2 text-center font-mono whitespace-pre-wrap leading-tight text-[17px] font-bold" style={{ verticalAlign: 'middle' }}>
                         <div className="w-full h-full flex items-center justify-center min-h-[50px]">
                           {Array.from(row.groups as Set<string>).length > 0 ? Array.from(row.groups as Set<string>).join('\n') : '---'}
                         </div>
                       </td>
-                      <td className="border-l-2 border-black p-0 text-center font-bold text-xs" style={{ verticalAlign: 'middle' }}>
+                      <td className="border-l-2 border-black p-0 text-center font-bold text-sm" style={{ verticalAlign: 'middle' }}>
                         {isExporting ? (
                           <div className="w-full h-full flex items-center justify-center min-h-[50px] px-1">{row.vehicle}</div>
                         ) : (
@@ -704,11 +704,11 @@ const ArrivalNoticeModule: React.FC = () => {
                               updated[idx].vehicle = e.target.value;
                               setEditableTransportRows(updated);
                             }}
-                            className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-xs font-bold min-h-[50px]"
+                            className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-sm font-bold min-h-[50px]"
                           />
                         )}
                       </td>
-                      <td className="border-black p-2 text-center font-bold text-xs" style={{ verticalAlign: 'middle' }}>
+                      <td className="border-black p-2 text-center font-bold text-sm" style={{ verticalAlign: 'middle' }}>
                         <div className="w-full h-full flex items-center justify-center min-h-[50px]">{mutawwifName}</div>
                       </td>
                     </tr>
@@ -717,16 +717,16 @@ const ArrivalNoticeModule: React.FC = () => {
               </table>
 
               {/* Totals Header */}
-              <table className="w-full border-collapse border-[3px] border-black mb-3 text-[10px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
+              <table className="w-full border-collapse border-[3px] border-black mb-1 text-[12px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                 <thead>
                   <tr className="bg-gray-100 font-bold border-b-[3px] border-black">
-                    <th className="border-l-2 border-black py-3 px-1 text-center leading-none">عدد التأشيرات السياحية</th>
-                    <th className="border-l-2 border-black py-3 px-1 text-center leading-none">عدد تأشيرات العمرة</th>
-                    <th className="border-black py-3 px-1 text-center leading-none">العدد الإجمالي للمعتمرين</th>
+                    <th className="border-l-2 border-black py-3 px-1 text-center leading-none text-sm">عدد التأشيرات السياحية</th>
+                    <th className="border-l-2 border-black py-3 px-1 text-center leading-none text-sm">عدد تأشيرات العمرة</th>
+                    <th className="border-black py-3 px-1 text-center leading-none text-sm">العدد الإجمالي للمعتمرين</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="font-bold text-base">
+                  <tr className="font-bold text-xl">
                     <td className="border-l-2 border-black p-3 text-center bg-gray-50/10">
                       <div className="w-full flex items-center justify-center min-h-[40px]">{touristVisas}</div>
                     </td>
@@ -741,44 +741,44 @@ const ArrivalNoticeModule: React.FC = () => {
               </table>
 
               {/* Flight Details Section */}
-              <table className="w-full border-collapse border-[3px] border-black mb-3 text-[9px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
+              <table className="w-full border-collapse border-[3px] border-black mb-1 text-[11px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                 <tbody>
                   <tr>
                     <td className="bg-gray-100 border-l-[3px] border-black w-10 p-0 font-bold" style={{ verticalAlign: 'middle' }}>
                       <div className="flex items-center justify-center h-full min-h-[120px] overflow-visible">
-                        <div className="whitespace-nowrap font-bold text-[13px] text-center" style={{ transform: 'rotate(-90deg) translateX(15px)', width: '20px', display: 'block' }}>تفاصيل الطيران</div>
+                        <div className="whitespace-nowrap font-bold text-[14px] text-center" style={{ transform: 'rotate(-90deg) translateX(15px)', width: '20px', display: 'block' }}>تفاصيل الطيران</div>
                       </div>
                     </td>
                     <td className="p-0">
                       <table className="w-full border-collapse text-center" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                         <thead>
                           <tr className="bg-gray-50 border-b-2 border-black font-bold">
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%]">رقم الرحلة</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%]">تاريخ التحرك</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%]">من</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%]">إلى</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%]">وقت الإقلاع</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%]">وقت الوصول</th>
-                            <th className="py-2.5 px-1 w-[20%]">ملاحظات</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%] text-[12px]">رقم الرحلة</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%] text-[12px]">تاريخ التحرك</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%] text-[12px]">من</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%] text-[12px]">إلى</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%] text-[12px]">وقت الإقلاع</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%] text-[12px]">وقت الوصول</th>
+                            <th className="py-2.5 px-1 w-[20%] text-[12px]">ملاحظات</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr className="border-b-2 border-black h-12 font-bold">
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-xs">{flightNo || '---'}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{selectedTrip?.startDate || selectedTrip?.departureDate || '---'}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full">{departureCity}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full">{destinationCity}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{departureTime || '---'}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{arrivalTime || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-sm">{flightNo || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono text-[16px]">{selectedTrip?.startDate || selectedTrip?.departureDate || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-[13px]">{departureCity}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-[13px]">{destinationCity}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono text-[13px]">{departureTime || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono text-[13px]">{arrivalTime || '---'}</div></td>
                             <td className="p-1"></td>
                           </tr>
                           <tr className="h-12 font-bold">
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-xs">{returnFlightNo || '---'}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{returnDate || '---'}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full">{destinationCity}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full">{departureCity}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{returnDepartureTime || '---'}</div></td>
-                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{returnArrivalTime || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-sm">{returnFlightNo || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono text-[16px]">{returnDate || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-[13px]">{destinationCity}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full text-[13px]">{departureCity}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono text-[13px]">{returnDepartureTime || '---'}</div></td>
+                            <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono text-[13px]">{returnArrivalTime || '---'}</div></td>
                             <td className="p-1"></td>
                           </tr>
                         </tbody>
@@ -789,24 +789,24 @@ const ArrivalNoticeModule: React.FC = () => {
               </table>
 
               {/* Accommodation Details Section */}
-              <table className="w-full border-collapse border-[3px] border-black mb-3 text-[9px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
+              <table className="w-full border-collapse border-[3px] border-black mb-1 text-[11px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                 <tbody>
                   <tr>
                     <td className="bg-gray-100 border-l-[3px] border-black w-10 p-0 font-bold" style={{ verticalAlign: 'middle' }}>
                       <div className="flex items-center justify-center h-full min-h-[300px] overflow-visible">
-                        <div className="whitespace-nowrap font-bold text-[13px] text-center" style={{ transform: 'rotate(-90deg) translateX(25px)', width: '20px', display: 'block' }}>تفاصيل السكن</div>
+                        <div className="whitespace-nowrap font-bold text-[14px] text-center" style={{ transform: 'rotate(-90deg) translateX(25px)', width: '20px', display: 'block' }}>تفاصيل السكن</div>
                       </div>
                     </td>
                     <td className="p-0">
                       <table className="w-full border-collapse text-center" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                         <thead>
                           <tr className="bg-gray-50 border-b-2 border-black font-bold">
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%]">المدينة</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[35%]">إسم الفندق</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%]">C/IN</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%]">C/OUT</th>
-                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%]">الليالي</th>
-                            <th className="py-2.5 px-1 w-[15%]">ملاحظات</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%] text-[12px]">المدينة</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[35%] text-[12px]">إسم الفندق</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%] text-[12px]">C/IN</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[15%] text-[12px]">C/OUT</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-[10%] text-[12px]">الليالي</th>
+                            <th className="py-2.5 px-1 w-[15%] text-[12px]">ملاحظات</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -814,8 +814,8 @@ const ArrivalNoticeModule: React.FC = () => {
                             const hotel = editableMakkahHotels[i];
                             return (
                               <tr key={`makkah-${i}`} className="border-b-2 border-black h-12 font-bold">
-                                <td className="border-l-2 border-black bg-gray-50/10 p-1 text-[8px] font-bold"><div className="flex items-center justify-center h-full">{i === 0 ? 'مكة' : ''}</div></td>
-                                <td className="border-l-2 border-black p-0 text-[10px]">
+                                <td className="border-l-2 border-black bg-gray-50/10 p-1 text-[11px] font-bold"><div className="flex items-center justify-center h-full">{i === 0 ? 'مكة' : ''}</div></td>
+                                <td className="border-l-2 border-black p-0 text-[16px]">
                                   {isExporting ? (
                                     <div className="w-full h-full flex items-center justify-center text-center px-1 min-h-[40px] leading-tight break-words">{hotel?.name || ''}</div>
                                   ) : (
@@ -828,14 +828,14 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].name = e.target.value;
                                         setEditableMakkahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-[16px]"
                                       placeholder="..."
                                     />
                                   )}
                                 </td>
                                 <td className="border-l-2 border-black p-0 font-mono">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[9px] min-h-[40px]">{hotel?.cin || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[14px] min-h-[40px]">{hotel?.cin || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -846,13 +846,13 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].cin = e.target.value;
                                         setEditableMakkahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[9px]"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[14px]"
                                     />
                                   )}
                                 </td>
                                 <td className="border-l-2 border-black p-0 font-mono">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[9px] min-h-[40px]">{hotel?.cout || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[14px] min-h-[40px]">{hotel?.cout || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -863,13 +863,13 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].cout = e.target.value;
                                         setEditableMakkahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[9px]"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[14px]"
                                     />
                                   )}
                                 </td>
-                                <td className="border-l-2 border-black p-0">
+                                <td className="border-l-2 border-black p-0 text-[13px]">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 min-h-[40px]">{hotel?.nights || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 min-h-[40px] font-bold">{hotel?.nights || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -880,13 +880,13 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].nights = e.target.value;
                                         setEditableMakkahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-bold"
                                     />
                                   )}
                                 </td>
                                 <td className="p-0">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 text-[8px] min-h-[40px] break-words">{hotel?.notes || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 text-[11px] min-h-[40px] break-words">{hotel?.notes || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -897,7 +897,7 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].notes = e.target.value;
                                         setEditableMakkahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-[8px]"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-[11px]"
                                     />
                                   )}
                                 </td>
@@ -908,8 +908,8 @@ const ArrivalNoticeModule: React.FC = () => {
                             const hotel = editableMadinahHotels[i];
                             return (
                               <tr key={`madinah-${i}`} className="border-b-2 border-black h-12 font-bold last:border-0">
-                                <td className="border-l-2 border-black bg-gray-50/10 p-1 text-[8px] font-bold"><div className="flex items-center justify-center h-full">{i === 0 ? 'المدينة' : ''}</div></td>
-                                <td className="border-l-2 border-black p-0 text-[10px]">
+                                <td className="border-l-2 border-black bg-gray-50/10 p-1 text-[11px] font-bold"><div className="flex items-center justify-center h-full">{i === 0 ? 'المدينة' : ''}</div></td>
+                                <td className="border-l-2 border-black p-0 text-[16px]">
                                   {isExporting ? (
                                     <div className="w-full h-full flex items-center justify-center text-center px-1 min-h-[40px] leading-tight break-words">{hotel?.name || ''}</div>
                                   ) : (
@@ -922,14 +922,14 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].name = e.target.value;
                                         setEditableMadinahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-[16px]"
                                       placeholder="..."
                                     />
                                   )}
                                 </td>
                                 <td className="border-l-2 border-black p-0 font-mono">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[9px] min-h-[40px]">{hotel?.cin || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[14px] min-h-[40px]">{hotel?.cin || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -940,13 +940,13 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].cin = e.target.value;
                                         setEditableMadinahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[9px]"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[14px]"
                                     />
                                   )}
                                 </td>
                                 <td className="border-l-2 border-black p-0 font-mono">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[9px] min-h-[40px]">{hotel?.cout || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 font-mono text-[14px] min-h-[40px]">{hotel?.cout || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -957,13 +957,13 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].cout = e.target.value;
                                         setEditableMadinahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[9px]"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-mono text-[14px]"
                                     />
                                   )}
                                 </td>
-                                <td className="border-l-2 border-black p-0">
+                                <td className="border-l-2 border-black p-0 text-[13px]">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 min-h-[40px]">{hotel?.nights || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 min-h-[40px] font-bold">{hotel?.nights || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -974,13 +974,13 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].nights = e.target.value;
                                         setEditableMadinahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 font-bold"
                                     />
                                   )}
                                 </td>
                                 <td className="p-0">
                                   {isExporting ? (
-                                    <div className="w-full h-full flex items-center justify-center text-center px-1 text-[8px] min-h-[40px] break-words">{hotel?.notes || ''}</div>
+                                    <div className="w-full h-full flex items-center justify-center text-center px-1 text-[11px] min-h-[40px] break-words">{hotel?.notes || ''}</div>
                                   ) : (
                                     <input
                                       type="text"
@@ -991,7 +991,7 @@ const ArrivalNoticeModule: React.FC = () => {
                                         updated[i].notes = e.target.value;
                                         setEditableMadinahHotels(updated);
                                       }}
-                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-[8px]"
+                                      className="w-full h-full bg-transparent border-none text-center outline-none px-1 text-[11px]"
                                     />
                                   )}
                                 </td>
@@ -1006,24 +1006,24 @@ const ArrivalNoticeModule: React.FC = () => {
               </table>
 
               {/* Transport Step Table Section */}
-              <table className="w-full border-collapse border-[3px] border-black mb-3 text-[9px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
+              <table className="w-full border-collapse border-[3px] border-black mb-1 text-[11px] print-section" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                 <tbody>
                   <tr>
                     <td className="bg-gray-100 border-l-[3px] border-black w-10 p-0 font-bold" style={{ verticalAlign: 'middle' }}>
                       <div className="flex items-center justify-center h-full min-h-[180px] overflow-visible">
-                        <div className="whitespace-nowrap font-bold text-[13px] text-center" style={{ transform: 'rotate(-90deg) translateX(15px)', width: '20px', display: 'block' }}>تفاصيل حركات النقل</div>
+                        <div className="whitespace-nowrap font-bold text-[14px] text-center" style={{ transform: 'rotate(-90deg) translateX(15px)', width: '20px', display: 'block' }}>تفاصيل حركات النقل</div>
                       </div>
                     </td>
                     <td className="p-0">
                       <table className="w-full border-collapse text-center" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                         <thead>
                           <tr className="bg-gray-50 border-b-2 border-black font-bold">
-                            <th className="border-l-2 border-black py-2.5 px-1 w-8">.NO</th>
-                            <th className="border-l-2 border-black py-2.5 px-1">من</th>
-                            <th className="border-l-2 border-black py-2.5 px-1">إلى</th>
-                            <th className="border-l-2 border-black py-2.5 px-1">الوقت</th>
-                            <th className="border-l-2 border-black py-2.5 px-1">التاريخ</th>
-                            <th className="py-2.5 px-1">ملاحظات</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 w-8 text-[12px]">.NO</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 text-[12px]">من</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 text-[12px]">إلى</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 text-[12px]">الوقت</th>
+                            <th className="border-l-2 border-black py-2.5 px-1 text-[12px]">التاريخ</th>
+                            <th className="py-2.5 px-1 text-[12px]">ملاحظات</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1031,12 +1031,12 @@ const ArrivalNoticeModule: React.FC = () => {
                             const step = transportSteps[i];
                             return (
                               <tr key={i} className="border-b-2 border-black h-12 last:border-0 font-bold">
-                                <td className="border-l-2 border-black bg-gray-50 p-1"><div className="flex items-center justify-center h-full">{i + 1}</div></td>
-                                <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full">{step?.from || ''}</div></td>
-                                <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full">{step?.to || ''}</div></td>
-                                <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{step?.time || ''}</div></td>
-                                <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center h-full font-mono">{step?.date || ''}</div></td>
-                                <td className="p-1"><div className="flex items-center justify-center h-full text-[8px]">{step?.notes || ''}</div></td>
+                                <td className="border-l-2 border-black bg-gray-50 p-1 text-[13px]"><div className="flex items-center justify-center h-full">{i + 1}</div></td>
+                                <td className="border-l-2 border-black p-1 text-[13px]"><div className="flex items-center justify-center h-full">{step?.from || ''}</div></td>
+                                <td className="border-l-2 border-black p-1 text-[13px]"><div className="flex items-center justify-center h-full">{step?.to || ''}</div></td>
+                                <td className="border-l-2 border-black p-1 text-[13px]"><div className="flex items-center justify-center h-full font-mono">{step?.time || ''}</div></td>
+                                <td className="border-l-2 border-black p-1 text-[13px]"><div className="flex items-center justify-center h-full font-mono text-[15px]">{step?.date || ''}</div></td>
+                                <td className="p-1"><div className="flex items-center justify-center h-full text-[11px]">{step?.notes || ''}</div></td>
                               </tr>
                             );
                           })}
@@ -1048,38 +1048,38 @@ const ArrivalNoticeModule: React.FC = () => {
               </table>
 
               {/* Rawda Date and Contacts */}
-              <div className="border-2 border-black mb-3 h-8 flex items-center px-4 font-bold text-[10px] bg-gray-100/30" style={{ direction: 'rtl' }}>
+              <div className="border-2 border-black mb-1 h-10 flex items-center px-4 font-bold text-[13px] bg-gray-100/30" style={{ direction: 'rtl' }}>
                 <span className="ml-4">تاريخ حجز الروضة الشريفة:</span>
-                <span className="text-[11px] font-mono">{rawdaDate || '---'}</span>
+                <span className="text-[17px] font-mono">{rawdaDate || '---'}</span>
               </div>
 
               <div className="border-2 border-black" style={{ direction: 'rtl' }}>
-                <div className="bg-gray-100 text-center py-1 border-b-2 border-black font-bold text-[11px]">
+                <div className="bg-gray-100 text-center py-2 border-b-2 border-black font-bold text-[14px]">
                   بيانات الإتصال
                 </div>
-                <table className="w-full text-center border-collapse text-[10px]" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
+                <table className="w-full text-center border-collapse text-[13px]" style={{ direction: 'rtl', tableLayout: 'fixed' }}>
                   <thead>
                     <tr className="bg-gray-50 border-b-2 border-black font-bold">
-                      <th className="border-l-2 border-black p-1 w-1/4">الجهة</th>
-                      <th className="border-l-2 border-black p-1 w-2/4">الإسم</th>
-                      <th className="p-1 w-1/4">رقم الجوال</th>
+                      <th className="border-l-2 border-black p-2 w-1/4">الجهة</th>
+                      <th className="border-l-2 border-black p-2 w-2/4">الإسم</th>
+                      <th className="p-2 w-1/4">رقم الجوال</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b-2 border-black h-7 font-bold">
+                    <tr className="border-b-2 border-black h-10 font-bold">
                       <td className="border-l-2 border-black p-1 bg-gray-50"><div className="flex items-center justify-center">المطوف</div></td>
                       <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center">{mutawwifName}</div></td>
-                      <td className="p-1"><div className="flex items-center justify-center font-mono text-[11px]">{mutawwifPhone}</div></td>
+                      <td className="p-1"><div className="flex items-center justify-center font-mono text-[14px]">{mutawwifPhone}</div></td>
                     </tr>
-                    <tr className="border-b-2 border-black h-7 font-bold">
+                    <tr className="border-b-2 border-black h-10 font-bold">
                       <td className="border-l-2 border-black p-1 bg-gray-50"><div className="flex items-center justify-center">عمليات مكة</div></td>
                       <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center">دليل مكة</div></td>
-                      <td className="p-1"><div className="flex items-center justify-center font-mono text-[11px]">{meccaOpsPhone}</div></td>
+                      <td className="p-1"><div className="flex items-center justify-center font-mono text-[14px]">{meccaOpsPhone}</div></td>
                     </tr>
-                    <tr className="h-7 font-bold">
+                    <tr className="h-10 font-bold">
                       <td className="border-l-2 border-black p-1 bg-gray-50"><div className="flex items-center justify-center">عمليات المدينة</div></td>
                       <td className="border-l-2 border-black p-1"><div className="flex items-center justify-center">دليل المدينة</div></td>
-                      <td className="p-1"><div className="flex items-center justify-center font-mono text-[11px]">{medinaOpsPhone || '---'}</div></td>
+                      <td className="p-1"><div className="flex items-center justify-center font-mono text-[14px]">{medinaOpsPhone || '---'}</div></td>
                     </tr>
                   </tbody>
                 </table>

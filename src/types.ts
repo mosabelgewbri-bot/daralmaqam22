@@ -185,6 +185,52 @@ export interface HotelRoom {
   updatedAt: string;
 }
 
+export interface UmrahPricing {
+  id: string;
+  name: string;
+  tripName?: string;
+  makkah: {
+    hotelName?: string;
+    nights: number;
+    type: 'flat' | 'priced';
+    roomPriceFlat: number;
+    doublePrice: number;
+    triplePrice: number;
+    quadPrice: number;
+    quintPrice: number;
+  };
+  madinah: {
+    hotelName?: string;
+    nights: number;
+    type: 'flat' | 'priced';
+    roomPriceFlat: number;
+    doublePrice: number;
+    triplePrice: number;
+    quadPrice: number;
+    quintPrice: number;
+  };
+  visaPrice: number;
+  giftsCost: number;
+  agentFee: number;
+  ticketPrice: number;
+  profitMargin: number;
+  exchangeRate: number;
+  currency: 'USD' | 'LYD';
+  results: {
+    double: number;
+    triple: number;
+    quad: number;
+    quint: number;
+    doubleLYD: number;
+    tripleLYD: number;
+    quadLYD: number;
+    quintLYD: number;
+  };
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
