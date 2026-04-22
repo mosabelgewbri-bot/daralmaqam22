@@ -56,6 +56,7 @@ export default function VisaModule({ user }: { user: User }) {
   const [bulkStatus, setBulkStatus] = useState<Pilgrim['visaStatus'] | ''>('');
   const [viewingPassport, setViewingPassport] = useState<{ image: string, name: string } | null>(null);
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   const [toast, setToast] = useState<{
     show: boolean;
@@ -94,12 +95,14 @@ export default function VisaModule({ user }: { user: User }) {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [bookingsData, tripsData] = await Promise.all([
+        const [bookingsData, tripsData, settingsData] = await Promise.all([
           api.getBookings(),
-          api.getTrips()
+          api.getTrips(),
+          api.getSettings()
         ]);
         setBookings(bookingsData);
         setTrips(tripsData);
+        setSettings(settingsData);
       } catch (error) {
         console.error('Error loading data:', error);
       }
@@ -271,7 +274,7 @@ export default function VisaModule({ user }: { user: User }) {
       }
     };
 
-    const rawLogo = localStorage.getItem('app_logo') || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
+    const rawLogo = settings.app_logo || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
     const appLogo = rawLogo.startsWith('data:') ? rawLogo : await getBase64FromUrl(rawLogo);
     
     // Create a temporary container for the PDF content

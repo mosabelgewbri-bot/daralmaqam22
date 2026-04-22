@@ -1095,6 +1095,58 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
+// Initialize the Gemini API client for server-side use
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const getGeminiClient = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  return new GoogleGenerativeAI(key);
+};
+
+app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
+  console.log("Server side OCR requested");
+  try {
+    const client = getGeminiClient();
+    if (!client) {
+      return res.status(500).json({ error: "Gemini API key is not configured on the server." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No image file provided." });
+    }
+
+    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const imagePart = {
+      inlineData: {
+        data: req.file.buffer.toString("base64"),
+        mimeType: req.file.mimetype
+      },
+    };
+
+    const prompt = `Extract passport information from this image. 
+    Return ONLY a JSON object with the following fields:
+    - passportNumber: The alphanumeric passport number.
+    - expiryDate: Expiry date in YYYY-MM-DD format.
+    - fullNameArabic: Full name in Arabic. If only English is present, transliterate accurately to Arabic.
+    - fullNameEnglish: Full name in English.`;
+
+    const result = await model.generateContent([prompt, imagePart]);
+    const text = result.response.text();
+    
+    // Simple JSON extraction
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      res.json(JSON.parse(jsonMatch[0]));
+    } else {
+      res.status(500).json({ error: "Failed to parse OCR result", raw: text });
+    }
+  } catch (error: any) {
+    console.error("Server-side OCR Error:", error);
+    res.status(500).json({ error: error.message || "Failed to process image with Gemini" });
+  }
+});
+
 // WhatsApp API Endpoints
 app.get("/api/whatsapp/status", (req, res) => {
   res.json(whatsappManager.getStatus());

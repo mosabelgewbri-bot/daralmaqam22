@@ -53,24 +53,44 @@ export async function translateOffer(offerData: any) {
 }
 
 /**
- * Extracts passport data from base64 image using Gemini 3 Flash OCR
+ * Extracts passport data from base64 image
+ * Prefer server-side OCR if available, otherwise falls back to client-side (if key is present)
  */
 export async function extractPassportData(base64Image: string) {
   try {
-    if (!getApiKey()) {
-      throw new Error("GEMINI_API_KEY_MISSING");
+    console.log("OCR Service: Attempting server-side extraction...");
+    
+    // 1. Prepare form data for server-side upload
+    const blob = await (await fetch(base64Image)).blob();
+    const formData = new FormData();
+    formData.append("image", blob, "passport.jpg");
+
+    // 2. Call server-side OCR
+    const serverResponse = await fetch("/api/gemini/ocr", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (serverResponse.ok) {
+      const data = await serverResponse.json();
+      console.log("OCR Service: Server side success", data);
+      return data;
     }
 
-    console.log("OCR Service: Extracting data via Gemini 3 Flash...");
-    
-    // The image data comes as "data:image/jpeg;base64,..."
-    // We need to extract the base64 part and the mime type
+    // 3. Fallback to client-side if server-side is not available or fails
+    console.warn("OCR Service: Server-side failed or not found, trying client-side fallback...");
+    if (!getApiKey()) {
+      const serverErr = await serverResponse.json().catch(() => ({}));
+      throw new Error(serverErr.error || "مفتاح Gemini API غير مكوّن في المتصفح. يرجى إضافته في إعدادات البيئة (Vercel).");
+    }
+
+    // Client-side implementation (existing logic)
     const mimeTypeMatch = base64Image.match(/^data:([^;]+);base64,/);
     const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
     const dataPart = base64Image.replace(/^data:[^;]+;base64,/, "");
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       contents: {
         parts: [
           {
@@ -100,12 +120,6 @@ export async function extractPassportData(base64Image: string) {
           },
           required: ["passportNumber", "expiryDate", "fullNameArabic", "fullNameEnglish"],
         },
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-        ] as any,
       },
     });
 
@@ -113,31 +127,9 @@ export async function extractPassportData(base64Image: string) {
       throw new Error("لم يتمكن النظام من قراءة بيانات الجواز. يرجى التأكد من وضوح الصورة.");
     }
 
-    const textResponse = response.text.trim();
-    // Strip markdown formatting if present
-    const jsonString = textResponse.startsWith('```') 
-      ? textResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '')
-      : textResponse;
-      
-    const data = JSON.parse(jsonString);
-    console.log("OCR Service: Success", data);
-    return data;
-  } catch (e: any) {
-    console.error("OCR Service Error:", e);
-    
-    if (e.message === "GEMINI_API_KEY_MISSING") {
-      throw new Error("مفتاح برمجة Gemini غير مكوّن. يرجى إضافته في إعدادات النظام.");
-    }
-
-    let errorMessage = "فشل في معالجة صورة الجواز. يرجى التأكد من وضوح الصورة والمحاولة مرة أخرى.";
-    
-    const errText = e.toString();
-    if (errText.includes("API key")) {
-      errorMessage = "خطأ في مفتاح البرمجة (API Key). يرجى التحقق من إعدادات النظام.";
-    } else if (errText.includes("Quota")) {
-      errorMessage = "تم تجاوز حد الاستخدام المسموح به. يرجى المحاولة لاحقاً.";
-    }
-    
-    throw new Error(errorMessage);
+    return JSON.parse(response.text);
+  } catch (error: any) {
+    console.error("OCR Error:", error);
+    throw new Error(error.message || "فشل في قراءة بيانات الجواز");
   }
 }

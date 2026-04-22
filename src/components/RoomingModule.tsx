@@ -130,27 +130,31 @@ export default function RoomingModule({ user }: { user: User }) {
   const [isSaving, setIsSaving] = useState<string | null>(null); // ID of booking being saved or 'all'
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const [confirmModal, setConfirmModal] = useState<{ show: boolean, title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning' | 'info' }>({
     show: false,
     title: '',
     message: '',
-    onConfirm: () => {}
+    onConfirm: () => {},
+    type: 'danger'
   });
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 5000);
+    setTimeout(() => setToast(null), 3000);
   };
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [tripsData, bookingsData] = await Promise.all([
+        const [tripsData, bookingsData, settingsData] = await Promise.all([
           api.getTrips(),
-          api.getBookings()
+          api.getBookings(),
+          api.getSettings()
         ]);
         setTrips(tripsData);
         setBookings(bookingsData);
+        setSettings(settingsData);
       } catch (error) {
         console.error('Error loading data:', error);
       }
@@ -331,7 +335,7 @@ export default function RoomingModule({ user }: { user: User }) {
       }
     };
 
-    const rawLogo = localStorage.getItem('app_logo') || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
+    const rawLogo = settings.app_logo || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
     const appLogo = rawLogo.startsWith('data:') ? rawLogo : await getBase64FromUrl(rawLogo);
     
     // Create a temporary container for the PDF content

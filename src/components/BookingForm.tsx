@@ -29,6 +29,7 @@ export default function BookingForm({ user }: { user: User }) {
   const [savedBooking, setSavedBooking] = useState<any>(null);
   const [viewingPassport, setViewingPassport] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     setToast({ message, type });
@@ -91,8 +92,12 @@ export default function BookingForm({ user }: { user: User }) {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const tripsData = await api.getTrips();
+        const [tripsData, settingsData] = await Promise.all([
+          api.getTrips(),
+          api.getSettings()
+        ]);
         setTrips(tripsData);
+        setSettings(settingsData);
 
         if (id) {
           const bookingToEdit = await api.getBookingById(id);
@@ -320,7 +325,7 @@ export default function BookingForm({ user }: { user: User }) {
       }
     };
 
-    const rawLogo = localStorage.getItem('app_logo') || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
+    const rawLogo = settings.app_logo || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
     const appLogo = rawLogo.startsWith('data:') ? rawLogo : await getBase64FromUrl(rawLogo);
     
     // Create a temporary container for the PDF content

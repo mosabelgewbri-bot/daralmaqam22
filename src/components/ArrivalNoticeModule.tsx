@@ -54,6 +54,8 @@ const ArrivalNoticeModule: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean, message: string, type: 'success'|'error'|'info' }>({ show: false, message: '', type: 'info' });
 
   const showToast = (message: string, type: 'success'|'error'|'info' = 'info') => {
@@ -96,7 +98,43 @@ const ArrivalNoticeModule: React.FC = () => {
 
   useEffect(() => {
     loadTrips();
+    loadSettings();
   }, []);
+
+  useEffect(() => {
+    const convertLogo = async () => {
+      const rawLogo = settings.app_logo || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23000000' fill-opacity='0.1' stroke='%23000000' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='none' stroke='%23000000' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23000000'/%3E%3C/svg%3E";
+      if (rawLogo.startsWith('data:')) {
+        setLogoBase64(rawLogo);
+        return;
+      }
+      
+      try {
+        const response = await fetch(rawLogo, { mode: 'cors' });
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => setLogoBase64(reader.result as string);
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        console.warn('Could not convert logo to base64:', e);
+        setLogoBase64(rawLogo);
+      }
+    };
+
+    if (settings.app_logo || Object.keys(settings).length > 0) {
+      convertLogo();
+    }
+  }, [settings.app_logo, settings]);
+
+  const loadSettings = async () => {
+    try {
+      const s = await api.getSettings();
+      setSettings(s);
+      if (s.company_name) setAgencyName(s.company_name);
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  };
 
   useEffect(() => {
     if (selectedTripId) {
@@ -615,9 +653,11 @@ const ArrivalNoticeModule: React.FC = () => {
               <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-4" style={{ direction: 'rtl' }}>
                 <div className="w-28 h-20 flex items-center justify-center border border-black rounded p-1 overflow-hidden bg-white">
                   <img 
-                    src={localStorage.getItem('app_logo') || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23000000' fill-opacity='0.1' stroke='%23000000' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='none' stroke='%23000000' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23000000'/%3E%3C/svg%3E"} 
+                    src={logoBase64 || settings.app_logo || "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23000000' fill-opacity='0.1' stroke='%23000000' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='none' stroke='%23000000' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23000000'/%3E%3C/svg%3E"} 
                     className="max-w-full max-h-full object-contain"
                     alt="Logo"
+                    crossOrigin="anonymous"
+                    referrerPolicy="no-referrer"
                   />
                 </div>
                 <div className="text-center flex-1 py-1" style={{ letterSpacing: '0', direction: 'rtl' }}>
