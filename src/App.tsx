@@ -191,12 +191,28 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [firebaseReady, setFirebaseReady] = useState(false);
 
   // Check for public routes first
   const isPublicRoute = window.location.pathname.startsWith('/offer/') || 
                         window.location.pathname.startsWith('/img/');
 
   useEffect(() => {
+    const initFirebase = async () => {
+      try {
+        await api.ensureAuth();
+        setFirebaseReady(true);
+      } catch (e) {
+        console.warn('Firebase Auth could not be established (Anonymous Auth might be disabled).');
+        setFirebaseReady(true); // Continue anyway, some things might work from cache
+      }
+    };
+    initFirebase();
+  }, []);
+
+  useEffect(() => {
+    if (!firebaseReady) return;
+    
     const checkQuota = () => {
       if (api.isQuotaExceeded()) {
         setConnectionError('تعذر الاتصال بقاعدة البيانات (Quota Exceeded or Offline). يعمل التطبيق الآن في وضع البيانات المخزنة محلياً.');
@@ -214,8 +230,9 @@ export default function App() {
   useEffect(() => {
     // Sync permissions from API to localStorage for components that still use it
     const syncPermissions = async () => {
-      if (!user || api.isQuotaExceeded()) return;
+      if (!user || api.isQuotaExceeded() || !firebaseReady) return;
       try {
+        await api.ensureAuth();
         const perms = await api.getPermissions();
         if (perms && perms.length > 0) {
           localStorage.setItem('role_permissions', JSON.stringify(perms));
@@ -243,8 +260,9 @@ export default function App() {
     };
 
     const bootstrapData = async () => {
-      if (api.isQuotaExceeded()) return;
+      if (api.isQuotaExceeded() || !firebaseReady) return;
       try {
+        // Ensure auth is established before any bootstrap calls
         await api.ensureAuth();
         
         // 1. Bootstrap Users if empty
@@ -368,8 +386,18 @@ export default function App() {
       <ErrorBoundary>
         <LanguageProvider>
           {connectionError && (
-            <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold">
-              ⚠️ {connectionError}
+            <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-4">
+              <span>⚠️ {connectionError}</span>
+              <button 
+                onClick={() => {
+                  api.resetQuota();
+                  window.location.reload();
+                }}
+                className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" />
+                تحديث الاتصال
+              </button>
             </div>
           )}
           <Login onLogin={handleLogin} />
@@ -382,8 +410,18 @@ export default function App() {
     <ErrorBoundary>
       <LanguageProvider>
         {connectionError && (
-          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold">
-            ⚠️ {connectionError}
+          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-4">
+            <span>⚠️ {connectionError}</span>
+            <button 
+              onClick={() => {
+                api.resetQuota();
+                window.location.reload();
+              }}
+              className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" />
+              تحديث الاتصال
+            </button>
           </div>
         )}
         <Router>

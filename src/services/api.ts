@@ -56,7 +56,6 @@ function isQuotaError(error: any): boolean {
          msg.includes('exhausted') || 
          msg.includes('limit exceeded') || 
          msg.includes('offline') || 
-         msg.includes('insufficient permissions') ||
          msg.includes('failed-precondition') ||
          msg.includes('precondition required') ||
          msg.includes('unavailable') ||
@@ -72,13 +71,18 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const isTransient = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
   
   if (isTransient) {
-    // If it's a transient connection error, we might not want to block the whole app immediately
     if (errorMessage.toLowerCase().includes('connection terminated') || errorMessage.toLowerCase().includes('terminated by server')) {
        console.warn('Firestore Connection Terminated (Retrying or Handled) for path:', path);
        return;
     }
     quotaExceeded = true;
     console.warn('Firestore Transient/Quota Issue (Silently Handled) for path:', path, errorMessage);
+    return;
+  }
+
+  // SILENTLY handle permission errors for LIST operations if not signed in, to avoid crashing the UI
+  if (operationType === OperationType.LIST && (errorMessage.includes('insufficient permissions') || errorMessage.includes('permission-denied'))) {
+    console.warn(`Firestore Permission Denied (Handled) for LIST on path: ${path}. Return empty results.`);
     return;
   }
 
@@ -100,7 +104,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error(`Firestore Error [${operationType}] on ${path}:`, errorMessage);
+  console.log('CurrentUser:', auth.currentUser ? `ID: ${auth.currentUser.uid}, Anonymous: ${auth.currentUser.isAnonymous}` : 'NOT LOGGED IN');
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -109,19 +114,27 @@ let quotaExceeded = false;
 
 async function testConnection(retries = 3) {
   try {
+    // Attempting to read a public dummy document to verify connectivity
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Firestore connection test successful");
     quotaExceeded = false;
   } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    console.warn("Connection test failed:", errorMsg);
+
+    // If it's just a 404 (document not found), that's actually a successful connection!
+    if (errorMsg.includes('not-found') || error.code === 'not-found') {
+      console.log("Firestore connected (path not found but server reached)");
+      quotaExceeded = false;
+      return;
+    }
+
     if (retries > 0 && isQuotaError(error)) {
-      console.warn(`Connection test failed, retrying (${retries} left)...`, error.message);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.warn(`Connection test failed, retrying (${retries} left)...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
       return testConnection(retries - 1);
     }
 
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. ");
-    }
     if (isQuotaError(error)) {
       quotaExceeded = true;
     }
@@ -130,6 +143,10 @@ async function testConnection(retries = 3) {
 testConnection();
 
 export const api = {
+  resetQuota: () => {
+    quotaExceeded = false;
+    testConnection();
+  },
   isQuotaExceeded: () => quotaExceeded,
   
   async withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
@@ -385,9 +402,8 @@ export const api = {
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
-      } else {
-        console.error('Error fetching bookings:', error);
       }
+      handleFirestoreError(error, OperationType.LIST, path);
       
       const cached = localStorage.getItem('cached_bookings');
       if (cached) {
@@ -935,7 +951,11 @@ export const api = {
   async exportDatabase(): Promise<void> {
     try {
       await this.ensureAuth();
-      const collections = ['users', 'trips', 'bookings', 'pilgrims', 'permissions', 'settings', 'logs'];
+      const collections = [
+        'users', 'trips', 'bookings', 'pilgrims', 'permissions', 
+        'settings', 'logs', 'customers', 'umrahOffers', 
+        'hotels', 'hotelRooms', 'umrah_pricing'
+      ];
       const backupData: Record<string, any[]> = {};
 
       for (const collName of collections) {
@@ -954,6 +974,36 @@ export const api = {
       URL.revokeObjectURL(url);
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'all_collections');
+    }
+  },
+
+  async importDatabase(backupData: Record<string, any[]>): Promise<void> {
+    try {
+      await this.ensureAuth();
+      
+      for (const [collName, docs] of Object.entries(backupData)) {
+        console.log(`Importing collection: ${collName} (${docs.length} documents)`);
+        
+        // Firestore batches can handle up to 500 operations
+        const chunkSize = 400;
+        for (let i = 0; i < docs.length; i += chunkSize) {
+          const chunk = docs.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+          
+          chunk.forEach(docData => {
+            const { id, ...data } = docData;
+            if (id) {
+              const docRef = doc(db, collName, id);
+              batch.set(docRef, data);
+            }
+          });
+          
+          await batch.commit();
+        }
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'import_database');
+      throw error;
     }
   },
 
@@ -1037,9 +1087,8 @@ export const api = {
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
-      } else {
-        console.error('Error fetching pilgrims:', error);
       }
+      handleFirestoreError(error, OperationType.LIST, path);
       
       const cached = localStorage.getItem('cached_pilgrims');
       if (cached) {
@@ -1152,7 +1201,7 @@ export const api = {
         await batch.commit();
       }
     } catch (error) {
-      console.error('Error in bulkAddNotifications:', error);
+      handleFirestoreError(error, OperationType.WRITE, path);
     }
   },
   async bulkMarkNotificationsAsRead(ids: string[]): Promise<void> {

@@ -303,31 +303,27 @@ export default function Settings({ user }: { user: User }) {
   const confirmRestore = async () => {
     if (!pendingFile) return;
     
-    setShowRestoreConfirm(false);
     setRestoring(true);
     setRestoreStatus({ type: null, message: '' });
 
     try {
-      const formData = new FormData();
-      formData.append('file', pendingFile);
-      
-      const response = await fetch('/api/db-upload', {
-        method: 'POST',
-        body: formData
+      const reader = new FileReader();
+      const content = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsText(pendingFile);
       });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'فشل استعادة قاعدة البيانات');
-      }
 
-      setRestoreStatus({ type: 'success', message: 'تم استعادة قاعدة البيانات بنجاح. سيتم إعادة تحميل الصفحة...' });
+      const backupData = JSON.parse(content);
+      await api.importDatabase(backupData);
+
+      showToast('تم استعادة قاعدة البيانات بنجاح. سيتم إعادة تحميل الصفحة...', 'success');
       setTimeout(() => {
         window.location.reload();
       }, 2000);
     } catch (error: any) {
       console.error('Error restoring DB:', error);
-      setRestoreStatus({ type: 'error', message: error.message || 'حدث خطأ أثناء استعادة قاعدة البيانات' });
+      showToast(error.message || 'حدث خطأ أثناء استعادة قاعدة البيانات', 'error');
     } finally {
       setRestoring(false);
       setPendingFile(null);
@@ -796,6 +792,20 @@ export default function Settings({ user }: { user: User }) {
                         <Save className="w-4 h-4" />
                         تصدير قاعدة البيانات بالكامل (JSON)
                       </button>
+                      <label className={clsx(
+                        "py-3 flex items-center justify-center gap-3 text-sm rounded-xl cursor-pointer transition-all border",
+                        restoring ? "bg-white/5 border-white/10 text-white/40 pointer-events-none" : "bg-white/5 border-white/10 text-white hover:bg-white/10"
+                      )}>
+                        {restoring ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        {restoring ? 'جاري الاستيراد...' : 'استيراد نسخة احتياط (JSON)'}
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".json" 
+                          onChange={handleFileSelect}
+                          disabled={restoring}
+                        />
+                      </label>
                       <button 
                         onClick={async () => {
                           setDbLoading(true);
