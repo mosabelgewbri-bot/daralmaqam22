@@ -6,6 +6,7 @@ import { Upload, Trash2, Save, CheckCircle, AlertCircle, Image as ImageIcon, Loc
 import Logo from './Logo';
 import { clsx } from 'clsx';
 import { AnimatePresence } from 'framer-motion';
+import { GoogleGenAI } from '@google/genai';
 
 // Toast Component
 const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info' | 'warning', onClose: () => void }) => {
@@ -380,7 +381,30 @@ export default function Settings({ user }: { user: User }) {
         return;
       }
 
-      setDiagResult({ ...data, ...frontendResult });
+      // Step 3: Live Connectivity Test (Client-side)
+      let liveTest = { status: 'loading', message: '' };
+      if (frontendKey) {
+        try {
+          const genAI = new GoogleGenAI({ apiKey: frontendKey });
+          const result = await genAI.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: "Say hello briefly"
+          });
+          const text = result.text || "";
+          liveTest = { 
+            status: 'success', 
+            message: 'تم التحقق من الاتصال بنجاح. الرد: ' + text.substring(0, 50) + (text.length > 50 ? '...' : '') 
+          };
+        } catch (error: any) {
+          console.error("Live test failed:", error);
+          liveTest = { 
+            status: 'error', 
+            message: 'فشل اختبار الاتصال المباشر: ' + (error.message || 'خطأ غير معروف')
+          };
+        }
+      }
+
+      setDiagResult({ ...data, ...frontendResult, liveTest });
     } catch (error: any) {
       console.error('Diagnostic error:', error);
       setDiagResult({ 
@@ -877,6 +901,19 @@ export default function Settings({ user }: { user: User }) {
 
                   {diagResult.env && (
                     <div className="opacity-60 italic text-[10px]">البيئة: {diagResult.env} {diagResult.isVercel ? '(Vercel)' : ''}</div>
+                  )}
+
+                  {diagResult.liveTest && (
+                    <div className={clsx(
+                      "mt-2 pt-2 border-t border-white/10 flex flex-col gap-2",
+                      diagResult.liveTest.status === 'success' ? "text-emerald-400" : "text-amber-400"
+                    )}>
+                      <div className="flex items-center gap-2">
+                        {diagResult.liveTest.status === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                        <span className="font-bold">اختبار الاتصال المباشر:</span>
+                      </div>
+                      <p className="text-[9px] opacity-80 leading-relaxed">{diagResult.liveTest.message}</p>
+                    </div>
                   )}
                 </div>
               )}
