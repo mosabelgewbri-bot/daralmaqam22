@@ -397,6 +397,78 @@ async function initializeDatabase() {
 
 const app = express();
 
+const uploadOcr = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for OCR
+});
+
+// Initialize the Gemini API client for server-side use
+const getGeminiClient = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  return new GoogleGenerativeAI(key);
+};
+
+// OCR Route - placed high for Vercel body-parsing compatibility
+app.post("/api/gemini/ocr", uploadOcr.single("image"), async (req, res) => {
+  console.log("Server side OCR requested");
+  try {
+    const client = getGeminiClient();
+    if (!client) {
+      return res.status(500).json({ error: "Gemini API key is not configured on the server." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No image file provided." });
+    }
+
+    console.log(`OCR: Processing image with Gemini 1.5 Flash - Standard SDK. Image size: ${req.file.size} bytes`);
+    
+    const startTime = Date.now();
+    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    // Prepare image for Gemini
+    const imagePart = {
+      inlineData: {
+        data: req.file.buffer.toString("base64"),
+        mimeType: req.file.mimetype || "image/jpeg"
+      },
+    };
+
+    const prompt = `Extract passport information from this image. 
+    Return a JSON object with the following fields:
+    - passportNumber: The alphanumeric passport number.
+    - expiryDate: Expiry date in YYYY-MM-DD format. Ensure it's the date of expiry, not issue.
+    - fullNameArabic: Full name in Arabic. If only English is present, transliterate accurately to Arabic.
+    - fullNameEnglish: Full name in English.
+    Return ONLY JSON.`;
+
+    console.log("OCR: Calling Gemini API...");
+    const result = await model.generateContent([prompt, imagePart]);
+    const duration = Date.now() - startTime;
+    console.log(`OCR: Gemini API call finished in ${duration}ms`);
+    
+    const text = result.response.text();
+    console.log("OCR: Model response text length:", text.length);
+    
+    // Improved JSON extraction
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      console.log("OCR: Success");
+      res.json(JSON.parse(jsonMatch[0]));
+    } else {
+      console.error("OCR: Failed to parse result", text);
+      res.status(500).json({ error: "Failed to parse OCR result", raw: text });
+    }
+  } catch (error: any) {
+    console.error("Server-side OCR Error:", error);
+    res.status(500).json({ 
+      error: error.message || "Failed to process image with Gemini",
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 // --- DIAGNOSTICS AT THE VERY TOP ---
 app.get("/api/diag/gemini", (req, res) => {
   const key = process.env.GEMINI_API_KEY || "";
@@ -1093,72 +1165,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     message: err.message,
     path: req.path
   });
-});
-
-// Initialize the Gemini API client for server-side use
-const getGeminiClient = () => {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
-  return new GoogleGenerativeAI(key);
-};
-
-app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
-  console.log("Server side OCR requested");
-  try {
-    const client = getGeminiClient();
-    if (!client) {
-      return res.status(500).json({ error: "Gemini API key is not configured on the server." });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No image file provided." });
-    }
-
-    console.log(`OCR: Processing image with Gemini 1.5 Flash - Standard SDK. Image size: ${req.file.size} bytes`);
-    
-    const startTime = Date.now();
-    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
-    // Prepare image for Gemini
-    const imagePart = {
-      inlineData: {
-        data: req.file.buffer.toString("base64"),
-        mimeType: req.file.mimetype || "image/jpeg"
-      },
-    };
-
-    const prompt = `Extract passport information from this image. 
-    Return a JSON object with the following fields:
-    - passportNumber: The alphanumeric passport number.
-    - expiryDate: Expiry date in YYYY-MM-DD format. Ensure it's the date of expiry, not issue.
-    - fullNameArabic: Full name in Arabic. If only English is present, transliterate accurately to Arabic.
-    - fullNameEnglish: Full name in English.
-    Return ONLY JSON.`;
-
-    console.log("OCR: Calling Gemini API...");
-    const result = await model.generateContent([prompt, imagePart]);
-    const duration = Date.now() - startTime;
-    console.log(`OCR: Gemini API call finished in ${duration}ms`);
-    
-    const text = result.response.text();
-    console.log("OCR: Model response text length:", text.length);
-    
-    // Improved JSON extraction
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      console.log("OCR: Success");
-      res.json(JSON.parse(jsonMatch[0]));
-    } else {
-      console.error("OCR: Failed to parse result", text);
-      res.status(500).json({ error: "Failed to parse OCR result", raw: text });
-    }
-  } catch (error: any) {
-    console.error("Server-side OCR Error:", error);
-    res.status(500).json({ 
-      error: error.message || "Failed to process image with Gemini",
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
 });
 
 // WhatsApp API Endpoints

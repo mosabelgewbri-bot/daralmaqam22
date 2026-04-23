@@ -65,22 +65,27 @@ export async function extractPassportData(base64Image: string) {
     const formData = new FormData();
     formData.append("image", blob, "passport.jpg");
 
-    // 2. Call server-side OCR
-    const serverResponse = await fetch("/api/gemini/ocr", {
-      method: "POST",
-      body: formData,
-    });
+    let serverResponse;
+    try {
+      serverResponse = await fetch("/api/gemini/ocr", {
+        method: "POST",
+        body: formData,
+      });
 
-    if (serverResponse.ok) {
-      const data = await serverResponse.json();
-      console.log("OCR Service: Server side success", data);
-      return data;
+      if (serverResponse.ok) {
+        const data = await serverResponse.json();
+        console.log("OCR Service: Server side success", data);
+        return data;
+      }
+      console.warn("OCR Service: Server-side returned non-OK status:", serverResponse.status);
+    } catch (fetchError: any) {
+      console.warn("OCR Service: Server-side fetch failed entirely:", fetchError.message);
     }
 
     // 3. Fallback to client-side if server-side is not available or fails
-    console.warn("OCR Service: Server-side failed or not found, trying client-side fallback...");
+    console.warn("OCR Service: Trying client-side fallback...");
     if (!getApiKey()) {
-      const serverErr = await serverResponse.json().catch(() => ({}));
+      const serverErr = serverResponse ? await serverResponse.json().catch(() => ({})) : {};
       throw new Error(serverErr.error || "مفتاح Gemini API غير مكوّن في المتصفح. يرجى إضافته في إعدادات البيئة (Vercel).");
     }
 
