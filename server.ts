@@ -3,8 +3,14 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import "dotenv/config";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const dotenv = await import("dotenv");
+    dotenv.config();
+  } catch (e) {}
+}
 
 // Lazy-load WhatsApp to prevent top-level crashes on Vercel
 let whatsappManager: any;
@@ -430,8 +436,8 @@ app.get("/api/test-html", (req, res) => {
 });
 
 // Apply middlewares immediately for Vercel
-app.use(express.json({ limit: "100mb" }));
-app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
 // API routes defined at top level
 app.get("/api/health", (req, res) => {
@@ -1100,7 +1106,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const getGeminiClient = () => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  return new GoogleGenAI({ apiKey: key });
+  return new GoogleGenerativeAI(key);
 };
 
 app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
@@ -1115,7 +1121,9 @@ app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No image file provided." });
     }
 
-    console.log("OCR: Processing image with Gemini 1.5 Flash...");
+    console.log("OCR: Processing image with Gemini 1.5 Flash - Standard SDK...");
+    
+    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     // Prepare image for Gemini
     const imagePart = {
@@ -1130,42 +1138,26 @@ app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
     - passportNumber: The alphanumeric passport number.
     - expiryDate: Expiry date in YYYY-MM-DD format. Ensure it's the date of expiry, not issue.
     - fullNameArabic: Full name in Arabic. If only English is present, transliterate accurately to Arabic.
-    - fullNameEnglish: Full name in English.`;
+    - fullNameEnglish: Full name in English.
+    Return ONLY JSON.`;
 
-    const response = await client.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [{
-        parts: [
-          imagePart,
-          { text: prompt }
-        ]
-      }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            passportNumber: { type: Type.STRING },
-            expiryDate: { type: Type.STRING },
-            fullNameArabic: { type: Type.STRING },
-            fullNameEnglish: { type: Type.STRING },
-          },
-          required: ["passportNumber", "expiryDate", "fullNameArabic", "fullNameEnglish"]
-        }
-      }
-    });
-
-    if (!response.text) {
-      throw new Error("No text response from Gemini");
+    const result = await model.generateContent([prompt, imagePart]);
+    const text = result.response.text();
+    
+    // Improved JSON extraction
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      console.log("OCR: Success");
+      res.json(JSON.parse(jsonMatch[0]));
+    } else {
+      console.error("OCR: Failed to parse result", text);
+      res.status(500).json({ error: "Failed to parse OCR result", raw: text });
     }
-
-    console.log("OCR: Success");
-    res.json(JSON.parse(response.text));
   } catch (error: any) {
     console.error("Server-side OCR Error:", error);
     res.status(500).json({ 
       error: error.message || "Failed to process image with Gemini",
-      details: error.stack
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -1293,7 +1285,10 @@ async function startServer() {
 }
 
 // Start the server setup
-const serverPromise = startServer();
+let serverPromise: Promise<void> | null = null;
+if (!process.env.VERCEL) {
+  serverPromise = startServer();
+}
 
 export { app, serverPromise };
 export default app;
