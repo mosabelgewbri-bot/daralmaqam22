@@ -378,7 +378,7 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
     setAgentFee(p.agentFee);
     setTicketPrice(p.ticketPrice || 0);
     setProfitMargin(p.profitMargin || 0);
-    setExchangeRate(p.exchangeRate || 4.85);
+    setExchangeRate(p.exchangeRate || 0);
     setNotes(p.notes || '');
     setResults(p.results);
     
@@ -737,10 +737,10 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
                   <input
                     type="number"
                     step="0.01"
-                    value={exchangeRate || ''}
+                    value={exchangeRate || (exchangeRate === 0 ? 0 : '')}
                     onChange={(e) => setExchangeRate(Number(e.target.value))}
                     className="w-full h-11 bg-black/40 border border-white/10 rounded-xl pr-10 pl-3 text-white focus:border-gold outline-none transition-all font-bold"
-                    placeholder="4.85"
+                    placeholder="0.00"
                   />
                 </div>
               </div>
@@ -921,7 +921,7 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
                         <span className="text-xs font-black text-white/80">{p.madinah?.nights ?? (p as any).madinahNights ?? 0}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5 text-center">
-                        <span className="text-xs font-bold text-white">{p.exchangeRate || '4.85'}</span>
+                        <span className="text-xs font-bold text-white">{p.exchangeRate || '0.00'}</span>
                       </td>
                       <td className="px-6 py-4 border-y border-white/5">
                         <span className="text-xs font-bold text-white/90">${netUsd}</span>

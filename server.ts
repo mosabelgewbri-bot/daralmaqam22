@@ -5,14 +5,7 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-if (process.env.NODE_ENV !== 'production') {
-  try {
-    const dotenv = await import("dotenv");
-    dotenv.config();
-  } catch (e) {}
-}
-
-// Lazy-load WhatsApp to prevent top-level crashes on Vercel
+// WhatsApp lazy-loading
 let whatsappManager: any;
 
 console.log("server.ts module loading...");
@@ -1121,8 +1114,9 @@ app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "No image file provided." });
     }
 
-    console.log("OCR: Processing image with Gemini 1.5 Flash - Standard SDK...");
+    console.log(`OCR: Processing image with Gemini 1.5 Flash - Standard SDK. Image size: ${req.file.size} bytes`);
     
+    const startTime = Date.now();
     const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     // Prepare image for Gemini
@@ -1141,8 +1135,13 @@ app.post("/api/gemini/ocr", upload.single("image"), async (req, res) => {
     - fullNameEnglish: Full name in English.
     Return ONLY JSON.`;
 
+    console.log("OCR: Calling Gemini API...");
     const result = await model.generateContent([prompt, imagePart]);
+    const duration = Date.now() - startTime;
+    console.log(`OCR: Gemini API call finished in ${duration}ms`);
+    
     const text = result.response.text();
+    console.log("OCR: Model response text length:", text.length);
     
     // Improved JSON extraction
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -1204,91 +1203,48 @@ app.post("/api/whatsapp/logout", async (req, res) => {
 async function startServer() {
   const PORT = 3000;
 
-  // Initialize WhatsApp Manager (Lazy Load)
-  if (!process.env.VERCEL) {
-    try {
-      const { whatsappManager: wm } = await import("./whatsapp-server.ts");
-      whatsappManager = wm;
-      whatsappManager.init().catch((err: any) => console.error("Failed to init WhatsApp:", err));
-    } catch (e) {
-      console.warn("Could not load whatsapp-server.ts. Skipping WhatsApp init.");
+  // Initialize database before anything else
+  try {
+    await initializeDatabase();
+  } catch (err) {
+    console.error("Database initialization failed during boot:", err);
+  }
+
+  // Handle static files in production or on Vercel
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+    const distPath = path.join(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      // No wildcard '*' here, let it fall through to public index if needed 
+      // or managed by Vercel rewrites
     }
   }
 
-  // Initialize database before starting server
-  await initializeDatabase();
-
-  // Vite middleware for development
-  console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`);
-  
-  try {
-    if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-      console.log("Initializing Vite middleware...");
-      const { createServer: createViteServer } = await import("vite");
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      
-      // Explicitly serve public directory
-      app.use(express.static(path.join(process.cwd(), "public")));
-      
-      app.use(vite.middlewares);
-      console.log("Vite middleware initialized.");
-
-      // Add a catch-all for SPA in dev mode
-      app.get("*", async (req, res, next) => {
-        const url = req.originalUrl;
-        if (url.startsWith('/api')) return next();
-        
-        try {
-          const indexPath = path.resolve(process.cwd(), "index.html");
-          if (!fs.existsSync(indexPath)) {
-            return res.status(404).send("index.html not found. Please ensure it exists in the root.");
-          }
-          let template = await fs.promises.readFile(indexPath, "utf-8");
-          template = await vite.transformIndexHtml(url, template);
-          res.status(200).set({ "Content-Type": "text/html" }).end(template);
-        } catch (e) {
-          console.error(`Error serving index.html for ${url}:`, e);
-          next(e);
-        }
-      });
-    } else {
-      const distPath = path.join(process.cwd(), "dist");
-      console.log(`Serving static files from: ${distPath}`);
-      if (fs.existsSync(distPath)) {
-        app.use(express.static(distPath));
-        app.get("*", (req, res) => {
-          const indexPath = path.join(distPath, "index.html");
-          if (fs.existsSync(indexPath)) {
-            res.sendFile(indexPath);
-          } else {
-            res.status(404).send("index.html not found in dist. Check build output.");
-          }
+  if (!process.env.VERCEL) {
+    // Only in local development
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
         });
-      } else {
-        console.warn("dist directory not found. API only mode.");
-        app.get("/", (req, res) => res.send("API is running. Frontend build missing."));
+        app.use(vite.middlewares);
+      } catch (e) {
+        console.warn("Vite failed to load in dev mode");
       }
     }
 
-    if (!process.env.VERCEL) {
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-      });
-    }
-  } catch (error) {
-    console.error("Failed to initialize server middleware:", error);
-    throw error;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   }
 }
 
-// Start the server setup
-let serverPromise: Promise<void> | null = null;
-if (!process.env.VERCEL) {
-  serverPromise = startServer();
-}
+// Global start
+startServer().catch(err => {
+  console.error("Critical server failure:", err);
+});
 
-export { app, serverPromise };
 export default app;
+export { app };

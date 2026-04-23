@@ -143,6 +143,7 @@ export default function TripForm({ user }: { user: User }) {
     airline: '',
     totalSeats: 50,
     ticketPrice: 0,
+    exchangeRate: 0,
     currency: 'LYD',
     startDate: '',
     departureDate: '',
@@ -223,6 +224,7 @@ export default function TripForm({ user }: { user: User }) {
             totalSeats: Number(formData.totalSeats),
             ticketPrice: Number(formData.ticketPrice),
             currency: formData.currency as any,
+            exchangeRate: Number(formData.exchangeRate),
             startDate: formData.startDate,
             departureDate: formData.departureDate,
             costs: formData.costs
@@ -325,6 +327,7 @@ export default function TripForm({ user }: { user: User }) {
       totalSeats: trip.totalSeats,
       ticketPrice: trip.ticketPrice,
       currency: trip.currency,
+      exchangeRate: trip.exchangeRate || 0,
       startDate: trip.startDate || '',
       departureDate: trip.departureDate || '',
       costs: trip.costs || {
@@ -353,6 +356,7 @@ export default function TripForm({ user }: { user: User }) {
       airline: '', 
       totalSeats: 50, 
       ticketPrice: 0, 
+      exchangeRate: 0,
       currency: 'LYD',
       startDate: '',
       departureDate: '',
@@ -557,6 +561,22 @@ export default function TripForm({ user }: { user: User }) {
                       <option value="LYD">LYD</option>
                       <option value="USD">USD</option>
                     </select>
+                  </div>
+
+                  {/* Exchange Rate */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
+                      سعر صرف الدولار (LYD)
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      min="0"
+                      className="input-field w-full"
+                      value={formData.exchangeRate || (formData.exchangeRate === 0 ? 0 : '')}
+                      onChange={(e) => setFormData({...formData, exchangeRate: parseFloat(e.target.value) || 0})}
+                      placeholder="0.00"
+                    />
                   </div>
 
                   {/* Start Date */}

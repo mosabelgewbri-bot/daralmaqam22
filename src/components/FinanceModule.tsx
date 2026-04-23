@@ -384,6 +384,7 @@ export default function FinanceModule({ user }: { user: User }) {
                   <th className="px-2 py-3">الرحلة</th>
                   <th className="px-2 py-3">اسم رب الأسرة</th>
                   <th className="px-2 py-3">توزيع الغرف</th>
+                  <th className="px-2 py-3">الصرف</th>
                   <th className="px-2 py-3 bg-emerald-500/5">إجمالي (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">نقداً (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">حوالة (د.ل)</th>
@@ -398,7 +399,7 @@ export default function FinanceModule({ user }: { user: User }) {
               <tbody className="divide-y divide-white/5">
                 {bookings.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-8 text-center text-white/40">لا توجد حجوزات لهذه الرحلة</td>
+                    <td colSpan={14} className="px-4 py-8 text-center text-white/40">لا توجد حجوزات لهذه الرحلة</td>
                   </tr>
                 ) : (
                   bookings.map(b => {
@@ -413,6 +414,7 @@ export default function FinanceModule({ user }: { user: User }) {
                         </td>
                         <td className="px-2 py-4 font-medium text-xs">{b.headName}</td>
                         <td className="px-2 py-4 text-[10px] text-white/60">{getRoomSummary(b)}</td>
+                        <td className="px-2 py-4 text-[10px] text-gold font-bold">{b.exchangeRate || (trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim())?.exchangeRate || '---')}</td>
                         
                         {/* LYD Section */}
                         <td className="px-2 py-4 bg-emerald-500/5 font-bold text-xs">

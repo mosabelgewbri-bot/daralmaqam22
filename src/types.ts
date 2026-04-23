@@ -7,6 +7,7 @@ export interface Trip {
   availableSeats: number;
   ticketPrice: number;
   currency: "LYD" | "USD";
+  exchangeRate?: number;
   status: "Upcoming" | "Active" | "Completed";
   startDate?: string;
   departureDate?: string;
@@ -61,6 +62,7 @@ export interface Booking {
   groupNo?: string;
   transportType?: string;
   isVisaOnly?: boolean;
+  exchangeRate?: number;
   createdAt: string;
   updatedAt?: string;
   createdBy?: string; // User ID

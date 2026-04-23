@@ -72,6 +72,7 @@ export default function BookingForm({ user }: { user: User }) {
     VisaOnly: { price: 0, currency: 'LYD' },
     None: { price: 0, currency: 'LYD' },
   });
+  const [exchangeRate, setExchangeRate] = useState(0);
 
   useEffect(() => {
     const checkDuplicate = async () => {
@@ -116,6 +117,9 @@ export default function BookingForm({ user }: { user: User }) {
             setTransportType(bookingToEdit.transportType || '');
             const gType = bookingToEdit.pilgrims?.[0]?.serviceType || (bookingToEdit.isVisaOnly ? 'VisaOnly' : 'Full');
             setGlobalServiceType(gType);
+            if (bookingToEdit.exchangeRate !== undefined) {
+              setExchangeRate(bookingToEdit.exchangeRate);
+            }
           }
         }
       } catch (error) {
@@ -729,6 +733,7 @@ export default function BookingForm({ user }: { user: User }) {
         madinahHotel: !hasAccommodation ? (globalServiceType === 'VisaOnly' ? 'تأشيرة فقط' : 'تذكرة فقط') : madinahHotel,
         madinahNights: !hasAccommodation ? 0 : madinahNights,
         isVisaOnly,
+        exchangeRate,
         globalServiceType,
         paidLYD: (oldBooking?.paidLYD || 0),
         paidUSD: (oldBooking?.paidUSD || 0),
@@ -830,8 +835,12 @@ export default function BookingForm({ user }: { user: User }) {
                   const trip = trips.find(t => t.id === id);
                   if (trip) {
                     setManualTicketPrice(trip.ticketPrice);
+                    if (trip.exchangeRate !== undefined) {
+                      setExchangeRate(trip.exchangeRate);
+                    }
                   } else {
                     setManualTicketPrice(0);
+                    setExchangeRate(0);
                   }
                 }}
               >
@@ -933,6 +942,21 @@ export default function BookingForm({ user }: { user: User }) {
                       onChange={(e) => setManualTicketPrice(parseFloat(e.target.value) || 0)}
                     />
                     <span className="text-gold font-bold">{selectedTrip.currency}</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/5 space-y-2">
+                  <p className="text-xs text-white/40 uppercase tracking-widest">سعر صرف الدولار (LYD)</p>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number"
+                      step="0.01"
+                      className="input-field w-full py-1 text-lg font-bold text-gold"
+                      value={exchangeRate || (exchangeRate === 0 ? 0 : '')}
+                      onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                    />
+                    <span className="text-gold font-bold">LYD</span>
                   </div>
                 </div>
               </div>

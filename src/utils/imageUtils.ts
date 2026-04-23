@@ -2,7 +2,7 @@
  * Resizes a base64 image to a maximum width and height while maintaining aspect ratio.
  * Returns a promise that resolves to the resized base64 image (JPEG format).
  */
-export const resizeImage = (base64: string, maxWidth = 1600, maxHeight = 1600): Promise<string> => {
+export const resizeImage = (base64: string, maxWidth = 1200, maxHeight = 1200): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -26,8 +26,8 @@ export const resizeImage = (base64: string, maxWidth = 1600, maxHeight = 1600): 
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(img, 0, 0, width, height);
-      // Use 0.8 quality to reduce payload size further
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+      // Use 0.7 quality to reduce payload size for Vercel/Serverless limits
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
     };
     img.onerror = () => {
       // If error, return original image
