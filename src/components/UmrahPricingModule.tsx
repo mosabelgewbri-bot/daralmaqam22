@@ -329,8 +329,10 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
       await api.saveUmrahPricing(newPricing);
       await fetchPricings();
       resetForm();
-    } catch (error) {
+      alert('تم حفظ التسعيرة بنجاح');
+    } catch (error: any) {
       console.error('Error saving pricing:', error);
+      alert('فشل في حفظ التسعيرة: ' + (error.message || 'خطأ غير معروف'));
     } finally {
       setSaving(false);
     }
@@ -341,8 +343,10 @@ const UmrahPricingModule: React.FC<UmrahPricingModuleProps> = ({ user }) => {
     try {
       await api.deleteUmrahPricing(id);
       await fetchPricings();
-    } catch (error) {
+      alert('تم الحذف بنجاح');
+    } catch (error: any) {
       console.error('Error deleting pricing:', error);
+      alert('فشل في الحذف: ' + (error.message || 'خطأ غير معروف'));
     }
   };
 

@@ -35,7 +35,7 @@ export default function Login({ onLogin }: LoginProps) {
     setError('');
     try {
       const adminUser: User = {
-        id: 'ADMIN-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+        id: 'system_admin',
         username: 'admin',
         name: 'المدير العام',
         role: 'admin',

@@ -244,4 +244,5 @@ export interface Customer {
   hasWhatsApp?: boolean;
   isVerified?: boolean;
   lastContact?: string;
+  updatedAt?: string;
 }

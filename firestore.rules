@@ -1,15 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // ===============================================================
     // Shared Helpers
-    // ===============================================================
-    
     function isSignedIn() {
       return request.auth != null;
     }
@@ -18,13 +10,16 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isSignedIn() && 
              request.auth.token.email != null && 
-             (request.auth.token.email == "mosabelgewbri@gmail.com" || 
-              request.auth.token.email.lower() == "mosabelgewbri@gmail.com");
+             (request.auth.token.email.lower() == "mosabelgewbri@gmail.com");
     }
 
     // General admin check
     function isAdmin() {
-      return isSuperAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+      return isSuperAdmin() || (isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'none') == 'admin') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      ));
     }
 
     // Global Admin Override - Admins can do anything
@@ -108,13 +103,11 @@ service cloud.firestore {
     }
 
     match /customers/{custId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
     match /umrahOffers/{offerId} {
-      allow read: if true; 
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     match /hosted_images/{imageId} {
@@ -124,18 +117,15 @@ service cloud.firestore {
     }
 
     match /hotels/{hotelId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     match /hotelRooms/{roomId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     match /umrah_pricing/{priceId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     match /admins/{adminId} {

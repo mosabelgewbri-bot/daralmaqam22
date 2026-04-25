@@ -28,8 +28,11 @@ import PublicImage from './components/PublicImage';
 import Sidebar from './components/Sidebar';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBell from './components/NotificationBell';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Menu, AlertTriangle, AlertCircle, RefreshCw } from 'lucide-react';
+import { auth } from './firebase';
 
 import { LanguageProvider } from './contexts/LanguageContext';
 
@@ -192,6 +195,52 @@ export default function App() {
   });
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [firebaseReady, setFirebaseReady] = useState(false);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
+
+  // Connection Error Banner Component
+  const ConnectionBanner = () => {
+    if (!connectionError) return null;
+    return (
+      <div className="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white shadow-2xl border-b border-red-400/20">
+        <div className="max-w-7xl mx-auto p-3 flex flex-wrap items-center justify-center gap-4 text-xs font-bold">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 animate-pulse" />
+            <span>{connectionError}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowErrorDetails(!showErrorDetails)}
+              className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all border border-white/10"
+            >
+              {showErrorDetails ? 'إخفاء التفاصيل' : 'عرض التفاصيل الفنية'}
+            </button>
+            <button 
+              onClick={() => {
+                api.resetQuota();
+                window.location.reload();
+              }}
+              className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 border border-white/20"
+            >
+              <RefreshCw className="w-3 h-3" />
+              تحديث الاتصال
+            </button>
+          </div>
+        </div>
+        {showErrorDetails && (
+          <div className="bg-black/20 p-4 border-t border-white/10 max-h-40 overflow-y-auto font-mono text-[10px] break-all select-all selection:bg-gold selection:text-black">
+            <p className="opacity-70 mb-2">Technical Logs:</p>
+            <pre>{JSON.stringify({ 
+              lastError: api.getLastError(),
+              isQuotaExceeded: api.isQuotaExceeded(),
+              auth: auth.currentUser ? `UID: ${auth.currentUser.uid}` : 'Not Signed In',
+              url: window.location.href,
+              timestamp: new Date().toISOString()
+            }, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Check for public routes first
   const isPublicRoute = window.location.pathname.startsWith('/offer/') || 
@@ -215,7 +264,8 @@ export default function App() {
     
     const checkQuota = () => {
       if (api.isQuotaExceeded()) {
-        setConnectionError('تعذر الاتصال بقاعدة البيانات (Quota Exceeded or Offline). يعمل التطبيق الآن في وضع البيانات المخزنة محلياً.');
+        const detail = api.getLastError();
+        setConnectionError(`تعذر الاتصال بقاعدة البيانات (${detail?.includes('quota') ? 'Quota Exceeded' : 'Offline'}). ${detail ? `Details: ${detail}` : ''}`);
       }
     };
     checkQuota();
@@ -272,12 +322,23 @@ export default function App() {
         if (users.length === 0) {
           console.log('Bootstrapping initial admin user...');
           await api.saveUser({
+            id: 'system_admin',
             username: 'admin',
             password: 'admin123',
             name: 'المدير العام',
             role: 'admin',
             status: 'active'
           });
+          
+          // Also set a flag to verify admin access in rules if needed
+          try {
+            await setDoc(doc(db, 'settings', 'system_initialized'), {
+              initialized: true,
+              at: new Date().toISOString()
+            });
+          } catch (e) {
+            console.warn('Failed to set initialized flag:', e);
+          }
         }
 
         // 2. Bootstrap Permissions if missing for any role
@@ -294,38 +355,42 @@ export default function App() {
           const isAdmin = role === 'admin';
           const isManager = role === 'manager';
 
-          if (!existingPerm) {
-            console.log(`Bootstrapping permissions for role: ${role}`);
-            await api.savePermission({
-              id: role,
-              role,
-              allowedScreens: (isAdmin || isManager) ? allScreens : ['dashboard', 'booking', 'reports'],
-              canEdit: isAdmin || isManager,
-              canDelete: isAdmin,
-              canExport: isAdmin || isManager,
-              canViewFinance: isAdmin || isManager || role === 'accountant',
-              canApproveBookings: isAdmin || isManager,
-              canManageUsers: isAdmin,
-              canEditTrips: isAdmin || isManager,
-              canViewReports: true,
-              canManageSettings: isAdmin,
-              canManageFinance: isAdmin || isManager || role === 'accountant',
-              canChangeVisaStatus: isAdmin || isManager || role === 'visa_specialist',
-              canManageRooms: isAdmin || isManager || role === 'staff' || role === 'receptionist',
-              dataScope: (isAdmin || isManager) ? 'all' : 'own'
-            } as any);
-            updatedAny = true;
-          } else if (isAdmin || isManager) {
-            // Ensure admin/manager always have all screens
-            const missingScreens = allScreens.filter(s => !existingPerm.allowedScreens.includes(s));
-            if (missingScreens.length > 0) {
-              console.log(`Updating missing screens for ${role}:`, missingScreens);
+          try {
+            if (!existingPerm) {
+              console.log(`Bootstrapping permissions for role: ${role}`);
               await api.savePermission({
-                ...existingPerm,
-                allowedScreens: [...new Set([...existingPerm.allowedScreens, ...allScreens])]
-              });
+                id: role,
+                role,
+                allowedScreens: (isAdmin || isManager) ? allScreens : ['dashboard', 'booking', 'reports'],
+                canEdit: isAdmin || isManager,
+                canDelete: isAdmin,
+                canExport: isAdmin || isManager,
+                canViewFinance: isAdmin || isManager || role === 'accountant',
+                canApproveBookings: isAdmin || isManager,
+                canManageUsers: isAdmin,
+                canEditTrips: isAdmin || isManager,
+                canViewReports: true,
+                canManageSettings: isAdmin,
+                canManageFinance: isAdmin || isManager || role === 'accountant',
+                canChangeVisaStatus: isAdmin || isManager || role === 'visa_specialist',
+                canManageRooms: isAdmin || isManager || role === 'staff' || role === 'receptionist',
+                dataScope: (isAdmin || isManager) ? 'all' : 'own'
+              } as any);
               updatedAny = true;
+            } else if (isAdmin || isManager) {
+              // Ensure admin/manager always have all screens
+              const missingScreens = allScreens.filter(s => !existingPerm.allowedScreens.includes(s));
+              if (missingScreens.length > 0) {
+                console.log(`Updating missing screens for ${role}:`, missingScreens);
+                await api.savePermission({
+                  ...existingPerm,
+                  allowedScreens: [...new Set([...existingPerm.allowedScreens, ...allScreens])]
+                });
+                updatedAny = true;
+              }
             }
+          } catch (permError: any) {
+            console.warn(`Could not update permissions for ${role} (likely missing permissions):`, permError.message);
           }
         }
 
@@ -385,21 +450,7 @@ export default function App() {
     return (
       <ErrorBoundary>
         <LanguageProvider>
-          {connectionError && (
-            <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-4">
-              <span>⚠️ {connectionError}</span>
-              <button 
-                onClick={() => {
-                  api.resetQuota();
-                  window.location.reload();
-                }}
-                className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" />
-                تحديث الاتصال
-              </button>
-            </div>
-          )}
+          <ConnectionBanner />
           <Login onLogin={handleLogin} />
         </LanguageProvider>
       </ErrorBoundary>
@@ -409,21 +460,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <LanguageProvider>
-        {connectionError && (
-          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-500 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-4">
-            <span>⚠️ {connectionError}</span>
-            <button 
-              onClick={() => {
-                api.resetQuota();
-                window.location.reload();
-              }}
-              className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors flex items-center gap-1"
-            >
-              <RefreshCw className="w-3 h-3" />
-              تحديث الاتصال
-            </button>
-          </div>
-        )}
+        <ConnectionBanner />
         <Router>
           <AppContent user={user} onLogout={handleLogout} />
         </Router>

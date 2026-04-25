@@ -126,11 +126,16 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
     e.preventDefault();
     if (!editingHotel) return;
     try {
+      if (!editingHotel.name) {
+        showToast('يرجى إدخال اسم الفندق', 'warning');
+        return;
+      }
+
       const hotelId = await api.saveHotel(editingHotel);
       
       // If it's a new hotel or we want to add rooms
       if (!editingHotel.id && roomConfigs.some(c => c.count > 0)) {
-        const roomPromises = [];
+        const roomsToCreate: any[] = [];
         const start = parseISO(globalRoomStartDate);
         const end = addDays(start, globalRoomNights);
         const formattedEndDate = format(end, 'yyyy-MM-dd');
@@ -140,7 +145,7 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
           
           for (let i = 0; i < config.count; i++) {
             const roomNum = (config.startFrom + i).toString();
-            roomPromises.push(api.saveRoom({
+            roomsToCreate.push({
               hotelId,
               roomNumber: roomNum,
               type: config.type,
@@ -149,12 +154,11 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
               floor: '1',
               price: config.price,
               startDate: globalRoomStartDate,
-              endDate: formattedEndDate,
-              updatedAt: new Date().toISOString()
-            }));
+              endDate: formattedEndDate
+            });
           }
         }
-        await Promise.all(roomPromises);
+        await api.bulkSaveRooms(roomsToCreate);
       }
 
       showToast(editingHotel.id ? 'تم تحديث الفندق بنجاح' : 'تم إضافة الفندق والغرف بنجاح');
@@ -164,8 +168,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
       setGlobalRoomStartDate(format(new Date(), 'yyyy-MM-dd'));
       setGlobalRoomNights(30);
       loadData();
-    } catch (error) {
-      showToast('خطأ في حفظ البيانات', 'error');
+    } catch (error: any) {
+      console.error('Error saving hotel:', error);
+      const detail = error.message ? (error.message.startsWith('{') ? JSON.parse(error.message).error : error.message) : '';
+      showToast(`خطأ في حفظ البيانات: ${detail}`, 'error');
     }
   };
 
@@ -176,14 +182,25 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
       setDeleteConfirm(null);
       setSelectedHotelId('all');
       loadData();
-    } catch (error) {
-      showToast('خطأ في حذف الفندق', 'error');
+    } catch (error: any) {
+      showToast(`خطأ في حذف الفندق: ${error.message || ''}`, 'error');
     }
   };
 
   const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRoom) return;
+
+    if (!editingRoom.hotelId) {
+      showToast('يرجى اختيار الفندق أولاً', 'warning');
+      return;
+    }
+
+    if (!editingRoom.roomNumber) {
+      showToast('يرجى إدخال رقم الغرفة', 'warning');
+      return;
+    }
+
     try {
       if (editingRoom.id) {
         // Update single room
@@ -193,16 +210,15 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
         // Add single or multiple rooms
         if (roomBatchCount > 1) {
           const startNum = parseInt(editingRoom.roomNumber || '0');
-          const promises = [];
+          const roomsToSave = [];
           for (let i = 0; i < roomBatchCount; i++) {
             const roomNum = isNaN(startNum) ? `${editingRoom.roomNumber}_${i + 1}` : (startNum + i).toString();
-            promises.push(api.saveRoom({ 
+            roomsToSave.push({ 
               ...editingRoom, 
-              roomNumber: roomNum,
-              updatedAt: new Date().toISOString() 
-            }));
+              roomNumber: roomNum
+            });
           }
-          await Promise.all(promises);
+          await api.bulkSaveRooms(roomsToSave);
           showToast(`تم إضافة ${roomBatchCount} غرفة بنجاح`);
         } else {
           await api.saveRoom({ ...editingRoom, updatedAt: new Date().toISOString() });
@@ -213,8 +229,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
       setEditingRoom(null);
       setRoomBatchCount(1);
       loadData();
-    } catch (error) {
-      showToast('خطأ في حفظ بيانات الغرفة', 'error');
+    } catch (error: any) {
+      console.error('Error saving room:', error);
+      const detail = error.message ? (error.message.startsWith('{') ? JSON.parse(error.message).error : error.message) : '';
+      showToast(`خطأ في حفظ بيانات الغرفة: ${detail}`, 'error');
     }
   };
 

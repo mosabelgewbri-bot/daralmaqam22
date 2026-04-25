@@ -56,13 +56,11 @@ function isQuotaError(error: any): boolean {
          msg.includes('exhausted') || 
          msg.includes('limit exceeded') || 
          msg.includes('offline') || 
-         msg.includes('failed-precondition') ||
-         msg.includes('precondition required') ||
-         msg.includes('unavailable') ||
-         msg.includes('could not reach') ||
-         msg.includes('connection terminated') ||
-         msg.includes('terminated by server') ||
-         msg.includes('network error') ||
+         msg.includes('unavailable') || 
+         msg.includes('could not reach') || 
+         msg.includes('connection terminated') || 
+         msg.includes('terminated by server') || 
+         msg.includes('network error') || 
          msg.includes('internal error');
 }
 
@@ -111,6 +109,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 // Test connection on boot
 let quotaExceeded = false;
+let lastError: string | null = null;
 
 async function testConnection(retries = 3) {
   try {
@@ -118,14 +117,17 @@ async function testConnection(retries = 3) {
     await getDocFromServer(doc(db, 'test', 'connection'));
     console.log("Firestore connection test successful");
     quotaExceeded = false;
+    lastError = null;
   } catch (error: any) {
     const errorMsg = error.message || String(error);
     console.warn("Connection test failed:", errorMsg);
+    lastError = errorMsg;
 
     // If it's just a 404 (document not found), that's actually a successful connection!
     if (errorMsg.includes('not-found') || error.code === 'not-found') {
       console.log("Firestore connected (path not found but server reached)");
       quotaExceeded = false;
+      lastError = null;
       return;
     }
 
@@ -142,12 +144,55 @@ async function testConnection(retries = 3) {
 }
 testConnection();
 
+// Recursive helper to remove undefined values from objects/arrays
+function cleanUndefined(obj: any): any {
+  if (obj === undefined) return undefined;
+  if (obj === null) return null;
+  if (Array.isArray(obj)) {
+    return obj.map(v => cleanUndefined(v)).filter(v => v !== undefined);
+  }
+  if (typeof obj === 'object' && !(obj instanceof Date) && !(obj?.constructor?.name === 'FieldValue')) {
+    const entries = Object.entries(obj)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [k, cleanUndefined(v)]);
+    return Object.fromEntries(entries);
+  }
+  return obj;
+}
+
+// Helper to convert Firestore Timestamps to ISO strings
+function mapDocData<T>(doc: any): T {
+  const data = doc.data();
+  const id = doc.id;
+  
+  const processValue = (val: any): any => {
+    if (val && typeof val === 'object') {
+      if (typeof val.toDate === 'function') {
+        return val.toDate().toISOString();
+      }
+      if (Array.isArray(val)) {
+        return val.map(processValue);
+      }
+      const mapped: any = {};
+      for (const [k, v] of Object.entries(val)) {
+        mapped[k] = processValue(v);
+      }
+      return mapped;
+    }
+    return val;
+  };
+
+  return { id, ...processValue(data) } as T;
+}
+
 export const api = {
   resetQuota: () => {
     quotaExceeded = false;
+    lastError = null;
     testConnection();
   },
   isQuotaExceeded: () => quotaExceeded,
+  getLastError: () => lastError,
   
   async withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
     try {
@@ -172,8 +217,6 @@ export const api = {
         const cachedUsers = localStorage.getItem('cached_users');
         if (cachedUsers) {
           const users = JSON.parse(cachedUsers) as User[];
-          // Note: This is insecure but allows login during quota exceeded if user was cached
-          // In a real app, we'd need a better way, but for this demo/prototype it's a fallback
           const user = users.find(u => u.username === username && (u as any).password === password);
           if (user) return { user };
         }
@@ -188,10 +231,28 @@ export const api = {
       
       const userDoc = querySnapshot.docs[0];
       const userData = userDoc.data() as any;
+      const uid = auth.currentUser?.uid;
+
+      // CRITICAL: Link this user record to the current Firebase UID if not linked
+      // This allows Firestore Rules to correctly identify the user's role
+      if (uid && userDoc.id !== uid) {
+        console.log('Linking user record to Firebase UID:', uid);
+        const newUserRef = doc(db, path, uid);
+        const newUserSnap = await getDoc(newUserRef);
+        
+        // Sync or Create linked record
+        if (!newUserSnap.exists() || newUserSnap.data()?.role !== userData.role) {
+          await setDoc(newUserRef, { 
+            ...userData, 
+            linkedFrom: userDoc.id,
+            updatedAt: serverTimestamp() 
+          }, { merge: true });
+        }
+      }
       
       return { 
         user: { 
-          id: userDoc.id, 
+          id: uid || userDoc.id, 
           ...userData,
           createdAt: userData.createdAt?.toDate?.()?.toISOString() || userData.createdAt,
           updatedAt: userData.updatedAt?.toDate?.()?.toISOString() || userData.updatedAt
@@ -218,7 +279,7 @@ export const api = {
     
     const now = Date.now();
     // Don't retry auth too frequently if it's failing
-    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 30000) {
+    if (this.lastAuthAttempt > 0 && now - this.lastAuthAttempt < 10000) {
       return;
     }
 
@@ -229,13 +290,9 @@ export const api = {
     this.authPromise = (async () => {
       this.lastAuthAttempt = Date.now();
       try {
-        // Only attempt anonymous auth if we are not already in a login flow
-        // and if it hasn't explicitly failed before with admin-restricted-operation
-        const authDisabled = localStorage.getItem('fb_auth_disabled') === 'true';
-        if (!authDisabled) {
-          await signInAnonymously(auth);
-          console.log('Anonymous authentication successful');
-        }
+        await signInAnonymously(auth);
+        console.log('Anonymous authentication successful');
+        localStorage.removeItem('fb_auth_disabled');
       } catch (error: any) {
         if (error.code === 'auth/admin-restricted-operation') {
           console.warn('Anonymous auth is disabled in Firebase Console.');
@@ -264,13 +321,18 @@ export const api = {
       let userData: User;
       if (userSnap.exists()) {
         userData = { id: userSnap.id, ...userSnap.data() } as User;
+        // Ensure role is admin if it's the super admin
+        if (firebaseUser.email?.toLowerCase() === 'mosabelgewbri@gmail.com' && userData.role !== 'admin') {
+          await updateDoc(userRef, { role: 'admin' });
+          userData.role = 'admin';
+        }
       } else {
         // Create a basic user record for the first-time Google login
         userData = {
           id: firebaseUser.uid,
           username: firebaseUser.email?.split('@')[0] || 'user',
           name: firebaseUser.displayName || 'مستخدم جديد',
-          role: 'admin', // Default to admin for the first user or based on your logic
+          role: firebaseUser.email?.toLowerCase() === 'mosabelgewbri@gmail.com' ? 'admin' : 'staff',
           status: 'active',
           email: firebaseUser.email || ''
         };
@@ -914,7 +976,8 @@ export const api = {
           return { name: col, size: snap.size };
         } catch (e: any) {
           // Fallback to cache if quota exceeded
-          if (e.message?.includes('Quota exceeded')) {
+          const errorMsg = e.message || String(e);
+          if (errorMsg.includes('Quota exceeded')) {
             try {
               const cacheSnap = await getDocsFromCache(collection(db, col));
               return { name: col, size: cacheSnap.size, cached: true };
@@ -922,6 +985,12 @@ export const api = {
               return { name: col, size: 0, error: true };
             }
           }
+          
+          // Handle permission denied gracefully
+          if (errorMsg.includes('permissions') || errorMsg.includes('permission-denied')) {
+            return { name: col, size: 0, restricted: true };
+          }
+
           throw e;
         }
       }));
@@ -929,6 +998,7 @@ export const api = {
       results.forEach(res => {
         stats[res.name] = res.size;
         if (res.cached) stats.health = 'Limited (Quota Exceeded - Using Cache)';
+        if (res.restricted) stats[res.name] = 'Restricted';
       });
 
       const totalDocs = results.reduce((acc, res) => acc + res.size, 0);
@@ -1397,17 +1467,7 @@ export const api = {
 
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
-      const customers = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          name: String(data.name || 'عميل غير معروف'),
-          phone: String(data.phone || ''),
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          lastBookingDate: data.lastBookingDate?.toDate?.()?.toISOString() || data.lastBookingDate
-        } as unknown as Customer;
-      });
+      const customers = querySnapshot.docs.map(doc => mapDocData<Customer>(doc));
 
       try {
         localStorage.setItem('cached_customers', JSON.stringify(customers));
@@ -1441,12 +1501,9 @@ export const api = {
   },
   async saveCustomer(customer: Partial<Customer>): Promise<void> {
     const path = 'customers';
-    const { id, ...data } = customer;
+    const { id, createdAt, updatedAt, ...data } = customer;
     
-    // Remove undefined fields to avoid Firestore errors
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
-    );
+    const cleanData = cleanUndefined(data);
 
     try {
       await this.ensureAuth();
@@ -1493,7 +1550,7 @@ export const api = {
         chunk.forEach(id => {
           batch.delete(doc(db, path, id));
         });
-        await batch.commit();
+        await this.withRetry(() => batch.commit());
       }
     } catch (error) {
       console.error('Error in bulkDeleteCustomers:', error);
@@ -1524,23 +1581,21 @@ export const api = {
         const batch = writeBatch(db);
         
         chunk.forEach(customer => {
-          const { id, ...data } = customer;
+          const { id, createdAt, updatedAt, ...data } = customer;
           if (!data.phone) return; // Skip if no phone
 
-          const cleanData = Object.fromEntries(
-            Object.entries(data).filter(([_, v]) => v !== undefined)
-          );
+          const cleanData = cleanUndefined(data);
 
           const existingId = existingCustomersMap.get(data.phone);
           if (existingId) {
             batch.update(doc(db, path, existingId), { ...cleanData, updatedAt: serverTimestamp() });
           } else {
             const newDocRef = doc(collection(db, path));
-            batch.set(newDocRef, { ...cleanData, createdAt: serverTimestamp() });
+            batch.set(newDocRef, { ...cleanData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
           }
         });
 
-        await batch.commit();
+        await this.withRetry(() => batch.commit());
       }
     } catch (error) {
       console.error('Error in bulkSaveCustomers:', error);
@@ -1662,9 +1717,15 @@ export const api = {
     try {
       if (quotaExceeded) return [];
       await this.ensureAuth();
-      const q = query(collection(db, path), orderBy('createdAt', 'desc'));
-      const querySnapshot = await this.withRetry(() => getDocs(q));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Hotel));
+      let q = query(collection(db, path), orderBy('createdAt', 'desc'));
+      let querySnapshot = await this.withRetry(() => getDocs(q));
+      
+      if (querySnapshot.empty) {
+        q = query(collection(db, path));
+        querySnapshot = await this.withRetry(() => getDocs(q));
+      }
+      
+      return querySnapshot.docs.map(doc => mapDocData<Hotel>(doc));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1675,11 +1736,18 @@ export const api = {
     try {
       await this.ensureAuth();
       const { id, ...data } = hotel;
+      
+      const cleanData = cleanUndefined(data);
+
       if (id) {
-        await updateDoc(doc(db, path, id), { ...data, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
         return id;
       } else {
-        const docRef = await addDoc(collection(db, path), { ...data, createdAt: serverTimestamp() });
+        const docRef = await addDoc(collection(db, path), { 
+          ...cleanData, 
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp() 
+        });
         return docRef.id;
       }
     } catch (error) {
@@ -1706,10 +1774,11 @@ export const api = {
       if (hotelId) {
         q = query(collection(db, path), where('hotelId', '==', hotelId));
       } else {
-        q = query(collection(db, path), orderBy('updatedAt', 'desc'));
+        // Fallback to no order if results are empty, to handle docs without updatedAt
+        q = query(collection(db, path));
       }
       const querySnapshot = await this.withRetry(() => getDocs(q));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as HotelRoom));
+      return querySnapshot.docs.map(doc => mapDocData<HotelRoom>(doc));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1719,14 +1788,57 @@ export const api = {
     const path = 'hotelRooms';
     try {
       await this.ensureAuth();
-      const { id, ...data } = room;
-      if (id) {
-        await updateDoc(doc(db, path, id), { ...data, updatedAt: serverTimestamp() });
-      } else {
-        await addDoc(collection(db, path), { ...data, updatedAt: serverTimestamp() });
+      const { id, updatedAt, ...data } = room;
+      
+      const cleanData = cleanUndefined(data);
+
+      await this.withRetry(async () => {
+        if (id) {
+          await updateDoc(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await addDoc(collection(db, path), { 
+            ...cleanData, 
+            updatedAt: serverTimestamp(),
+            createdAt: serverTimestamp()
+          });
+        }
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+      throw error;
+    }
+  },
+  async bulkSaveRooms(rooms: Partial<HotelRoom>[]): Promise<void> {
+    const path = 'hotelRooms';
+    try {
+      await this.ensureAuth();
+      const chunkSize = 400; // Batch max is 500
+      for (let i = 0; i < rooms.length; i += chunkSize) {
+        const chunk = rooms.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(room => {
+          const { id, ...data } = room;
+          const cleanData = cleanUndefined(data);
+          
+          if (id) {
+            const docRef = doc(db, path, id);
+            batch.update(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+          } else {
+            const docRef = doc(collection(db, path));
+            batch.set(docRef, { 
+              ...cleanData, 
+              createdAt: serverTimestamp(), 
+              updatedAt: serverTimestamp() 
+            });
+          }
+        });
+        
+        await batch.commit();
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
+      throw error;
     }
   },
   async deleteRoom(id: string): Promise<void> {
@@ -1761,17 +1873,17 @@ export const api = {
     const path = 'umrah_pricing';
     try {
       await this.ensureAuth();
-      const q = query(collection(db, path), orderBy('createdAt', 'desc'));
-      const querySnapshot = await this.withRetry(() => getDocs(q));
-      return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-        } as unknown as UmrahPricing;
-      });
+      // Try with orderBy first
+      let q = query(collection(db, path), orderBy('createdAt', 'desc'));
+      let querySnapshot = await this.withRetry(() => getDocs(q));
+      
+      // If no results, try without orderBy (in case some docs lack createdAt)
+      if (querySnapshot.empty) {
+        q = query(collection(db, path));
+        querySnapshot = await this.withRetry(() => getDocs(q));
+      }
+      
+      return querySnapshot.docs.map(doc => mapDocData<UmrahPricing>(doc));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1779,18 +1891,22 @@ export const api = {
   },
   async saveUmrahPricing(pricing: UmrahPricing): Promise<void> {
     const path = 'umrah_pricing';
-    const { id, ...data } = pricing;
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
-    );
+    const { id, createdAt, updatedAt, ...data } = pricing;
+    const cleanData = cleanUndefined(data);
     try {
       await this.ensureAuth();
-      if (id && id !== 'new') {
-        const docRef = doc(db, path, id);
-        await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
-      } else {
-        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
-      }
+      await this.withRetry(async () => {
+        if (id && id !== 'new') {
+          const docRef = doc(db, path, id);
+          await setDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() }, { merge: true });
+        } else {
+          await addDoc(collection(db, path), { 
+            ...cleanData, 
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
     }
@@ -1799,7 +1915,7 @@ export const api = {
     const path = 'umrah_pricing';
     try {
       await this.ensureAuth();
-      await deleteDoc(doc(db, path, id));
+      await this.withRetry(() => deleteDoc(doc(db, path, id)));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
