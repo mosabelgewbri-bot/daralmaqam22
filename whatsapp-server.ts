@@ -100,7 +100,7 @@ class WhatsAppManager {
           this.isConnecting = false;
           const error = (lastDisconnect?.error as Boom);
           const statusCode = error?.output?.statusCode;
-          const errorMessage = error?.stack || error?.message || String(error || '');
+          const errorMessage = error?.stack || error?.message || (error as any)?.output?.payload?.message || String(error || '');
           
           const isQRTimeout = errorMessage.includes('QR refs attempts ended') || 
                              errorMessage.includes('timed out') ||
@@ -113,7 +113,8 @@ class WhatsAppManager {
                                    errorMessage.includes('restart required');
 
           const isServerTerminated = statusCode === DisconnectReason.connectionLost || 
-                                    errorMessage.includes('Connection Terminated by Server');
+                                    errorMessage.includes('Connection Terminated by Server') ||
+                                    errorMessage.includes('Stream Errored');
 
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !isQRTimeout && !isConflict;
           
@@ -155,10 +156,11 @@ class WhatsAppManager {
               setTimeout(() => this.connectToWhatsApp(), 30000);
             }
           } else if (isRestartRequired || isServerTerminated) {
-            console.log(`WhatsAppManager: ${isRestartRequired ? 'Restart required' : 'Server terminated connection'}. Reconnecting in 2s...`);
-            setTimeout(() => this.connectToWhatsApp(), 2000);
+            console.log(`WhatsAppManager: ${isRestartRequired ? 'Restart required' : 'Server terminated connection'}. Reconnecting in 5s...`);
+            setTimeout(() => this.connectToWhatsApp(), 5000);
           } else if (shouldReconnect) {
             const delay = 5000;
+            console.log(`WhatsAppManager: Unexpected disconnect, reconnecting in ${delay}ms...`);
             setTimeout(() => this.connectToWhatsApp(), delay);
           } else if (statusCode === DisconnectReason.loggedOut || statusCode === DisconnectReason.badSession) {
             console.log('WhatsAppManager: Logged out or bad session. Clearing auth...');

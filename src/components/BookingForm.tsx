@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Pilgrim } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap } from 'lucide-react';
+import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap, Hotel } from 'lucide-react';
 import Logo from './Logo';
 import PassportScanner from './PassportScanner';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -52,7 +52,7 @@ export default function BookingForm({ user }: { user: User }) {
   const [madinahNights, setMadinahNights] = useState(0);
   const [manualTicketPrice, setManualTicketPrice] = useState<number>(0);
   const [globalServiceType, setGlobalServiceType] = useState<Pilgrim['serviceType']>('Full');
-  const isVisaOnly = globalServiceType === 'VisaOnly';
+  const isVisaOnly = globalServiceType === 'VisaOnly' || globalServiceType === 'TicketAndVisa';
   const hasAccommodation = globalServiceType === 'Full' || globalServiceType === 'AccommodationOnly' || globalServiceType === 'TicketAndAccommodation' || globalServiceType === 'AccommodationAndVisa';
   
   // Head of Family State
@@ -134,7 +134,7 @@ export default function BookingForm({ user }: { user: User }) {
       let current = [...prev];
       
       const getRoomTypeForType = (type: Pilgrim['serviceType']) => {
-        if (type === 'VisaOnly') return 'VisaOnly';
+        if (type === 'VisaOnly' || type === 'TicketAndVisa') return 'VisaOnly';
         if (type === 'TicketOnly') return 'None';
         return 'Double';
       };
@@ -156,7 +156,7 @@ export default function BookingForm({ user }: { user: User }) {
       current = current.map(p => ({ 
         ...p, 
         serviceType: globalServiceType,
-        roomType: (p.roomType === 'VisaOnly' || p.roomType === 'None' || globalServiceType === 'VisaOnly' || globalServiceType === 'TicketOnly') 
+        roomType: (p.roomType === 'VisaOnly' || p.roomType === 'None' || globalServiceType === 'VisaOnly' || globalServiceType === 'TicketOnly' || globalServiceType === 'TicketAndVisa') 
           ? getRoomTypeForType(globalServiceType) 
           : p.roomType 
       }));
@@ -966,70 +966,78 @@ export default function BookingForm({ user }: { user: User }) {
             )}
           </div>
 
-          <div className={clsx("glass-card p-6 space-y-4 md:col-span-3 transition-all duration-500", !hasAccommodation && "opacity-50 pointer-events-none grayscale")}>
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-gold">تفاصيل الإقامة والفندق</h3>
-              {!hasAccommodation && <span className="text-[10px] bg-gold/20 text-gold px-2 py-1 rounded-full font-bold">غير مطلوب حسب نوع الحجز</span>}
+          {hasAccommodation ? (
+            <div className="glass-card p-6 space-y-4 md:col-span-3 transition-all duration-500">
+              <div className="flex justify-between items-center">
+                <h3 className="font-semibold text-gold">تفاصيل الإقامة والفندق</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1 text-right">
+                  <label className="text-[10px] text-white/40 uppercase">فندق مكة</label>
+                  <input 
+                    ref={(el) => { if (el) fieldRefs.current['makkahHotel'] = el; }}
+                    type="text" 
+                    className={clsx("input-field w-full py-1.5 text-sm", errors.makkahHotel && "border-red-500 bg-red-500/10")}
+                    placeholder="اسم الفندق"
+                    value={makkahHotel}
+                    onChange={(e) => {
+                      setMakkahHotel(e.target.value);
+                      setErrors(prev => ({ ...prev, makkahHotel: false }));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1 text-right">
+                  <label className="text-[10px] text-white/40 uppercase">ليالي مكة</label>
+                  <input 
+                    ref={(el) => { if (el) fieldRefs.current['makkahNights'] = el; }}
+                    type="number" 
+                    className={clsx("input-field w-full py-1.5 text-sm", errors.makkahNights && "border-red-500 bg-red-500/10")}
+                    placeholder="0"
+                    value={makkahNights === 0 ? '' : makkahNights}
+                    onChange={(e) => {
+                      setMakkahNights(parseInt(e.target.value) || 0);
+                      setErrors(prev => ({ ...prev, makkahNights: false }));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1 text-right">
+                  <label className="text-[10px] text-white/40 uppercase">فندق المدينة</label>
+                  <input 
+                    ref={(el) => { if (el) fieldRefs.current['madinahHotel'] = el; }}
+                    type="text" 
+                    className={clsx("input-field w-full py-1.5 text-sm", errors.madinahHotel && "border-red-500 bg-red-500/10")}
+                    placeholder="اسم الفندق"
+                    value={madinahHotel}
+                    onChange={(e) => {
+                      setMadinahHotel(e.target.value);
+                      setErrors(prev => ({ ...prev, madinahHotel: false }));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1 text-right">
+                  <label className="text-[10px] text-white/40 uppercase">ليالي المدينة</label>
+                  <input 
+                    ref={(el) => { if (el) fieldRefs.current['madinahNights'] = el; }}
+                    type="number" 
+                    className={clsx("input-field w-full py-1.5 text-sm", errors.madinahNights && "border-red-500 bg-red-500/10")}
+                    placeholder="0"
+                    value={madinahNights === 0 ? '' : madinahNights}
+                    onChange={(e) => {
+                      setMadinahNights(parseInt(e.target.value) || 0);
+                      setErrors(prev => ({ ...prev, madinahNights: false }));
+                    }}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-1 text-right">
-                <label className="text-[10px] text-white/40 uppercase">فندق مكة</label>
-                <input 
-                  ref={(el) => { if (el) fieldRefs.current['makkahHotel'] = el; }}
-                  type="text" 
-                  className={clsx("input-field w-full py-1.5 text-sm", errors.makkahHotel && "border-red-500 bg-red-500/10")}
-                  placeholder="اسم الفندق"
-                  value={makkahHotel}
-                  onChange={(e) => {
-                    setMakkahHotel(e.target.value);
-                    setErrors(prev => ({ ...prev, makkahHotel: false }));
-                  }}
-                />
-              </div>
-              <div className="space-y-1 text-right">
-                <label className="text-[10px] text-white/40 uppercase">ليالي مكة</label>
-                <input 
-                  ref={(el) => { if (el) fieldRefs.current['makkahNights'] = el; }}
-                  type="number" 
-                  className={clsx("input-field w-full py-1.5 text-sm", errors.makkahNights && "border-red-500 bg-red-500/10")}
-                  placeholder="0"
-                  value={makkahNights === 0 ? '' : makkahNights}
-                  onChange={(e) => {
-                    setMakkahNights(parseInt(e.target.value) || 0);
-                    setErrors(prev => ({ ...prev, makkahNights: false }));
-                  }}
-                />
-              </div>
-              <div className="space-y-1 text-right">
-                <label className="text-[10px] text-white/40 uppercase">فندق المدينة</label>
-                <input 
-                  ref={(el) => { if (el) fieldRefs.current['madinahHotel'] = el; }}
-                  type="text" 
-                  className={clsx("input-field w-full py-1.5 text-sm", errors.madinahHotel && "border-red-500 bg-red-500/10")}
-                  placeholder="اسم الفندق"
-                  value={madinahHotel}
-                  onChange={(e) => {
-                    setMadinahHotel(e.target.value);
-                    setErrors(prev => ({ ...prev, madinahHotel: false }));
-                  }}
-                />
-              </div>
-              <div className="space-y-1 text-right">
-                <label className="text-[10px] text-white/40 uppercase">ليالي المدينة</label>
-                <input 
-                  ref={(el) => { if (el) fieldRefs.current['madinahNights'] = el; }}
-                  type="number" 
-                  className={clsx("input-field w-full py-1.5 text-sm", errors.madinahNights && "border-red-500 bg-red-500/10")}
-                  placeholder="0"
-                  value={madinahNights === 0 ? '' : madinahNights}
-                  onChange={(e) => {
-                    setMadinahNights(parseInt(e.target.value) || 0);
-                    setErrors(prev => ({ ...prev, madinahNights: false }));
-                  }}
-                />
+          ) : (
+            <div className="md:col-span-3 flex items-center justify-center border-2 border-dashed border-white/5 rounded-2xl p-6 bg-white/[0.02]">
+              <div className="text-center space-y-2">
+                <Hotel className="w-8 h-8 text-white/10 mx-auto" />
+                <p className="text-white/20 text-sm font-bold uppercase tracking-widest">السكن غير مطلوب لهذا النوع من الحجز</p>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="glass-card p-6 space-y-4">

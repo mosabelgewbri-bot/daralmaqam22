@@ -6,9 +6,16 @@ import multer from "multer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // WhatsApp lazy-loading
-let whatsappManager: any;
+import { whatsappManager } from "./whatsapp-server.js";
 
-console.log("server.ts module loading...");
+// Global process error handlers to prevent crashes and provide better logs
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
 if (process.env.GEMINI_API_KEY) {
   console.log(`GEMINI_API_KEY is present (length: ${process.env.GEMINI_API_KEY.length})`);
 } else {
@@ -1085,19 +1092,17 @@ app.post("/api/whatsapp/proxy", async (req, res) => {
   }
 });
 
-// Global error handler for Express
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("Unhandled Express Error:", err);
-  res.status(500).json({ 
-    error: "Internal Server Error", 
-    message: err.message,
-    path: req.path
-  });
-});
-
 // WhatsApp API Endpoints
 app.get("/api/whatsapp/status", (req, res) => {
-  res.json(whatsappManager.getStatus());
+  try {
+    if (!whatsappManager) {
+      return res.status(503).json({ error: "WhatsApp manager not initialized" });
+    }
+    res.json(whatsappManager.getStatus());
+  } catch (e: any) {
+    console.error("Error in /api/whatsapp/status:", e);
+    res.status(500).json({ error: e.message || "Unknown error" });
+  }
 });
 
 app.post("/api/whatsapp/verify", async (req, res) => {
@@ -1134,6 +1139,17 @@ app.post("/api/whatsapp/logout", async (req, res) => {
   }
 });
 
+// Global error handler for Express 
+// (Moved here to catch errors from routes above)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Unhandled Express Error:", err);
+  res.status(500).json({ 
+    error: "Internal Server Error", 
+    message: err.message,
+    path: req.path
+  });
+});
+
 async function startServer() {
   const PORT = 3000;
 
@@ -1142,6 +1158,14 @@ async function startServer() {
     await initializeDatabase();
   } catch (err) {
     console.error("Database initialization failed during boot:", err);
+  }
+
+  // Initialize WhatsApp
+  try {
+    await whatsappManager.init();
+    console.log("whatsappManager initialized");
+  } catch (err) {
+    console.error("WhatsApp initialization failed:", err);
   }
 
   // Handle static files in production or on Vercel
