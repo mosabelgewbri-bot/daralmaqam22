@@ -33,7 +33,11 @@ import {
   Megaphone,
   CreditCard,
   ScrollText,
-  DollarSign
+  DollarSign,
+  Bus,
+  Plane,
+  Ticket,
+  Calculator
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
@@ -147,18 +151,21 @@ const ConfirmModal = ({
 
 const PERMISSIONS_LIST = [
   { id: 'dashboard', label: 'لوحة التحكم', icon: Layout },
-  { id: 'booking', label: 'الحجوزات', icon: Edit2 },
-  { id: 'inventory', label: 'المخزون والفنادق', icon: Hotel },
-  { id: 'rooming', label: 'تسكين الفنادق', icon: Calendar },
-  { id: 'finance', label: 'المالية', icon: DollarSign },
-  { id: 'analytics', label: 'تحليلات مالية', icon: TrendingUp },
-  { id: 'profit-loss', label: 'الأرباح والخسائر', icon: Activity },
+  { id: 'booking', label: 'حجز جديد', icon: Edit2 },
+  { id: 'trips', label: 'إدارة الرحلات', icon: Plane },
+  { id: 'arrival-notice', label: 'إشعار الوصول', icon: Bus },
   { id: 'visa', label: 'وحدة التأشيرات', icon: Shield },
-  { id: 'reports', label: 'التقارير', icon: Eye },
-  { id: 'offers', label: 'العروض الخارجية', icon: Gift },
-  { id: 'marketing', label: 'التسويق', icon: Megaphone },
-  { id: 'trips', label: 'إدارة الرحلات', icon: SettingsIcon },
+  { id: 'rooming', label: 'تسكين الفنادق', icon: Calendar },
+  { id: 'inventory', label: 'مخزون الغرف', icon: Hotel },
+  { id: 'finance', label: 'المالية', icon: DollarSign },
+  { id: 'analytics', label: 'التحليلات', icon: TrendingUp },
+  { id: 'profit-loss', label: 'الأرباح والخسائر', icon: Activity },
+  { id: 'reports', label: 'التقرير الشامل', icon: Eye },
+  { id: 'offers', label: 'عروض العمرة', icon: Gift },
+  { id: 'umrah-pricing', label: 'حاسبة التسعير', icon: Calculator },
+  { id: 'marketing', label: 'التسويق والعملاء', icon: Megaphone },
   { id: 'cards', label: 'بطاقات المعتمرين', icon: CreditCard },
+  { id: 'tickets', label: 'التذاكر والبيانات', icon: Ticket },
   { id: 'users', label: 'المستخدمين', icon: UserPlus },
   { id: 'logs', label: 'سجل العمليات', icon: ScrollText },
   { id: 'settings', label: 'الإعدادات', icon: SettingsIcon },
@@ -177,6 +184,7 @@ const ACTION_PERMISSIONS = [
   { id: 'canManageFinance', label: 'إدارة المالية' },
   { id: 'canChangeVisaStatus', label: 'تغيير حالة التأشيرة' },
   { id: 'canManageRooms', label: 'إدارة الغرف' },
+  { id: 'canViewLogs', label: 'عرض سجل العمليات' },
 ];
 
 export default function UsersManagement({ user: currentUser }: { user: User }) {
@@ -186,6 +194,8 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
   const [activeTab, setActiveTab] = useState<'users' | 'permissions'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<User> & { password?: string }>({});
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -237,6 +247,35 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
     };
     loadData();
   }, []);
+
+  const handleUpdateUserDetails = async () => {
+    if (!selectedUser || !editFormData) return;
+    try {
+      await api.saveUser({ ...editFormData, id: selectedUser.id });
+      
+      // Audit Log
+      await api.logAction(
+        currentUser.id,
+        currentUser.name,
+        'تعديل مستخدم',
+        `تم تعديل بيانات المستخدم: ${selectedUser.name} (@${selectedUser.username})`
+      );
+
+      showToast('تم تحديث بيانات المستخدم بنجاح', 'success');
+      setIsEditing(false);
+      
+      // Refresh user list
+      const updatedUsers = await api.getUsers();
+      setUsers(updatedUsers);
+      const updatedSelected = updatedUsers.find(u => u.id === selectedUser.id);
+      if (updatedSelected) {
+        setSelectedUser(updatedSelected);
+      }
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      showToast(error.message || 'حدث خطأ أثناء تحديث البيانات', 'error');
+    }
+  };
 
   const handleUpdatePermission = async (role: Role, field: keyof RolePermissions, value: any) => {
     const rp = rolePermissions.find(p => p.role === role);
@@ -551,7 +590,7 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                       <motion.div 
                         key={user.id}
                         layout
-                        onClick={() => setSelectedUser(user)}
+                        onClick={() => { setSelectedUser(user); setIsEditing(false); }}
                         className={clsx(
                           "grid gap-4 p-6 items-center hover:bg-white/[0.05] transition-colors cursor-pointer group",
                           selectedUser ? "grid-cols-2" : "grid-cols-6",
@@ -744,78 +783,181 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                 </div>
                 
                 <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
-                  <div className="flex flex-col items-center text-center space-y-4">
-                    <div className="w-24 h-24 rounded-3xl bg-gold/20 flex items-center justify-center text-gold text-4xl font-bold border-2 border-gold/30">
-                      {selectedUser.name?.charAt(0) || '?'}
-                    </div>
-                    <div>
-                      <h4 className="text-2xl font-bold text-white">{selectedUser.name}</h4>
-                      <p className="text-gold font-mono text-sm">@{selectedUser.username}</p>
-                    </div>
-                    <div className={clsx(
-                      "px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border",
-                      selectedUser.status === 'active' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"
-                    )}>
-                      {selectedUser.status}
-                    </div>
-                  </div>
+                  {isEditing ? (
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-xs text-white/40 uppercase tracking-widest">الاسم الكامل</label>
+                        <input 
+                          type="text"
+                          className="input-field w-full"
+                          value={editFormData.name || ''}
+                          onChange={e => setEditFormData({...editFormData, name: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs text-white/40 uppercase tracking-widest">اسم المستخدم</label>
+                        <input 
+                          type="text"
+                          className="input-field w-full"
+                          value={editFormData.username || ''}
+                          onChange={e => setEditFormData({...editFormData, username: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs text-white/40 uppercase tracking-widest">البريد الإلكتروني</label>
+                        <input 
+                          type="email"
+                          className="input-field w-full"
+                          value={editFormData.email || ''}
+                          onChange={e => setEditFormData({...editFormData, email: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs text-white/40 uppercase tracking-widest">كلمة المرور الجديدة</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            className="input-field w-full"
+                            placeholder="اتركها فارغة إذا لم ترد التغيير"
+                            value={editFormData.password || ''}
+                            onChange={e => setEditFormData({...editFormData, password: e.target.value})}
+                          />
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-xs text-white/40 uppercase tracking-widest">الدور</label>
+                          <select 
+                            className="input-field w-full"
+                            value={editFormData.role || 'staff'}
+                            onChange={e => setEditFormData({...editFormData, role: e.target.value as Role})}
+                          >
+                            <option value="staff">موظف</option>
+                            <option value="accountant">محاسب</option>
+                            <option value="admin">مدير</option>
+                            <option value="manager">مدير فرع</option>
+                            <option value="visa_specialist">مسؤول تأشيرات</option>
+                            <option value="receptionist">موظف استقبال</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs text-white/40 uppercase tracking-widest">الحالة</label>
+                          <select 
+                            className="input-field w-full"
+                            value={editFormData.status || 'active'}
+                            onChange={e => setEditFormData({...editFormData, status: e.target.value as 'active' | 'inactive'})}
+                          >
+                            <option value="active">نشط</option>
+                            <option value="inactive">غير نشط</option>
+                          </select>
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                      <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Role</p>
-                      <p className="font-bold text-white capitalize">{selectedUser.role}</p>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                      <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Last Login</p>
-                      <p className="font-bold text-white">{selectedUser.lastLogin}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4 text-white/60">
-                      <Mail className="w-5 h-5 text-gold" />
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest">Email Address</p>
-                        <p className="text-sm font-medium">{selectedUser.email}</p>
+                      <div className="pt-8 flex gap-4">
+                        <button 
+                          onClick={handleUpdateUserDetails}
+                          className="flex-1 btn-gold py-3 flex items-center justify-center gap-2"
+                        >
+                          <Check className="w-4 h-4" /> حفظ التعديلات
+                        </button>
+                        <button 
+                          onClick={() => setIsEditing(false)}
+                          className="flex-1 px-6 py-3 rounded-xl bg-white/5 text-white font-bold hover:bg-white/10 transition-all border border-white/10"
+                        >
+                          إلغاء
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-white/60">
-                      <Calendar className="w-5 h-5 text-gold" />
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest">Account Created</p>
-                        <p className="text-sm font-medium">January 12, 2024</p>
+                  ) : (
+                    <>
+                      <div className="flex flex-col items-center text-center space-y-4">
+                        <div className="w-24 h-24 rounded-3xl bg-gold/20 flex items-center justify-center text-gold text-4xl font-bold border-2 border-gold/30">
+                          {selectedUser.name?.charAt(0) || '?'}
+                        </div>
+                        <div>
+                          <h4 className="text-2xl font-bold text-white">{selectedUser.name}</h4>
+                          <p className="text-gold font-mono text-sm">@{selectedUser.username}</p>
+                        </div>
+                        <div className={clsx(
+                          "px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border",
+                          selectedUser.status === 'active' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"
+                        )}>
+                          {selectedUser.status}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-white/60">
-                      <Lock className="w-5 h-5 text-gold" />
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest">Security Level</p>
-                        <p className="text-sm font-medium">{selectedUser.role === 'admin' ? 'Full Access' : 'Restricted Access'}</p>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="pt-8 flex gap-4">
-                    <button className="flex-1 btn-gold py-3 flex items-center justify-center gap-2">
-                      <Edit2 className="w-4 h-4" /> Edit Profile
-                    </button>
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setConfirmModal({
-                          show: true,
-                          title: 'حذف مستخدم',
-                          message: `هل أنت متأكد من حذف المستخدم ${selectedUser.name}؟ لا يمكن التراجع عن هذا الإجراء.`,
-                          type: 'danger',
-                          onConfirm: () => handleDeleteUser(selectedUser.id, e as any)
-                        });
-                      }}
-                      className="px-4 py-3 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-all"
-                      title="Delete User"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                          <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Role</p>
+                          <p className="font-bold text-white capitalize">{selectedUser.role}</p>
+                        </div>
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                          <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Last Login</p>
+                          <p className="font-bold text-white">{selectedUser.lastLogin}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-4 text-white/60">
+                          <Mail className="w-5 h-5 text-gold" />
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest">Email Address</p>
+                            <p className="text-sm font-medium">{selectedUser.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-white/60">
+                          <Calendar className="w-5 h-5 text-gold" />
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest">Account Created</p>
+                            <p className="text-sm font-medium">January 12, 2024</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-white/60">
+                          <Lock className="w-5 h-5 text-gold" />
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest">Security Level</p>
+                            <p className="text-sm font-medium">{selectedUser.role === 'admin' ? 'Full Access' : 'Restricted Access'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-8 flex gap-4">
+                        <button 
+                          onClick={() => {
+                            setIsEditing(true);
+                            setEditFormData({
+                              name: selectedUser.name,
+                              username: selectedUser.username,
+                              email: selectedUser.email,
+                              role: selectedUser.role,
+                              status: selectedUser.status,
+                              password: (selectedUser as any).password || ''
+                            });
+                          }}
+                          className="flex-1 btn-gold py-3 flex items-center justify-center gap-2"
+                        >
+                          <Edit2 className="w-4 h-4" /> Edit Profile
+                        </button>
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setConfirmModal({
+                              show: true,
+                              title: 'حذف مستخدم',
+                              message: `هل أنت متأكد من حذف المستخدم ${selectedUser.name}؟ لا يمكن التراجع عن هذا الإجراء.`,
+                              type: 'danger',
+                              onConfirm: () => handleDeleteUser(selectedUser.id, e as any)
+                            });
+                          }}
+                          className="px-4 py-3 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-all"
+                          title="Delete User"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </motion.div>
             )}
