@@ -34,6 +34,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Menu, AlertTriangle, AlertCircle, RefreshCw } from 'lucide-react';
 import { auth } from './firebase';
 
+import { Toaster, toast } from 'sonner';
+
 import { LanguageProvider } from './contexts/LanguageContext';
 
 interface ErrorBoundaryProps {
@@ -460,6 +462,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <LanguageProvider>
+        <Toaster dir="rtl" position="top-center" expand={true} richColors />
         <ConnectionBanner />
         <Router>
           <AppContent user={user} onLogout={handleLogout} />

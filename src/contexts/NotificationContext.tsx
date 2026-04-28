@@ -1,6 +1,16 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Notification, User, Booking, Pilgrim } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { Notification, User } from '../types';
 import { api } from '../services/api';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import { toast } from 'sonner';
 
 interface NotificationContextType {
   notifications: Notification[];
@@ -17,11 +27,58 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export const NotificationProvider: React.FC<{ children: React.ReactNode; user: User | null }> = ({ children, user }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
+  const lastNotificationId = useRef<string | null>(null);
+
+  // Real-time listener
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
+
+    const path = 'notifications';
+    // Admins see all notifications targeted to them or general ones (where userId is null or their id)
+    // Actually, to follow "Each user his own ONLY", we filter specifically by userId
+    const q = query(
+      collection(db, path),
+      where("userId", "==", user.id),
+      orderBy("createdAt", "desc"),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => {
+        const docData = doc.data();
+        return {
+          id: doc.id,
+          ...docData,
+          createdAt: docData.createdAt?.toDate?.()?.toISOString() || docData.createdAt
+        } as Notification;
+      });
+
+      setNotifications(data);
+
+      // Show toast for new unread notifications
+      const latest = data[0];
+      if (latest && !latest.read && latest.id !== lastNotificationId.current) {
+        lastNotificationId.current = latest.id;
+        toast(latest.title, {
+          description: latest.message,
+          icon: '🔔',
+          duration: 5000,
+        });
+      }
+    }, (error) => {
+      console.error('Error listening to notifications:', error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const refreshNotifications = useCallback(async () => {
     if (!user) return;
     try {
-      const data = await api.getNotifications(user.role === 'admin' ? undefined : user.id);
+      const data = await api.getNotifications(user.id);
       setNotifications(data);
     } catch (error) {
       console.error('Error refreshing notifications:', error);
@@ -88,7 +145,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
                   title,
                   message,
                   type: 'error',
-                  ...(user.role !== 'admin' && { userId: user.id })
+                  userId: user.id,
+                  read: false
                 });
               }
             }
@@ -104,7 +162,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
               title,
               message,
               type: 'warning',
-              ...(user.role !== 'admin' && { userId: user.id })
+              userId: user.id,
+              read: false
             });
           }
         }
@@ -123,12 +182,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
               title,
               message,
               type: 'info',
-              ...(user.role !== 'admin' && { userId: user.id })
+              userId: user.id,
+              read: false
             });
           }
         }
 
-        // New check: Orphaned pilgrims (missing or invalid booking ID)
+        // Orphaned pilgrims check
         const orphanedPilgrims = pilgrims.filter(p => {
           if (!p.bookingId) return true;
           return !bookings.some(b => b.id === p.bookingId);
@@ -144,12 +204,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
               title,
               message,
               type: 'error',
-              ...(user.role !== 'admin' && { userId: user.id })
+              userId: user.id,
+              read: false
             });
           }
         }
 
-        // New check: Missing hotel booking numbers in Rooming
+        // Missing hotel booking numbers
         const missingHotelBookings = bookings.filter(b => {
           const hasRoomingPilgrims = b.pilgrims.some(p => p.roomType !== 'VisaOnly');
           return hasRoomingPilgrims && (!b.makkahBookingNo || !b.madinahBookingNo);
@@ -165,13 +226,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
               title,
               message,
               type: 'warning',
-              ...(user.role !== 'admin' && { userId: user.id })
+              userId: user.id,
+              read: false
             });
           }
         }
       }
 
-      // 3. Visa Check (Visa Specialists, Admins, Managers)
+      // 3. Visa Check
       if (['admin', 'manager', 'visa_specialist'].includes(user.role)) {
         const pendingPilgrims = pilgrims.filter(p => p.visaStatus === 'Pending');
         if (pendingPilgrims.length > 0) {
@@ -184,29 +246,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
               title,
               message,
               type: 'warning',
-              ...(user.role !== 'admin' && { userId: user.id })
-            });
-          }
-        }
-      }
-
-      // 4. New Booking Check
-      if (['admin', 'manager', 'accountant'].includes(user.role)) {
-        const oneDayAgo = new Date();
-        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-        
-        const newBookings = bookings.filter(b => new Date(b.createdAt) > oneDayAgo);
-        for (const booking of newBookings) {
-          const title = 'حجز جديد';
-          const message = `تم إنشاء حجز جديد لـ ${booking.headName}.`;
-          
-          const exists = allNotifications.find(n => n.title === title && n.message === message && !n.read);
-          if (!exists) {
-            newNotifications.push({
-              title,
-              message,
-              type: 'success',
-              ...(user.role !== 'admin' && { userId: user.id })
+              userId: user.id,
+              read: false
             });
           }
         }
@@ -214,8 +255,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
 
       // Add new notifications
       if (newNotifications.length > 0) {
-        await api.bulkAddNotifications(newNotifications);
-        await refreshNotifications();
+        await api.bulkAddNotifications(newNotifications as any);
+        // refreshNotifications is not strictly needed as onSnapshot will pick it up
       }
 
     } catch (error) {

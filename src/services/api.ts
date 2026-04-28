@@ -560,9 +560,32 @@ export const api = {
           await this.syncTripSeats(oldTripId);
         }
       } else {
-        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        const newBookingRef = await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
         if (booking.tripId) {
           await this.syncTripSeats(booking.tripId);
+        }
+
+        // Notify admins and managers about new booking
+        try {
+          const users = await this.getUsers();
+          const adminsAndManagers = users.filter(u => 
+            (u.role === 'admin' || u.role === 'manager') && 
+            u.id !== auth.currentUser?.uid &&
+            u.status === 'active'
+          );
+
+          if (adminsAndManagers.length > 0) {
+            const notifications = adminsAndManagers.map(u => ({
+              title: 'حجز جديد',
+              message: `تم إنشاء حجز جديد لـ ${booking.headName} بواسطة ${auth.currentUser?.displayName || 'موظف'}.`,
+              type: 'success' as const,
+              userId: u.id,
+              read: false
+            }));
+            await this.bulkAddNotifications(notifications);
+          }
+        } catch (e) {
+          console.warn('Failed to send notifications for new booking:', e);
         }
       }
     } catch (error) {
