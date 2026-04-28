@@ -279,7 +279,7 @@ export default function BookingForm({ user }: { user: User }) {
     let packageUSD = 0;
 
     pilgrims.forEach(p => {
-      const type = p.serviceType || 'Full';
+      const type = p.serviceType || globalServiceType || 'Full';
       
       // 1. Calculate Tickets
       const hasTicket = type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation' || type === 'TicketAndVisa';
@@ -290,8 +290,14 @@ export default function BookingForm({ user }: { user: User }) {
 
       // 2. Calculate Package (Accommodation / Visa)
       const hasPackage = type === 'Full' || type === 'AccommodationOnly' || type === 'TicketAndAccommodation' || type === 'VisaOnly' || type === 'AccommodationAndVisa' || type === 'TicketAndVisa';
-      if (hasPackage && p.roomType && roomPrices[p.roomType]) {
-        const pricing = roomPrices[p.roomType];
+      
+      // Force VisaOnly room type for visa-related service types if not already set
+      const effectiveRoomType = (type === 'VisaOnly' || type === 'TicketAndVisa' || type === 'AccommodationAndVisa') 
+        ? 'VisaOnly' 
+        : (p.roomType || 'Double');
+
+      if (hasPackage && effectiveRoomType && roomPrices[effectiveRoomType]) {
+        const pricing = roomPrices[effectiveRoomType];
         if (pricing.currency === 'LYD') packageLYD += pricing.price;
         else packageUSD += pricing.price;
       }
@@ -729,11 +735,11 @@ export default function BookingForm({ user }: { user: User }) {
         phone,
         transportType,
         passengerCount,
-        pilgrims: !hasAccommodation ? pilgrims.map(p => ({ ...p, roomType: globalServiceType === 'VisaOnly' ? 'VisaOnly' : 'None' })) : pilgrims,
+        pilgrims: !hasAccommodation ? pilgrims.map(p => ({ ...p, roomType: isVisaOnly ? 'VisaOnly' : 'None' })) : pilgrims,
         totals,
-        makkahHotel: !hasAccommodation ? (globalServiceType === 'VisaOnly' ? 'تأشيرة فقط' : 'تذكرة فقط') : makkahHotel,
+        makkahHotel: !hasAccommodation ? (isVisaOnly ? 'تأشيرة فقط' : 'تذكرة فقط') : makkahHotel,
         makkahNights: !hasAccommodation ? 0 : makkahNights,
-        madinahHotel: !hasAccommodation ? (globalServiceType === 'VisaOnly' ? 'تأشيرة فقط' : 'تذكرة فقط') : madinahHotel,
+        madinahHotel: !hasAccommodation ? (isVisaOnly ? 'تأشيرة فقط' : 'تذكرة فقط') : madinahHotel,
         madinahNights: !hasAccommodation ? 0 : madinahNights,
         isVisaOnly,
         exchangeRate,
