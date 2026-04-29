@@ -74,6 +74,38 @@ export default function BookingForm({ user }: { user: User }) {
   });
   const [exchangeRate, setExchangeRate] = useState(0);
 
+  // Pre-fill ticket price when trip changes
+  useEffect(() => {
+    if (selectedTripId) {
+      const trip = trips.find(t => t.id === selectedTripId);
+      if (trip) {
+        setManualTicketPrice(trip.ticketPrice || 0);
+        if (trip.exchangeRate) setExchangeRate(trip.exchangeRate);
+        
+        // Also try to find default pricing for this trip
+        const loadPricing = async () => {
+          try {
+            const pricings = await api.getUmrahPricings();
+            const tripPricing = pricings.find(p => p.tripName === trip.name || p.name.includes(trip.name));
+            if (tripPricing) {
+              setRoomPrices({
+                Double: { price: (tripPricing.makkah.doublePrice + tripPricing.madinah.doublePrice), currency: 'LYD' },
+                Triple: { price: (tripPricing.makkah.triplePrice + tripPricing.madinah.triplePrice), currency: 'LYD' },
+                Quad: { price: (tripPricing.makkah.quadPrice + tripPricing.madinah.quadPrice), currency: 'LYD' },
+                Quint: { price: (tripPricing.makkah.quintPrice + tripPricing.madinah.quintPrice), currency: 'LYD' },
+                VisaOnly: { price: tripPricing.visaPrice, currency: 'LYD' },
+                None: { price: 0, currency: 'LYD' }
+              });
+            }
+          } catch (e) {
+            console.error('Error loading pricing defaults:', e);
+          }
+        };
+        loadPricing();
+      }
+    }
+  }, [selectedTripId, trips]);
+
   useEffect(() => {
     const checkDuplicate = async () => {
       if (regId) {
@@ -292,7 +324,7 @@ export default function BookingForm({ user }: { user: User }) {
       const hasPackage = type === 'Full' || type === 'AccommodationOnly' || type === 'TicketAndAccommodation' || type === 'VisaOnly' || type === 'AccommodationAndVisa' || type === 'TicketAndVisa';
       
       // Force VisaOnly room type for visa-related service types if not already set
-      const effectiveRoomType = (type === 'VisaOnly' || type === 'TicketAndVisa' || type === 'AccommodationAndVisa') 
+      const effectiveRoomType = (type === 'VisaOnly' || type === 'TicketAndVisa') 
         ? 'VisaOnly' 
         : (p.roomType || 'Double');
 
@@ -303,13 +335,20 @@ export default function BookingForm({ user }: { user: User }) {
       }
     });
 
+    const totalLYD = ticketsLYD + packageLYD;
+    const totalUSD = ticketsUSD + packageUSD;
+    
+    // Calculate Combined Total in LYD
+    const combinedTotalLYD = totalLYD + (totalUSD * (exchangeRate || 0));
+
     return {
       ticketsLYD,
       ticketsUSD,
       packageLYD,
       packageUSD,
-      totalLYD: ticketsLYD + packageLYD,
-      totalUSD: ticketsUSD + packageUSD
+      totalLYD,
+      totalUSD,
+      combinedTotalLYD
     };
   };
 
@@ -418,17 +457,32 @@ export default function BookingForm({ user }: { user: User }) {
         <div style="width: 400px; background: #1a1a1a; color: #fff; padding: 30px; border-radius: 20px; border: 4px solid #d4af37;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 16px;">
             <span>إجمالي التذاكر:</span>
-            <span>${savedBooking.totals.ticketsLYD.toLocaleString()} د.ل</span>
+            <span>
+              ${savedBooking.totals.ticketsLYD > 0 ? savedBooking.totals.ticketsLYD.toLocaleString() + ' د.ل' : ''}
+              ${savedBooking.totals.ticketsLYD > 0 && savedBooking.totals.ticketsUSD > 0 ? ' + ' : ''}
+              ${savedBooking.totals.ticketsUSD > 0 ? savedBooking.totals.ticketsUSD.toLocaleString() + ' دولار' : ''}
+              ${savedBooking.totals.ticketsLYD === 0 && savedBooking.totals.ticketsUSD === 0 ? '0' : ''}
+            </span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 16px;">
-            <span>إجمالي البرنامج:</span>
-            <span>${savedBooking.totals.packageLYD.toLocaleString()} د.ل</span>
+            <span>إجمالي السكن والتأشيرة:</span>
+            <span>
+              ${savedBooking.totals.packageLYD > 0 ? savedBooking.totals.packageLYD.toLocaleString() + ' د.ل' : ''}
+              ${savedBooking.totals.packageLYD > 0 && savedBooking.totals.packageUSD > 0 ? ' + ' : ''}
+              ${savedBooking.totals.packageUSD > 0 ? savedBooking.totals.packageUSD.toLocaleString() + ' دولار' : ''}
+              ${savedBooking.totals.packageLYD === 0 && savedBooking.totals.packageUSD === 0 ? '0' : ''}
+            </span>
           </div>
           <div style="display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #d4af37; margin-top: 15px;">
-            <span style="font-size: 20px; font-weight: bold; color: #d4af37;">الإجمالي الكلي:</span>
+            <span style="font-size: 20px; font-weight: bold; color: #d4af37;">الإجمالي النهائي:</span>
             <div style="text-align: left;">
-              <div style="font-size: 28px; font-weight: bold; color: #d4af37;">${savedBooking.totals.totalLYD.toLocaleString()} د.ل</div>
-              <div style="font-size: 28px; font-weight: bold; color: #d4af37; margin-top: 5px;">${savedBooking.totals.totalUSD.toLocaleString()} دولار</div>
+              ${savedBooking.totals.combinedTotalLYD > savedBooking.totals.totalLYD ? `
+                <div style="font-size: 28px; font-weight: bold; color: #d4af37;">${savedBooking.totals.combinedTotalLYD.toLocaleString()} د.ل</div>
+                <div style="font-size: 12px; color: #d4af37; opacity: 0.7;">شامل تحويل العملة</div>
+              ` : `
+                <div style="font-size: 28px; font-weight: bold; color: #d4af37;">${savedBooking.totals.totalLYD.toLocaleString()} د.ل</div>
+                ${savedBooking.totals.totalUSD > 0 ? `<div style="font-size: 28px; font-weight: bold; color: #d4af37; margin-top: 5px;">${savedBooking.totals.totalUSD.toLocaleString()} دولار</div>` : ''}
+              `}
             </div>
           </div>
         </div>
@@ -575,17 +629,31 @@ export default function BookingForm({ user }: { user: User }) {
             <div className="text-right space-y-2">
               <div className="flex justify-between gap-12 text-sm text-white/60">
                 <span>إجمالي التذاكر</span>
-                <span>{savedBooking.totals.ticketsLYD.toLocaleString()} د.ل</span>
+                <span>
+                  {savedBooking.totals.ticketsLYD > 0 && `${savedBooking.totals.ticketsLYD.toLocaleString()} د.ل`}
+                  {savedBooking.totals.ticketsLYD > 0 && savedBooking.totals.ticketsUSD > 0 && ' + '}
+                  {savedBooking.totals.ticketsUSD > 0 && `${savedBooking.totals.ticketsUSD.toLocaleString()} دولار`}
+                </span>
               </div>
               <div className="flex justify-between gap-12 text-sm text-white/60">
-                <span>إجمالي البرنامج</span>
-                <span>{savedBooking.totals.packageLYD.toLocaleString()} د.ل</span>
+                <span>إجمالي السكن والتأشيرة</span>
+                <span>
+                  {savedBooking.totals.packageLYD > 0 && `${savedBooking.totals.packageLYD.toLocaleString()} د.ل`}
+                  {savedBooking.totals.packageLYD > 0 && savedBooking.totals.packageUSD > 0 && ' + '}
+                  {savedBooking.totals.packageUSD > 0 && `${savedBooking.totals.packageUSD.toLocaleString()} دولار`}
+                </span>
               </div>
               <div className="flex justify-between gap-12 pt-2 border-t border-white/10">
-                <span className="text-lg font-bold text-white">الإجمالي الكلي</span>
+                <span className="text-lg font-bold text-white">الإجمالي النهائي</span>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-gold">{savedBooking.totals.totalLYD.toLocaleString()} د.ل</div>
-                  <div className="text-2xl font-bold text-gold">{savedBooking.totals.totalUSD.toLocaleString()} دولار</div>
+                  {savedBooking.totals.combinedTotalLYD > savedBooking.totals.totalLYD ? (
+                    <div className="text-2xl font-bold text-gold">{savedBooking.totals.combinedTotalLYD.toLocaleString()} د.ل</div>
+                  ) : (
+                    <>
+                      <div className="text-2xl font-bold text-gold">{savedBooking.totals.totalLYD.toLocaleString()} د.ل</div>
+                      {savedBooking.totals.totalUSD > 0 && <div className="text-2xl font-bold text-gold">{savedBooking.totals.totalUSD.toLocaleString()} دولار</div>}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1424,17 +1492,36 @@ export default function BookingForm({ user }: { user: User }) {
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-white/60">إجمالي التذاكر</span>
-                <span className="font-mono">{totals.ticketsLYD.toLocaleString()} د.ل / {totals.ticketsUSD.toLocaleString()} دولار</span>
+                <span className="font-mono tracking-tighter">
+                  {totals.ticketsLYD > 0 && `${totals.ticketsLYD.toLocaleString()} د.ل`}
+                  {totals.ticketsLYD > 0 && totals.ticketsUSD > 0 && ' + '}
+                  {totals.ticketsUSD > 0 && `${totals.ticketsUSD.toLocaleString()} دولار`}
+                  {totals.ticketsLYD === 0 && totals.ticketsUSD === 0 && '0'}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-white/60">إجمالي البرنامج</span>
-                <span className="font-mono">{totals.packageLYD.toLocaleString()} د.ل / {totals.packageUSD.toLocaleString()} دولار</span>
+                <span className="text-white/60">إجمالي السكن والتأشيرة</span>
+                <span className="font-mono tracking-tighter">
+                  {totals.packageLYD > 0 && `${totals.packageLYD.toLocaleString()} د.ل`}
+                  {totals.packageLYD > 0 && totals.packageUSD > 0 && ' + '}
+                  {totals.packageUSD > 0 && `${totals.packageUSD.toLocaleString()} دولار`}
+                  {totals.packageLYD === 0 && totals.packageUSD === 0 && '0'}
+                </span>
               </div>
               <div className="pt-3 border-t border-white/10 flex justify-between items-end">
-                <span className="text-lg font-bold">الإجمالي الكلي</span>
+                <span className="text-lg font-bold">الإجمالي النهائي</span>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gold">{totals.totalLYD.toLocaleString()} د.ل</p>
-                  <p className="text-lg text-white/60">{totals.totalUSD.toLocaleString()} دولار</p>
+                  {totals.combinedTotalLYD > totals.totalLYD ? (
+                    <>
+                      <p className="text-2xl font-bold text-gold">{totals.combinedTotalLYD.toLocaleString()} د.ل</p>
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest">شامل تحويل العملة</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-gold">{totals.totalLYD.toLocaleString()} د.ل</p>
+                      {totals.totalUSD > 0 && <p className="text-lg text-white/60">{totals.totalUSD.toLocaleString()} دولار</p>}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1455,6 +1542,7 @@ export default function BookingForm({ user }: { user: User }) {
               </button>
             )}
           </div>
+
         </div>
       </motion.div>
 

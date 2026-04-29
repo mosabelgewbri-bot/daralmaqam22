@@ -37,9 +37,11 @@ import {
   Bus,
   Plane,
   Ticket,
-  Calculator
+  Calculator,
+  Building
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Company } from '../types';
 import { useNavigate } from 'react-router-dom';
 import Logo from './Logo';
 
@@ -168,6 +170,7 @@ const PERMISSIONS_LIST = [
   { id: 'tickets', label: 'التذاكر والبيانات', icon: Ticket },
   { id: 'users', label: 'المستخدمين', icon: UserPlus },
   { id: 'logs', label: 'سجل العمليات', icon: ScrollText },
+  { id: 'companies', label: 'إدارة الشركات', icon: Building },
   { id: 'settings', label: 'الإعدادات', icon: SettingsIcon },
 ];
 
@@ -191,7 +194,8 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
   const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermissions[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'permissions'>('users');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'companies'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -221,9 +225,10 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [usersData, permsData] = await Promise.all([
+        const [usersData, permsData, companiesData] = await Promise.all([
           api.getUsers(),
-          api.getPermissions()
+          api.getPermissions(),
+          api.getCompanies()
         ]);
         
         // Deduplicate permissions by role to prevent duplicate key errors
@@ -238,6 +243,7 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
 
         setUsers(usersData);
         setRolePermissions(uniquePerms);
+        setCompanies(companiesData);
         
         // Update localStorage cache for Sidebar
         localStorage.setItem('role_permissions', JSON.stringify(uniquePerms));
@@ -439,6 +445,17 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
               >
                 صلاحيات الأدوار
               </button>
+              {currentUser.role === 'admin' && (
+                <button 
+                  onClick={() => { setActiveTab('companies'); setSelectedUser(null); }}
+                  className={clsx(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    activeTab === 'companies' ? "bg-gold text-black" : "text-white/60 hover:text-white"
+                  )}
+                >
+                  إدارة الشركات
+                </button>
+              )}
             </div>
             <button 
               onClick={() => setIsAddModalOpen(true)}
@@ -534,6 +551,20 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                         <option value="receptionist">موظف استقبال</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest">الشركة</label>
+                    <select 
+                      className="input-field w-full"
+                      value={(newUser as any).companyId || ''}
+                      onChange={e => setNewUser({...newUser, companyId: e.target.value} as any)}
+                    >
+                      <option value="">كل الشركات</option>
+                      {companies.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="pt-4">
@@ -673,7 +704,7 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : activeTab === 'permissions' ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {rolePermissions.map((rp) => (
                   <div key={rp.role} className="bg-white/5 rounded-3xl border border-white/10 overflow-hidden flex flex-col">
@@ -759,6 +790,101 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center bg-white/5 p-6 rounded-3xl border border-white/10">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">إدارة الشركات</h3>
+                    <p className="text-white/40 text-sm">إضافة وتعديل بيانات الشركاء والفروع</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setConfirmModal({
+                        show: true,
+                        title: 'إضافة شركة جديدة',
+                        message: 'هل تريد إضافة شركة جديدة؟',
+                        type: 'info',
+                        onConfirm: async () => {
+                          const name = prompt('اسم الشركة:');
+                          if (name) {
+                            await api.saveCompany({ name, status: 'active' });
+                            const comps = await api.getCompanies();
+                            setCompanies(comps);
+                          }
+                        }
+                      });
+                    }}
+                    className="btn-gold px-6 py-2 flex items-center gap-2"
+                  >
+                    <Building className="w-4 h-4" /> شركة جديدة
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {companies.map(company => (
+                    <motion.div 
+                      key={company.id}
+                      layout
+                      className="glass-card p-6 flex flex-col gap-4 group"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center text-gold">
+                          <Building className="w-6 h-6" />
+                        </div>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={async () => {
+                              const newName = prompt('اسم الشركة الجديد:', company.name);
+                              if (newName && newName !== company.name) {
+                                await api.saveCompany({ ...company, name: newName });
+                                const comps = await api.getCompanies();
+                                setCompanies(comps);
+                              }
+                            }}
+                            className="p-2 hover:bg-white/10 rounded-lg text-white/60"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              if (confirm('هل أنت متأكد من حذف هذه الشركة؟')) {
+                                await api.deleteCompany(company.id);
+                                setCompanies(prev => prev.filter(c => c.id !== company.id));
+                              }
+                            }}
+                            className="p-2 hover:bg-red-500/10 rounded-lg text-red-400"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-xl font-bold text-white">{company.name}</h4>
+                        <p className="text-xs text-white/30 font-mono">ID: {company.id}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-white/5 flex justify-between items-center">
+                        <span className={clsx(
+                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase",
+                          company.status === 'active' ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-white/20"
+                        )}>
+                          {company.status === 'active' ? 'نشطة' : 'غير نشطة'}
+                        </span>
+                        <button 
+                          onClick={() => {
+                            api.setCompanyId(company.id);
+                            window.location.reload();
+                          }}
+                          className="text-[10px] font-bold text-gold hover:underline"
+                        >
+                          دخول للشركة
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -852,6 +978,20 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                             <option value="inactive">غير نشط</option>
                           </select>
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs text-white/40 uppercase tracking-widest">الشركة</label>
+                        <select 
+                          className="input-field w-full"
+                          value={editFormData.companyId || ''}
+                          onChange={e => setEditFormData({...editFormData, companyId: e.target.value})}
+                        >
+                          <option value="">كل الشركات</option>
+                          {companies.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="pt-8 flex gap-4">

@@ -1,4 +1,4 @@
-import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer, Hotel, HotelRoom, UmrahPricing } from '../types';
+import { Trip, Booking, RolePermissions, User, AuditLog, Notification, Pilgrim, UmrahOffer, Customer, Hotel, HotelRoom, UmrahPricing, Company } from '../types';
 import { 
   collection, 
   getDocs, 
@@ -110,6 +110,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 // Test connection on boot
 let quotaExceeded = false;
 let lastError: string | null = null;
+let currentCompanyId: string | null = null;
 
 async function testConnection(retries = 3) {
   try {
@@ -194,6 +195,17 @@ export const api = {
   isQuotaExceeded: () => quotaExceeded,
   getLastError: () => lastError,
   
+  setCompanyId(id: string | null) {
+    currentCompanyId = id;
+    if (id) localStorage.setItem('current_company_id', id);
+    else localStorage.removeItem('current_company_id');
+  },
+
+  getCompanyId(): string | null {
+    if (currentCompanyId) return currentCompanyId;
+    return localStorage.getItem('current_company_id');
+  },
+
   async withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
     try {
       return await fn();
@@ -232,6 +244,10 @@ export const api = {
       const userDoc = querySnapshot.docs[0];
       const userData = userDoc.data() as any;
       const uid = auth.currentUser?.uid;
+
+      if (userData.companyId) {
+        this.setCompanyId(userData.companyId);
+      }
 
       // CRITICAL: Link this user record to the current Firebase UID if not linked
       // This allows Firestore Rules to correctly identify the user's role
@@ -348,6 +364,7 @@ export const api = {
 
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
+    const companyId = this.getCompanyId();
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_trips');
@@ -355,7 +372,11 @@ export const api = {
       }
 
       await this.ensureAuth();
-      const querySnapshot = await getDocs(collection(db, path));
+      let q = query(collection(db, path));
+      if (companyId) {
+        q = query(q, where("companyId", "==", companyId));
+      }
+      const querySnapshot = await getDocs(q);
       const trips = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return { 
@@ -386,6 +407,7 @@ export const api = {
   async saveTrip(trip: Trip): Promise<void> {
     const path = 'trips';
     const { id, ...data } = trip;
+    const companyId = this.getCompanyId();
     
     // Remove undefined fields to avoid Firestore errors
     const cleanData = Object.fromEntries(
@@ -400,11 +422,11 @@ export const api = {
         if (docSnap.exists()) {
           await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
         } else {
-          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
         }
         await this.syncTripSeats(id);
       } else {
-        const docRef = await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        const docRef = await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
         await this.syncTripSeats(docRef.id);
       }
     } catch (error) {
@@ -424,6 +446,7 @@ export const api = {
   // Bookings
   async getBookings(limitCount?: number): Promise<Booking[]> {
     const path = 'bookings';
+    const companyId = this.getCompanyId();
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_bookings');
@@ -435,6 +458,9 @@ export const api = {
 
       await this.ensureAuth();
       let q = query(collection(db, path), orderBy("createdAt", "desc"));
+      if (companyId) {
+        q = query(q, where("companyId", "==", companyId));
+      }
       if (limitCount) {
         q = query(q, limit(limitCount));
       }
@@ -528,6 +554,7 @@ export const api = {
   async saveBooking(booking: Booking): Promise<void> {
     const path = 'bookings';
     const { id, ...data } = booking;
+    const companyId = this.getCompanyId();
     
     // Remove undefined fields to avoid Firestore errors
     const cleanData = Object.fromEntries(
@@ -547,7 +574,7 @@ export const api = {
         if (docSnap.exists()) {
           await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
         } else {
-          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
         }
         
         // Sync seats for current trip
@@ -560,7 +587,7 @@ export const api = {
           await this.syncTripSeats(oldTripId);
         }
       } else {
-        const newBookingRef = await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        const newBookingRef = await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
         if (booking.tripId) {
           await this.syncTripSeats(booking.tripId);
         }
@@ -794,6 +821,7 @@ export const api = {
   // Users
   async getUsers(): Promise<User[]> {
     const path = 'users';
+    const companyId = this.getCompanyId();
     try {
       // If quota exceeded, return cache immediately
       if (quotaExceeded) {
@@ -802,7 +830,11 @@ export const api = {
       }
 
       await this.ensureAuth();
-      const querySnapshot = await getDocs(collection(db, path));
+      let q = query(collection(db, path));
+      if (companyId) {
+        q = query(q, where("companyId", "==", companyId));
+      }
+      const querySnapshot = await getDocs(q);
       const users = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return { 
@@ -851,6 +883,7 @@ export const api = {
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
     const path = 'users';
     const { id, ...data } = user;
+    const companyId = this.getCompanyId();
     
     // Remove undefined fields to avoid Firestore errors
     const cleanData = Object.fromEntries(
@@ -865,10 +898,10 @@ export const api = {
         if (docSnap.exists()) {
           await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
         } else {
-          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
         }
       } else {
-        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -1102,6 +1135,7 @@ export const api = {
 
   async logAction(userId: string, userName: string, action: string, details?: string): Promise<void> {
     const path = 'logs';
+    const companyId = this.getCompanyId();
     try {
       await this.ensureAuth();
       await addDoc(collection(db, path), {
@@ -1109,6 +1143,7 @@ export const api = {
         userName,
         action,
         details,
+        companyId,
         timestamp: serverTimestamp()
       });
     } catch (error) {
@@ -1118,13 +1153,17 @@ export const api = {
 
   async getLogs(limitCount: number = 100): Promise<AuditLog[]> {
     const path = 'logs';
+    const companyId = this.getCompanyId();
     try {
       await this.ensureAuth();
-      const q = query(
+      let q = query(
         collection(db, path), 
         orderBy("timestamp", "desc"), 
         limit(limitCount)
       );
+      if (companyId) {
+        q = query(q, where("companyId", "==", companyId));
+      }
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
@@ -1254,8 +1293,10 @@ export const api = {
 
     try {
       await this.ensureAuth();
+      const companyId = this.getCompanyId();
       await addDoc(collection(db, path), {
         ...cleanData,
+        companyId,
         read: false,
         createdAt: serverTimestamp()
       });
@@ -1318,6 +1359,7 @@ export const api = {
   // Umrah Offers
   async getUmrahOffers(): Promise<UmrahOffer[]> {
     const path = 'umrahOffers';
+    const companyId = this.getCompanyId();
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_umrah_offers');
@@ -1328,7 +1370,11 @@ export const api = {
       }
 
       await this.ensureAuth();
-      const querySnapshot = await getDocs(collection(db, path));
+      let q = query(collection(db, path));
+      if (companyId) {
+        q = query(q, where("companyId", "==", companyId));
+      }
+      const querySnapshot = await getDocs(q);
       const offers = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -1433,6 +1479,7 @@ export const api = {
   async saveUmrahOffer(offer: UmrahOffer): Promise<string> {
     const path = 'umrahOffers';
     const { id, ...data } = offer;
+    const companyId = this.getCompanyId();
     
     // Remove undefined fields to avoid Firestore errors
     const cleanData = Object.fromEntries(
@@ -1448,11 +1495,11 @@ export const api = {
           await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
           return id;
         } else {
-          await setDoc(docRef, { ...cleanData, createdAt: serverTimestamp() });
+          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
           return id;
         }
       } else {
-        const docRef = await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+        const docRef = await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
         return docRef.id;
       }
     } catch (error) {
@@ -1479,6 +1526,7 @@ export const api = {
   // Customers
   async getCustomers(): Promise<Customer[]> {
     const path = 'customers';
+    const companyId = this.getCompanyId();
     try {
       if (quotaExceeded) {
         const cached = localStorage.getItem('cached_customers');
@@ -1489,7 +1537,11 @@ export const api = {
       }
 
       await this.ensureAuth();
-      const querySnapshot = await getDocs(collection(db, path));
+      let q = query(collection(db, path));
+      if (companyId) {
+        q = query(q, where("companyId", "==", companyId));
+      }
+      const querySnapshot = await getDocs(q);
       const customers = querySnapshot.docs.map(doc => mapDocData<Customer>(doc));
 
       try {
@@ -1737,16 +1789,18 @@ export const api = {
   // Hotels
   async getHotels(): Promise<Hotel[]> {
     const path = 'hotels';
+    const companyId = this.getCompanyId();
     try {
       if (quotaExceeded) return [];
       await this.ensureAuth();
-      let q = query(collection(db, path), orderBy('createdAt', 'desc'));
-      let querySnapshot = await this.withRetry(() => getDocs(q));
-      
-      if (querySnapshot.empty) {
-        q = query(collection(db, path));
-        querySnapshot = await this.withRetry(() => getDocs(q));
+      let q = query(collection(db, path));
+      if (companyId) {
+        q = query(q, where('companyId', '==', companyId));
+      } else {
+        q = query(q, orderBy('createdAt', 'desc'));
       }
+      
+      let querySnapshot = await this.withRetry(() => getDocs(q));
       
       return querySnapshot.docs.map(doc => mapDocData<Hotel>(doc));
     } catch (error) {
@@ -1756,6 +1810,7 @@ export const api = {
   },
   async saveHotel(hotel: Partial<Hotel>): Promise<string> {
     const path = 'hotels';
+    const companyId = this.getCompanyId();
     try {
       await this.ensureAuth();
       const { id, ...data } = hotel;
@@ -1768,6 +1823,7 @@ export const api = {
       } else {
         const docRef = await addDoc(collection(db, path), { 
           ...cleanData, 
+          companyId,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp() 
         });
@@ -1776,6 +1832,43 @@ export const api = {
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
       throw error;
+    }
+  },
+
+  // Companies
+  async getCompanies(): Promise<Company[]> {
+    const path = 'companies';
+    try {
+      await this.ensureAuth();
+      const querySnapshot = await getDocs(collection(db, path));
+      return querySnapshot.docs.map(doc => mapDocData<Company>(doc));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, path);
+      return [];
+    }
+  },
+  async saveCompany(company: Partial<Company>): Promise<void> {
+    const path = 'companies';
+    const { id, ...data } = company;
+    const cleanData = cleanUndefined(data);
+    try {
+      await this.ensureAuth();
+      if (id && id !== 'new') {
+        await updateDoc(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
+      } else {
+        await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
+      }
+    } catch (error) {
+      handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
+    }
+  },
+  async deleteCompany(id: string): Promise<void> {
+    const path = 'companies';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
     }
   },
   async deleteHotel(id: string): Promise<void> {

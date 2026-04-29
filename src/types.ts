@@ -11,6 +11,7 @@ export interface Trip {
   status: "Upcoming" | "Active" | "Completed";
   startDate?: string;
   departureDate?: string;
+  companyId?: string;
   costs?: {
     flightLYD: number;
     hotelLYD: number;
@@ -66,6 +67,21 @@ export interface Booking {
   createdAt: string;
   updatedAt?: string;
   createdBy?: string; // User ID
+  companyId?: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  nameEn?: string;
+  logo?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  status: 'active' | 'inactive' | 'expired';
+  subscriptionStatus?: 'active' | 'expired' | 'trial';
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Pilgrim {
@@ -96,6 +112,7 @@ export interface User {
   status: "active" | "inactive";
   lastLogin?: string;
   backupFrequency?: 'daily' | 'weekly' | 'monthly' | 'manual';
+  companyId?: string;
 }
 
 export interface RolePermissions {
@@ -124,6 +141,7 @@ export interface AuditLog {
   action: string;
   details?: string;
   timestamp: any;
+  companyId?: string;
 }
 
 export interface Notification {
@@ -134,6 +152,7 @@ export interface Notification {
   read: boolean;
   createdAt: any;
   userId?: string;
+  companyId?: string;
 }
 
 export interface UmrahOfferRow {
@@ -158,6 +177,7 @@ export interface UmrahOffer {
   imageUrl?: string;
   createdAt: string;
   updatedAt?: string;
+  companyId?: string;
 }
 
 export interface Hotel {
@@ -165,6 +185,7 @@ export interface Hotel {
   name: string;
   location: "Makkah" | "Madinah";
   totalRooms: number;
+  companyId?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -231,6 +252,7 @@ export interface UmrahPricing {
   notes?: string;
   createdAt: string;
   updatedAt?: string;
+  companyId?: string;
 }
 
 export interface Customer {
@@ -245,4 +267,5 @@ export interface Customer {
   isVerified?: boolean;
   lastContact?: string;
   updatedAt?: string;
+  companyId?: string;
 }
