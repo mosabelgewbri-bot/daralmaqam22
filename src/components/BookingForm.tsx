@@ -73,8 +73,8 @@ export default function BookingForm({ user }: { user: User }) {
     None: { price: 0, currency: 'LYD' },
   });
   const [exchangeRate, setExchangeRate] = useState(0);
-  const [discount, setDiscount] = useState<number>(0);
-  const [discountCurrency, setDiscountCurrency] = useState<"LYD" | "USD">("LYD");
+  const [discountLYD, setDiscountLYD] = useState<number>(0);
+  const [discountUSD, setDiscountUSD] = useState<number>(0);
 
   // Pre-fill ticket price when trip changes
   useEffect(() => {
@@ -149,8 +149,8 @@ export default function BookingForm({ user }: { user: User }) {
             setRegId(bookingToEdit.regId || '');
             setPhone(bookingToEdit.phone || '');
             setTransportType(bookingToEdit.transportType || '');
-            if (bookingToEdit.discount !== undefined) setDiscount(bookingToEdit.discount);
-            if (bookingToEdit.discountCurrency) setDiscountCurrency(bookingToEdit.discountCurrency);
+            if (bookingToEdit.discountLYD !== undefined) setDiscountLYD(bookingToEdit.discountLYD);
+            if (bookingToEdit.discountUSD !== undefined) setDiscountUSD(bookingToEdit.discountUSD);
             const gType = bookingToEdit.pilgrims?.[0]?.serviceType || (bookingToEdit.isVisaOnly ? 'VisaOnly' : 'Full');
             setGlobalServiceType(gType);
             if (bookingToEdit.exchangeRate !== undefined) {
@@ -342,17 +342,12 @@ export default function BookingForm({ user }: { user: User }) {
     const totalLYD = ticketsLYD + packageLYD;
     const totalUSD = ticketsUSD + packageUSD;
     
-    // Calculate Combined Total in LYD
-    let combinedTotalLYD = totalLYD + (totalUSD * (exchangeRate || 0));
+    // Calculate Final Totals specifically per currency
+    const finalLYD = Math.max(0, totalLYD - (discountLYD || 0));
+    const finalUSD = Math.max(0, totalUSD - (discountUSD || 0));
 
-    // Apply Discount
-    if (discount > 0) {
-      if (discountCurrency === 'LYD') {
-        combinedTotalLYD -= discount;
-      } else {
-        combinedTotalLYD -= (discount * (exchangeRate || 0));
-      }
-    }
+    // Calculate Combined Total in LYD for reference
+    const combinedTotalLYD = finalLYD + (finalUSD * (exchangeRate || 0));
 
     return {
       ticketsLYD,
@@ -361,8 +356,12 @@ export default function BookingForm({ user }: { user: User }) {
       packageUSD,
       totalLYD,
       totalUSD,
+      finalLYD,
+      finalUSD,
       combinedTotalLYD,
-      discount
+      baseCombinedTotalLYD: totalLYD + (totalUSD * (exchangeRate || 0)),
+      discountLYD,
+      discountUSD
     };
   };
 
@@ -470,39 +469,35 @@ export default function BookingForm({ user }: { user: User }) {
       <div style="display: flex; justify-content: flex-end; margin-bottom: 60px;">
         <div style="width: 400px; background: #1a1a1a; color: #fff; padding: 30px; border-radius: 20px; border: 4px solid #d4af37;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 16px;">
-            <span>إجمالي التذاكر:</span>
+            <span>الإجمالي (قبل التخفيض):</span>
             <span>
-              ${savedBooking.totals.ticketsLYD > 0 ? savedBooking.totals.ticketsLYD.toLocaleString() + ' د.ل' : ''}
-              ${savedBooking.totals.ticketsLYD > 0 && savedBooking.totals.ticketsUSD > 0 ? ' + ' : ''}
-              ${savedBooking.totals.ticketsUSD > 0 ? savedBooking.totals.ticketsUSD.toLocaleString() + ' دولار' : ''}
-              ${savedBooking.totals.ticketsLYD === 0 && savedBooking.totals.ticketsUSD === 0 ? '0' : ''}
+              ${savedBooking.totals.totalLYD.toLocaleString()} د.ل
+              ${savedBooking.totals.totalUSD > 0 ? ' + ' + savedBooking.totals.totalUSD.toLocaleString() + ' دولار' : ''}
             </span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 16px;">
-            <span>إجمالي السكن والتأشيرة:</span>
-            <span>
-              ${savedBooking.totals.packageLYD > 0 ? savedBooking.totals.packageLYD.toLocaleString() + ' د.ل' : ''}
-              ${savedBooking.totals.packageLYD > 0 && savedBooking.totals.packageUSD > 0 ? ' + ' : ''}
-              ${savedBooking.totals.packageUSD > 0 ? savedBooking.totals.packageUSD.toLocaleString() + ' دولار' : ''}
-              ${savedBooking.totals.packageLYD === 0 && savedBooking.totals.packageUSD === 0 ? '0' : ''}
-            </span>
+          ${savedBooking.discountLYD > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; color: #ff4d4d;">
+            <span>تخفيض (د.ل):</span>
+            <span>-${savedBooking.discountLYD.toLocaleString()} د.ل</span>
           </div>
-          ${savedBooking.discount > 0 ? `
-          <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 16px; color: #ff4d4d;">
-            <span>التخفيض:</span>
-            <span>-${savedBooking.discount.toLocaleString()} ${savedBooking.discountCurrency === 'LYD' ? 'د.ل' : 'دولار'}</span>
+          ` : ''}
+          ${savedBooking.discountUSD > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; color: #ff4d4d;">
+            <span>تخفيض ($):</span>
+            <span>-${savedBooking.discountUSD.toLocaleString()} دولار</span>
           </div>
           ` : ''}
           <div style="display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #d4af37; margin-top: 15px;">
             <span style="font-size: 20px; font-weight: bold; color: #d4af37;">الإجمالي النهائي:</span>
             <div style="text-align: left;">
-              ${savedBooking.totals.combinedTotalLYD > savedBooking.totals.totalLYD ? `
-                <div style="font-size: 28px; font-weight: bold; color: #d4af37;">${savedBooking.totals.combinedTotalLYD.toLocaleString()} د.ل</div>
-                <div style="font-size: 12px; color: #d4af37; opacity: 0.7;">شامل تحويل العملة</div>
-              ` : `
-                <div style="font-size: 28px; font-weight: bold; color: #d4af37;">${savedBooking.totals.totalLYD.toLocaleString()} د.ل</div>
-                ${savedBooking.totals.totalUSD > 0 ? `<div style="font-size: 28px; font-weight: bold; color: #d4af37; margin-top: 5px;">${savedBooking.totals.totalUSD.toLocaleString()} دولار</div>` : ''}
-              `}
+              <div style="font-size: 28px; font-weight: bold; color: #d4af37;">
+                ${savedBooking.totals.finalLYD.toLocaleString()} د.ل
+              </div>
+              ${savedBooking.totals.finalUSD > 0 ? `
+                <div style="font-size: 28px; font-weight: bold; color: #d4af37; margin-top: 5px;">
+                  ${savedBooking.totals.finalUSD.toLocaleString()} دولار
+                </div>
+              ` : ''}
             </div>
           </div>
         </div>
@@ -647,41 +642,45 @@ export default function BookingForm({ user }: { user: User }) {
               <p className="text-xs text-white/40 max-w-xs">هذه فاتورة إلكترونية تم إنشاؤها آلياً ولا تحتاج لتوقيع.</p>
             </div>
             <div className="text-right space-y-2">
-              <div className="flex justify-between gap-12 text-sm text-white/60">
-                <span>إجمالي التذاكر</span>
-                <span>
-                  {savedBooking.totals.ticketsLYD > 0 && `${savedBooking.totals.ticketsLYD.toLocaleString()} د.ل`}
-                  {savedBooking.totals.ticketsLYD > 0 && savedBooking.totals.ticketsUSD > 0 && ' + '}
-                  {savedBooking.totals.ticketsUSD > 0 && `${savedBooking.totals.ticketsUSD.toLocaleString()} دولار`}
-                </span>
-              </div>
-              <div className="flex justify-between gap-12 text-sm text-white/60">
-                <span>إجمالي السكن والتأشيرة</span>
-                <span>
-                  {savedBooking.totals.packageLYD > 0 && `${savedBooking.totals.packageLYD.toLocaleString()} د.ل`}
-                  {savedBooking.totals.packageLYD > 0 && savedBooking.totals.packageUSD > 0 && ' + '}
-                  {savedBooking.totals.packageUSD > 0 && `${savedBooking.totals.packageUSD.toLocaleString()} دولار`}
-                </span>
-              </div>
-              {savedBooking.discount > 0 && (
-                <div className="flex justify-between gap-12 text-sm text-red-400">
-                  <span>التخفيض</span>
-                  <span>-{savedBooking.discount.toLocaleString()} {savedBooking.discountCurrency === 'LYD' ? 'د.ل' : 'دولار'}</span>
-                </div>
+          <div className="flex justify-between gap-12 text-sm text-white/60">
+            <span>الإجمالي (قبل التخفيض)</span>
+            <span>
+              {savedBooking.totals.totalLYD > 0 && `${savedBooking.totals.totalLYD.toLocaleString()} د.ل`}
+              {savedBooking.totals.totalLYD > 0 && savedBooking.totals.totalUSD > 0 && ' + '}
+              {savedBooking.totals.totalUSD > 0 && `${savedBooking.totals.totalUSD.toLocaleString()} دولار`}
+            </span>
+          </div>
+          {savedBooking.discountLYD > 0 && (
+            <div className="flex justify-between gap-12 text-sm text-red-400">
+              <span>تخفيض (د.ل)</span>
+              <span>-{savedBooking.discountLYD.toLocaleString()} د.ل</span>
+            </div>
+          )}
+          {savedBooking.discountUSD > 0 && (
+            <div className="flex justify-between gap-12 text-sm text-red-400">
+              <span>تخفيض ($)</span>
+              <span>-{savedBooking.discountUSD.toLocaleString()} دولار</span>
+            </div>
+          )}
+          <div className="flex justify-between gap-12 pt-2 border-t border-white/10">
+            <span className="text-lg font-bold text-white">الإجمالي النهائي</span>
+            <div className="text-right space-y-1">
+              {savedBooking.totals.finalLYD > 0 && (
+                <div className="text-2xl font-bold text-gold">{savedBooking.totals.finalLYD.toLocaleString()} د.ل</div>
               )}
-              <div className="flex justify-between gap-12 pt-2 border-t border-white/10">
-                <span className="text-lg font-bold text-white">الإجمالي النهائي</span>
-                <div className="text-right">
-                  {savedBooking.totals.combinedTotalLYD > savedBooking.totals.totalLYD ? (
-                    <div className="text-2xl font-bold text-gold">{savedBooking.totals.combinedTotalLYD.toLocaleString()} د.ل</div>
-                  ) : (
-                    <>
-                      <div className="text-2xl font-bold text-gold">{savedBooking.totals.totalLYD.toLocaleString()} د.ل</div>
-                      {savedBooking.totals.totalUSD > 0 && <div className="text-2xl font-bold text-gold">{savedBooking.totals.totalUSD.toLocaleString()} دولار</div>}
-                    </>
-                  )}
-                </div>
-              </div>
+              {savedBooking.totals.finalUSD > 0 && (
+                <div className="text-2xl font-bold text-gold">{savedBooking.totals.finalUSD.toLocaleString()} دولار</div>
+              )}
+              {savedBooking.totals.finalLYD === 0 && savedBooking.totals.finalUSD === 0 && (
+                 <div className="text-2xl font-bold text-gold">0 د.ل</div>
+              )}
+              {savedBooking.totals.finalUSD > 0 && (
+                 <div className="text-[10px] text-white/30 uppercase tracking-widest leading-none">
+                   المجموع الكلي: {savedBooking.totals.combinedTotalLYD.toLocaleString()} د.ل
+                 </div>
+              )}
+            </div>
+          </div>
             </div>
           </div>
 
@@ -837,8 +836,8 @@ export default function BookingForm({ user }: { user: User }) {
         madinahNights: !hasAccommodation ? 0 : madinahNights,
         isVisaOnly,
         exchangeRate,
-        discount,
-        discountCurrency,
+        discountLYD,
+        discountUSD,
         globalServiceType,
         paidLYD: (oldBooking?.paidLYD || 0),
         paidUSD: (oldBooking?.paidUSD || 0),
@@ -1537,43 +1536,48 @@ export default function BookingForm({ user }: { user: User }) {
                 </span>
               </div>
 
-              {/* Discount Field */}
+              {/* Discount Fields */}
               <div className="pt-2 border-t border-white/5 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-white/60">التخفيض</span>
-                  <div className="flex gap-2 w-32">
-                    <input 
-                      type="number"
-                      className="input-field py-1 text-xs text-right flex-1"
-                      placeholder="0"
-                      value={discount || ''}
-                      onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                    />
-                    <select 
-                      className="bg-transparent text-[10px] text-gold outline-none"
-                      value={discountCurrency}
-                      onChange={(e) => setDiscountCurrency(e.target.value as any)}
-                    >
-                      <option value="LYD">د.ل</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </div>
+                  <span className="text-xs text-white/60">تخفيض (د.ل)</span>
+                  <input 
+                    type="number"
+                    className="input-field py-1 text-xs text-right w-24"
+                    placeholder="0"
+                    value={discountLYD || ''}
+                    onChange={(e) => setDiscountLYD(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/60">تخفيض ($)</span>
+                  <input 
+                    type="number"
+                    className="input-field py-1 text-xs text-right w-24"
+                    placeholder="0"
+                    value={discountUSD || ''}
+                    onChange={(e) => setDiscountUSD(parseFloat(e.target.value) || 0)}
+                  />
                 </div>
               </div>
 
               <div className="pt-3 border-t border-white/10 flex justify-between items-end">
                 <span className="text-lg font-bold">الإجمالي النهائي</span>
-                <div className="text-right">
-                  {totals.combinedTotalLYD > totals.totalLYD ? (
-                    <>
-                      <p className="text-2xl font-bold text-gold">{totals.combinedTotalLYD.toLocaleString()} د.ل</p>
-                      <p className="text-[10px] text-white/40 uppercase tracking-widest">شامل تحويل العملة</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-2xl font-bold text-gold">{totals.totalLYD.toLocaleString()} د.ل</p>
-                      {totals.totalUSD > 0 && <p className="text-lg text-white/60">{totals.totalUSD.toLocaleString()} دولار</p>}
-                    </>
+                <div className="text-right space-y-1">
+                  <div className="text-2xl font-bold text-gold">
+                    {totals.finalLYD.toLocaleString()} د.ل
+                  </div>
+                  {totals.finalUSD > 0 && (
+                    <div className="text-2xl font-bold text-gold">
+                      {totals.finalUSD.toLocaleString()} دولار
+                    </div>
+                  )}
+                  {totals.finalUSD > 0 && (
+                    <p className="text-[10px] text-white/30 uppercase tracking-widest leading-none">
+                      المجموع الكلي: {totals.combinedTotalLYD.toLocaleString()} د.ل
+                    </p>
+                  )}
+                  {(totals.discountLYD > 0 || totals.discountUSD > 0) && (
+                    <p className="text-[10px] text-red-400 uppercase tracking-widest text-left mt-1">تم خصم التخفيض</p>
                   )}
                 </div>
               </div>

@@ -1168,38 +1168,43 @@ async function startServer() {
     console.error("WhatsApp initialization failed:", err);
   }
 
-  // Handle static files in production or on Vercel
-  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
-    const distPath = path.join(process.cwd(), "dist");
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      
-      // Serve index.html for all other routes to support SPA routing
-      app.get("*", (req, res) => {
-        // Skip API routes so they return 404 if not matched
-        if (req.path.startsWith('/api/')) {
-          return res.status(404).json({ error: 'API route not found' });
-        }
-        res.sendFile(path.join(distPath, "index.html"));
+  // Handle static files and SPA fallback
+  const distPath = path.join(process.cwd(), "dist");
+  console.log("Current working directory:", process.cwd());
+  console.log("Static files path:", distPath);
+  console.log("Static files path exists:", fs.existsSync(distPath));
+
+  if (fs.existsSync(distPath)) {
+    console.log("Serving static files from dist...");
+    app.use(express.static(distPath));
+  } else {
+    console.warn("Dist folder not found! Static files will not be served.");
+  }
+
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
       });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn("Vite failed to load in dev mode");
     }
   }
 
-  if (!process.env.VERCEL) {
-    // Only in local development
-    if (process.env.NODE_ENV !== "production") {
-      try {
-        const { createServer: createViteServer } = await import("vite");
-        const vite = await createViteServer({
-          server: { middlewareMode: true },
-          appType: "spa",
-        });
-        app.use(vite.middlewares);
-      } catch (e) {
-        console.warn("Vite failed to load in dev mode");
-      }
+  // SPA fallback: Serve index.html for non-API routes
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    const indexPath = path.join(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
     }
+    next();
+  });
 
+  if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
