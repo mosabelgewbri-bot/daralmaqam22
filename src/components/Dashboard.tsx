@@ -87,7 +87,10 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
 
         // Calculate Stats
         const totalPilgrims = scopedBookings.reduce((acc, b) => acc + (Number(b.passengerCount) || 0), 0);
-        const totalRevenue = scopedBookings.reduce((acc, b) => acc + (Number(b.totals?.totalLYD) || 0), 0);
+        const totalRevenue = scopedBookings.reduce((acc, b) => {
+          const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+          return acc + (Number(actualTotalLYD) || 0);
+        }, 0);
         
         const activeTripsCount = allTrips.filter((t: any) => t.status === 'Active' || t.status === 'Upcoming').length;
         const totalCapacity = allTrips.reduce((acc: number, t: any) => acc + (Number(t.totalSeats) || 0), 0);
@@ -113,7 +116,10 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
         const chartData = last7Days.map(date => {
           const dayRevenue = scopedBookings
             .filter(b => (b.createdAt || '').split('T')[0] === date)
-            .reduce((acc, b) => acc + (Number(b.totals?.totalLYD) || 0), 0);
+            .reduce((acc, b) => {
+              const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+              return acc + (Number(actualTotalLYD) || 0);
+            }, 0);
           
           return {
             date: new Date(date).toLocaleDateString('ar-LY', { day: 'numeric', month: 'short' }),
@@ -473,7 +479,10 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
                     <div className="flex items-center gap-10">
                       <div className="text-right hidden sm:block">
                         <p className="text-[9px] text-white/20 uppercase tracking-widest mb-1">المبلغ</p>
-                        <p className="text-sm font-bold text-white">{booking.totals?.totalLYD.toLocaleString()} <span className="text-[10px] text-gold/60 font-normal">د.ل</span></p>
+                        <p className="text-sm font-bold text-white">
+                          {(booking.totals?.baseTotalLYD ? booking.totals.totalLYD : ((booking.totals?.totalLYD || 0) - ((booking as any).discountLYD || (booking.totals as any)?.discountLYD || 0))).toLocaleString()} 
+                          <span className="text-[10px] text-gold/60 font-normal">د.ل</span>
+                        </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <span className={clsx(

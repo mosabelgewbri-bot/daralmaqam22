@@ -145,8 +145,8 @@ export default function ProfitLossModule({ user }: { user: User }) {
       const trip = trips.find(t => t.id === booking.tripId);
       const costPerPax = tripCostsPerPax.get(booking.tripId) || { lyd: 0, usd: 0 };
       
-      const revenueLYD = booking.totals?.totalLYD || 0;
-      const revenueUSD = booking.totals?.totalUSD || 0;
+      const revenueLYD = booking.totals?.baseTotalLYD ? booking.totals.totalLYD : ((booking.totals?.totalLYD || 0) - ((booking as any).discountLYD || (booking.totals as any)?.discountLYD || 0));
+      const revenueUSD = booking.totals?.baseTotalUSD ? booking.totals.totalUSD : ((booking.totals?.totalUSD || 0) - ((booking as any).discountUSD || (booking.totals as any)?.discountUSD || 0));
       
       // Use booking-specific cost if set, otherwise fallback to distributed trip cost
       const costLYD = booking.costLYD !== undefined ? booking.costLYD : (costPerPax.lyd * (booking.passengerCount || 0));
@@ -166,14 +166,22 @@ export default function ProfitLossModule({ user }: { user: User }) {
       };
     });
 
-    const totals = detailedRows.reduce((acc, row) => ({
-      revenueLYD: acc.revenueLYD + row.revenueLYD,
-      revenueUSD: acc.revenueUSD + row.revenueUSD,
-      costLYD: acc.costLYD + row.costLYD,
-      costUSD: acc.costUSD + row.costUSD,
-      profitLYD: acc.profitLYD + row.profitLYD,
-      profitUSD: acc.profitUSD + row.profitUSD,
-    }), { revenueLYD: 0, revenueUSD: 0, costLYD: 0, costUSD: 0, profitLYD: 0, profitUSD: 0 });
+    const totals = detailedRows.reduce((acc, row) => {
+      const booking = filteredBookings.find(b => b.id === row.id);
+      const dLYD = (booking as any)?.discountLYD || (booking?.totals as any)?.discountLYD || 0;
+      const dUSD = (booking as any)?.discountUSD || (booking?.totals as any)?.discountUSD || 0;
+      
+      return {
+        revenueLYD: acc.revenueLYD + row.revenueLYD,
+        revenueUSD: acc.revenueUSD + row.revenueUSD,
+        costLYD: acc.costLYD + row.costLYD,
+        costUSD: acc.costUSD + row.costUSD,
+        profitLYD: acc.profitLYD + row.profitLYD,
+        profitUSD: acc.profitUSD + row.profitUSD,
+        discountLYD: acc.discountLYD + dLYD,
+        discountUSD: acc.discountUSD + dUSD,
+      };
+    }, { revenueLYD: 0, revenueUSD: 0, costLYD: 0, costUSD: 0, profitLYD: 0, profitUSD: 0, discountLYD: 0, discountUSD: 0 });
 
     return { rows: detailedRows, totals };
   };
@@ -290,8 +298,15 @@ export default function ProfitLossModule({ user }: { user: User }) {
               ))}
             </tbody>
             <tfoot className="bg-gold/10 border-t-2 border-gold/20">
+              <tr className="text-white/60 text-[10px]">
+                <td colSpan={3} className="px-6 py-2">إجمالي التخفيضات الممنوحة</td>
+                <td className="px-6 py-2 text-rose-400">{totals.discountLYD.toLocaleString()}</td>
+                <td colSpan={2}></td>
+                <td className="px-6 py-2 text-rose-400">${totals.discountUSD.toLocaleString()}</td>
+                <td colSpan={2}></td>
+              </tr>
               <tr className="text-white font-black">
-                <td colSpan={3} className="px-6 py-6 text-xl text-gold">الإجماليات</td>
+                <td colSpan={3} className="px-6 py-6 text-xl text-gold">الإجماليات (صافي)</td>
                 <td className="px-6 py-6 text-emerald-400">{totals.revenueLYD.toLocaleString()}</td>
                 <td className="px-6 py-6 text-rose-400">{totals.costLYD.toLocaleString()}</td>
                 <td className={clsx(
@@ -332,23 +347,29 @@ export default function ProfitLossModule({ user }: { user: User }) {
               
               <div className="flex gap-8">
                 <div className="text-center">
-                  <p className="text-xs text-white/40 mb-1 uppercase tracking-widest">الإجمالي بالدينار</p>
+                  <p className="text-xs text-white/40 mb-1 uppercase tracking-widest text-emerald-400">صافي الربح (د.ل)</p>
                   <p className={clsx(
                     "text-3xl font-black",
                     totals.profitLYD >= 0 ? "text-emerald-400" : "text-rose-400"
                   )}>
                     {totals.profitLYD.toLocaleString()} <span className="text-sm font-normal">د.ل</span>
                   </p>
+                  {totals.discountLYD > 0 && (
+                     <p className="text-[10px] text-rose-400 mt-1">تخفيضات: {totals.discountLYD.toLocaleString()}</p>
+                  )}
                 </div>
                 <div className="w-px bg-white/10" />
                 <div className="text-center">
-                  <p className="text-xs text-white/40 mb-1 uppercase tracking-widest">الإجمالي بالدولار</p>
+                  <p className="text-xs text-white/40 mb-1 uppercase tracking-widest text-blue-400">صافي الربح ($)</p>
                   <p className={clsx(
                     "text-3xl font-black",
                     totals.profitUSD >= 0 ? "text-blue-400" : "text-rose-400"
                   )}>
                     <span className="text-sm font-normal">$</span>{totals.profitUSD.toLocaleString()}
                   </p>
+                  {totals.discountUSD > 0 && (
+                     <p className="text-[10px] text-rose-400 mt-1">تخفيضات: ${totals.discountUSD.toLocaleString()}</p>
+                  )}
                 </div>
               </div>
             </div>

@@ -75,10 +75,14 @@ export const FinanceAnalytics: React.FC = () => {
     let totalRevenueUSD = 0;
     let totalCostLYD = 0;
     let totalCostUSD = 0;
+    let totalDiscountLYD = 0;
+    let totalDiscountUSD = 0;
 
     filteredBookings.forEach(booking => {
       totalRevenueLYD += booking.paidLYD || 0;
       totalRevenueUSD += booking.paidUSD || 0;
+      totalDiscountLYD += (booking as any).discountLYD || (booking.totals as any)?.discountLYD || 0;
+      totalDiscountUSD += (booking as any).discountUSD || (booking.totals as any)?.discountUSD || 0;
     });
 
     filteredTrips.forEach(trip => {
@@ -106,6 +110,8 @@ export const FinanceAnalytics: React.FC = () => {
       totalRevenueUSD,
       totalCostLYD,
       totalCostUSD,
+      totalDiscountLYD,
+      totalDiscountUSD,
       profitLYD,
       profitUSD,
       marginLYD
@@ -266,6 +272,13 @@ export const FinanceAnalytics: React.FC = () => {
           icon={<DollarSign className="w-6 h-6 text-gold" />}
           trend="+18.3%"
           isPositive={true}
+        />
+        <MetricCard 
+          title="إجمالي التخفيضات (LYD)" 
+          value={metrics.totalDiscountLYD} 
+          icon={<ArrowDownRight className="w-6 h-6 text-amber-400" />}
+          trend="خصم"
+          isPositive={false}
         />
         <MetricCard 
           title="هامش الربح" 

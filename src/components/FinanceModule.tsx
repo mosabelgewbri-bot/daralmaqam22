@@ -79,8 +79,10 @@ export default function FinanceModule({ user }: { user: User }) {
 
         if (filterRemainingOnly) {
           filtered = filtered.filter(b => {
-            const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-            const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+            const actualTotalLYD = b.totals.baseTotalLYD ? b.totals.totalLYD : (b.totals.totalLYD - ( (b as any).discountLYD || (b.totals as any).discountLYD || 0));
+            const actualTotalUSD = b.totals.baseTotalUSD ? b.totals.totalUSD : (b.totals.totalUSD - ( (b as any).discountUSD || (b.totals as any).discountUSD || 0));
+            const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+            const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
             return remainingLYD > 0 || remainingUSD > 0;
           });
         }
@@ -192,7 +194,13 @@ export default function FinanceModule({ user }: { user: User }) {
     printWindow.dir = 'rtl';
     
     const dataToExport = onlyRemaining 
-      ? bookings.filter(b => ((b.totals.totalLYD || 0) - (b.paidLYD || 0)) > 0 || ((b.totals.totalUSD || 0) - (b.paidUSD || 0)) > 0)
+      ? bookings.filter(b => {
+          const actualTotalLYD = b.totals.baseTotalLYD ? b.totals.totalLYD : (b.totals.totalLYD - ( (b as any).discountLYD || (b.totals as any).discountLYD || 0));
+          const actualTotalUSD = b.totals.baseTotalUSD ? b.totals.totalUSD : (b.totals.totalUSD - ( (b as any).discountUSD || (b.totals as any).discountUSD || 0));
+          const remLYD = actualTotalLYD - (b.paidLYD || 0);
+          const remUSD = actualTotalUSD - (b.paidUSD || 0);
+          return remLYD > 0 || remUSD > 0;
+        })
       : bookings;
 
     printWindow.innerHTML = `
@@ -217,8 +225,10 @@ export default function FinanceModule({ user }: { user: User }) {
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">الرحلة</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">اسم رب الأسرة</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: center;">نوع الغرفة</th>
+            <th style="border: 1px solid #333; padding: 10px; text-align: right;">تخفيض د.ل</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">إجمالي د.ل</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">مدفوع د.ل</th>
+            <th style="border: 1px solid #333; padding: 10px; text-align: right;">تخفيض $</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">إجمالي $</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right;">مدفوع $</th>
             <th style="border: 1px solid #333; padding: 10px; text-align: right; background-color: #fef2f2; color: #000;">متبقي د.ل</th>
@@ -227,8 +237,12 @@ export default function FinanceModule({ user }: { user: User }) {
         </thead>
         <tbody>
           ${dataToExport.map((b, idx) => {
-            const remLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-            const remUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+            const discLYD = (b as any).discountLYD || (b.totals as any).discountLYD || 0;
+            const discUSD = (b as any).discountUSD || (b.totals as any).discountUSD || 0;
+            const actualTotalLYD = b.totals.baseTotalLYD ? b.totals.totalLYD : (b.totals.totalLYD - discLYD);
+            const actualTotalUSD = b.totals.baseTotalUSD ? b.totals.totalUSD : (b.totals.totalUSD - discUSD);
+            const remLYD = actualTotalLYD - (b.paidLYD || 0);
+            const remUSD = actualTotalUSD - (b.paidUSD || 0);
             const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
@@ -236,9 +250,11 @@ export default function FinanceModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${trip?.name || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold;">${b.headName}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 10px;">${getRoomSummary(b)}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalLYD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: #dc2626;">${discLYD > 0 ? discLYD.toLocaleString() : '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${actualTotalLYD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.paidLYD || 0).toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${b.totals.totalUSD.toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: #dc2626;">${discUSD > 0 ? discUSD.toLocaleString() : '---'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${actualTotalUSD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.paidUSD || 0).toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold; background-color: #fff1f2;">${remLYD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold; background-color: #fff1f2;">${remUSD.toLocaleString()}</td>
@@ -385,9 +401,11 @@ export default function FinanceModule({ user }: { user: User }) {
                   <th className="px-2 py-3">اسم رب الأسرة</th>
                   <th className="px-2 py-3">توزيع الغرف</th>
                   <th className="px-2 py-3">الصرف</th>
+                  <th className="px-2 py-3 bg-red-500/5">تخفيض (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">إجمالي (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">نقداً (د.ل)</th>
                   <th className="px-2 py-3 bg-emerald-500/5">حوالة (د.ل)</th>
+                  <th className="px-2 py-3 bg-red-500/5">تخفيض ($)</th>
                   <th className="px-2 py-3 bg-blue-500/5">إجمالي ($)</th>
                   <th className="px-2 py-3 bg-blue-500/5">نقداً ($)</th>
                   <th className="px-2 py-3 bg-blue-500/5">حوالة ($)</th>
@@ -403,8 +421,10 @@ export default function FinanceModule({ user }: { user: User }) {
                   </tr>
                 ) : (
                   bookings.map(b => {
-                    const remainingLYD = (b.totals.totalLYD || 0) - (b.paidLYD || 0);
-                    const remainingUSD = (b.totals.totalUSD || 0) - (b.paidUSD || 0);
+                    const actualTotalLYD = b.totals.baseTotalLYD ? b.totals.totalLYD : (b.totals.totalLYD - ( (b as any).discountLYD || (b.totals as any).discountLYD || 0));
+                    const actualTotalUSD = b.totals.baseTotalUSD ? b.totals.totalUSD : (b.totals.totalUSD - ( (b as any).discountUSD || (b.totals as any).discountUSD || 0));
+                    const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+                    const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
                     
                     return (
                       <tr key={b.id} className="hover:bg-white/5 transition-colors">
@@ -417,8 +437,11 @@ export default function FinanceModule({ user }: { user: User }) {
                         <td className="px-2 py-4 text-[10px] text-gold font-bold">{b.exchangeRate || (trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim())?.exchangeRate || '---')}</td>
                         
                         {/* LYD Section */}
-                        <td className="px-2 py-4 bg-emerald-500/5 font-bold text-xs">
-                          {b.totals.totalLYD.toLocaleString()}
+                        <td className="px-2 py-4 bg-red-500/5 text-red-400 font-bold text-[10px]">
+                          {((b as any).discountLYD || (b.totals as any).discountLYD || 0).toLocaleString()}
+                        </td>
+                        <td className="px-2 py-4 bg-emerald-500/5 font-bold text-xs relative group/discount">
+                          {actualTotalLYD.toLocaleString()}
                         </td>
                         <td className="px-2 py-4 bg-emerald-500/5">
                           <input 
@@ -438,8 +461,11 @@ export default function FinanceModule({ user }: { user: User }) {
                         </td>
  
                         {/* USD Section */}
-                        <td className="px-2 py-4 bg-blue-500/5 font-bold text-xs">
-                          {b.totals.totalUSD.toLocaleString()}
+                        <td className="px-2 py-4 bg-red-500/5 text-red-400 font-bold text-[10px]">
+                          {((b as any).discountUSD || (b.totals as any).discountUSD || 0).toLocaleString()}
+                        </td>
+                        <td className="px-2 py-4 bg-blue-500/5 font-bold text-xs relative group/discount">
+                          {actualTotalUSD.toLocaleString()}
                         </td>
                         <td className="px-2 py-4 bg-blue-500/5">
                           <input 

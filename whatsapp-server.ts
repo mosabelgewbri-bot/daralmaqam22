@@ -83,9 +83,16 @@ class WhatsAppManager {
 
       console.log('WhatsAppManager: Starting connection...');
       const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
-      const { version, isLatest } = await fetchLatestBaileysVersion();
       
-      console.log(`WhatsAppManager: Using Baileys v${version.join('.')}, isLatest: ${isLatest}`);
+      let version: any;
+      try {
+        const latest = await fetchLatestBaileysVersion();
+        version = latest.version;
+        console.log(`WhatsAppManager: Using Baileys v${version.join('.')}, isLatest: ${latest.isLatest}`);
+      } catch (err) {
+        console.warn('WhatsAppManager: Failed to fetch latest version, using default:', err);
+        version = [2, 2323, 4];
+      }
 
       this.sock = makeWASocket({
         version,
@@ -109,9 +116,10 @@ class WhatsAppManager {
         const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
-          console.log('WhatsAppManager: New QR Code received');
+          console.log('WhatsAppManager: New QR Code received (Length: ' + qr.length + ')');
           try {
             this.qr = await QRCode.toDataURL(qr);
+            console.log('WhatsAppManager: QR Data URL generated successfully');
           } catch (err) {
             console.error('Failed to generate QR data URL:', err);
           }

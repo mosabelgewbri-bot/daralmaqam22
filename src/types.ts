@@ -42,6 +42,10 @@ export interface Booking {
     packageUSD: number;
     totalLYD: number;
     totalUSD: number;
+    baseTotalLYD?: number;
+    baseTotalUSD?: number;
+    discountLYD?: number;
+    discountUSD?: number;
   };
   costLYD?: number;
   costUSD?: number;

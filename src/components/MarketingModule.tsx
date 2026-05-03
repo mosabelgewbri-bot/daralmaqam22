@@ -1345,8 +1345,18 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         <span className="text-xs font-bold text-white">
                           {whatsappStatus?.status === 'connected' ? 'متصل' :
                            whatsappStatus?.status === 'qr' ? 'بانتظار مسح الرمز' :
-                           (whatsappStatus?.status === 'connecting' || (whatsappStatus as any)?.isConnecting) ? 'جاري الاتصال...' : 
-                           whatsappStatus?.status === 'unsupported' ? 'غير مدعوم على هذا الخادم' : 'غير متصل'}
+                           (whatsappStatus?.status === 'connecting' || (whatsappStatus as any)?.isConnecting) ? (
+                             <div className="flex flex-col">
+                               <span>جاري الاتصال...</span>
+                               <span className="text-[8px] opacity-40 font-normal">قد يستغرق 30 ثانية</span>
+                             </div>
+                           ) : 
+                           whatsappStatus?.status === 'unsupported' ? (
+                             <div className="flex flex-col">
+                               <span>غير مدعوم</span>
+                               <span className="text-[8px] opacity-40 font-normal">راجع رسالة الخطأ أدناه</span>
+                             </div>
+                           ) : 'غير متصل'}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">

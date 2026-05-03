@@ -156,8 +156,11 @@ export default function ReportsModule({ user }: { user: User }) {
     const matchesDateFrom = !dateFrom || (bookingDate && bookingDate >= parseISO(dateFrom));
     const matchesDateTo = !dateTo || (bookingDate && bookingDate <= parseISO(dateTo));
 
-    const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-    const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+    const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+    const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+    
+    const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+    const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
     const hasRemaining = remainingLYD > 0 || remainingUSD > 0;
     const matchesRemainingFilter = !filterRemainingOnly || hasRemaining;
 
@@ -285,8 +288,10 @@ export default function ReportsModule({ user }: { user: User }) {
     
     if (activeTab === 'master') {
       data = filteredBookings.map(b => {
-        const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-        const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+        const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+        const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+        const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+        const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
         const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
         const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
@@ -312,11 +317,13 @@ export default function ReportsModule({ user }: { user: User }) {
           'رقم المجموعة': b.groupNo || '---',
           'سعر الصرف': b.exchangeRate || 0,
           'الحالة': b.status || '---',
+          'تخفيض (د.ل)': (b as any).discountLYD || (b.totals as any)?.discountLYD || 0,
+          'تخفيض ($)': (b as any).discountUSD || (b.totals as any)?.discountUSD || 0,
           'التاريخ': b.createdAt ? new Date(b.createdAt).toLocaleDateString('ar-LY') : '---',
-          'إجمالي (دينار)': b.totals?.totalLYD || 0,
+          'إجمالي (دينار)': actualTotalLYD,
           'مدفوع (دينار)': b.paidLYD || 0,
           'متبقي (دينار)': remainingLYD,
-          'إجمالي (دولار)': b.totals?.totalUSD || 0,
+          'إجمالي (دولار)': actualTotalUSD,
           'مدفوع (دولار)': b.paidUSD || 0,
           'متبقي (دولار)': remainingUSD,
         };
@@ -365,8 +372,10 @@ export default function ReportsModule({ user }: { user: User }) {
       filename = `Dara_Visa_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     } else if (activeTab === 'finance') {
       data = filteredBookings.map(b => {
-        const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-        const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+        const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+        const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+        const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+        const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
         const trip = trips.find(t => String(t.id) === String(b.tripId || (b as any).tripid || (b as any).trip_id));
         const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
@@ -383,10 +392,12 @@ export default function ReportsModule({ user }: { user: User }) {
           'رقم الهاتف': b.phone || '---',
           'سعر الصرف': b.exchangeRate || 0,
           'توزيع الغرف': roomSummary,
-          'إجمالي د.ل': b.totals?.totalLYD || 0,
+          'تخفيض د.ل': (b as any).discountLYD || (b.totals as any)?.discountLYD || 0,
+          'إجمالي د.ل': actualTotalLYD,
           'مدفوع د.ل': b.paidLYD || 0,
           'متبقي د.ل': remainingLYD,
-          'إجمالي $': b.totals?.totalUSD || 0,
+          'تخفيض $': (b as any).discountUSD || (b.totals as any)?.discountUSD || 0,
+          'إجمالي $': actualTotalUSD,
           'مدفوع $': b.paidUSD || 0,
           'متبقي $': remainingUSD,
         };
@@ -487,8 +498,10 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">فندق مكة (رقم الحجز)</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">فندق المدينة (رقم الحجز)</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">المجموعة</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: right;">تخفيض د.ل</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">إجمالي د.ل</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">متبقي د.ل</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: right;">تخفيض $</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">إجمالي $</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">متبقي $</th>
             ` : activeTab === 'rooming' ? `
@@ -519,8 +532,10 @@ export default function ReportsModule({ user }: { user: User }) {
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">رب الأسرة</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">رقم الهاتف</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: center;">نوع الغرفة</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: right;">تخفيض د.ل</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">إجمالي د.ل</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">متبقي د.ل</th>
+              <th style="border: 1px solid #333; padding: 8px; text-align: right;">تخفيض $</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">إجمالي $</th>
               <th style="border: 1px solid #333; padding: 8px; text-align: right;">متبقي $</th>
             ` : `
@@ -537,8 +552,10 @@ export default function ReportsModule({ user }: { user: User }) {
         </thead>
         <tbody>
           ${activeTab === 'master' ? filteredBookings.map((b, idx) => {
-            const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-            const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+            const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+            const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+            const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+            const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
             const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
             const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
@@ -559,9 +576,11 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px;">${b.makkahHotel || '---'} (${b.makkahBookingNo || '---'})</td>
               <td style="border: 1px solid #dee2e6; padding: 10px;">${b.madinahHotel || '---'} (${b.madinahBookingNo || '---'})</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">${b.groupNo || '---'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalLYD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${((b as any).discountLYD || (b.totals as any)?.discountLYD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${actualTotalLYD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingLYD.toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalUSD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${((b as any).discountUSD || (b.totals as any)?.discountUSD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${actualTotalUSD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingUSD.toLocaleString()}</td>
             </tr>
           `}).join('') : activeTab === 'rooming' ? roomingFilteredBookings.map((b, idx) => {
@@ -602,8 +621,10 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center;">${p.visaStatus || 'Pending'}</td>
             </tr>
           `; }).join('') : activeTab === 'finance' ? filteredBookings.map((b, idx) => {
-            const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-            const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+            const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+            const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+            const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+            const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
             const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
             const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
@@ -619,9 +640,11 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; white-space: nowrap;">${b.headName || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; white-space: nowrap;">${b.phone || '---'}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-size: 10px;">${roomSummary}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalLYD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${((b as any).discountLYD || (b.totals as any)?.discountLYD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${actualTotalLYD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingLYD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingLYD.toLocaleString()}</td>
-              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${(b.totals?.totalUSD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${((b as any).discountUSD || (b.totals as any)?.discountUSD || 0).toLocaleString()}</td>
+              <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right;">${actualTotalUSD.toLocaleString()}</td>
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingUSD.toLocaleString()}</td>
             </tr>
           `; }).join('') : filteredPilgrims.map((p, idx) => {
@@ -1001,8 +1024,10 @@ export default function ReportsModule({ user }: { user: User }) {
                   <th className="px-4 py-4">فندق مكة (رقم الحجز)</th>
                   <th className="px-4 py-4">فندق المدينة (رقم الحجز)</th>
                   <th className="px-4 py-4">المجموعة</th>
+                  <th className="px-4 py-4">تخفيض د.ل</th>
                   <th className="px-4 py-4">إجمالي د.ل</th>
                   <th className="px-4 py-4">متبقي د.ل</th>
+                  <th className="px-4 py-4">تخفيض $</th>
                   <th className="px-4 py-4">إجمالي $</th>
                   <th className="px-4 py-4">متبقي $</th>
                   <th className="px-4 py-4">إجراءات</th>
@@ -1010,8 +1035,10 @@ export default function ReportsModule({ user }: { user: User }) {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filteredBookings.map((b, idx) => {
-                  const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-                  const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+                  const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+                  const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+                  const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+                  const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
                   return (
                     <tr key={idx} className="hover:bg-white/5 transition-colors">
                       <td className="px-4 py-4 font-mono text-gold font-bold">
@@ -1053,14 +1080,16 @@ export default function ReportsModule({ user }: { user: User }) {
                         <div className="text-[10px] text-white/40">{b.madinahBookingNo || '---'}</div>
                       </td>
                       <td className="px-4 py-4 font-bold text-gold">{b.groupNo || '---'}</td>
-                      <td className="px-4 py-4 font-bold">{(b.totals?.totalLYD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 font-bold text-red-400">{((b as any).discountLYD || (b.totals as any)?.discountLYD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 font-bold">{actualTotalLYD.toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
                         remainingLYD > 0 ? "text-red-400" : "text-emerald-400"
                       )}>
                         {remainingLYD.toLocaleString()}
                       </td>
-                      <td className="px-4 py-4 font-bold">{(b.totals?.totalUSD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 font-bold text-red-400">{((b as any).discountUSD || (b.totals as any)?.discountUSD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 font-bold">{actualTotalUSD.toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
                         remainingUSD > 0 ? "text-red-400" : "text-emerald-400"
@@ -1220,9 +1249,11 @@ export default function ReportsModule({ user }: { user: User }) {
                   <th className="px-4 py-4">رب الأسرة</th>
                   <th className="px-4 py-4">رقم الهاتف</th>
                   <th className="px-4 py-4">نوع الغرفة</th>
+                  <th className="px-4 py-4">تخفيض د.ل</th>
                   <th className="px-4 py-4">إجمالي د.ل</th>
                   <th className="px-4 py-4">مدفوع د.ل</th>
                   <th className="px-4 py-4">متبقي د.ل</th>
+                  <th className="px-4 py-4">تخفيض $</th>
                   <th className="px-4 py-4">إجمالي $</th>
                   <th className="px-4 py-4">مدفوع $</th>
                   <th className="px-4 py-4">متبقي $</th>
@@ -1230,8 +1261,10 @@ export default function ReportsModule({ user }: { user: User }) {
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filteredBookings.map((b, idx) => {
-                  const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-                  const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+                  const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+                  const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+                  const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+                  const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
                   return (
                     <tr key={idx} className="hover:bg-white/5 transition-colors">
                       <td className="px-4 py-4 font-mono text-gold font-bold">{b.regId || '---'}</td>
@@ -1249,7 +1282,8 @@ export default function ReportsModule({ user }: { user: User }) {
                           return label;
                         }).join(' - ')}
                       </td>
-                      <td className="px-4 py-4">{(b.totals?.totalLYD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 text-red-400 font-bold">{((b as any).discountLYD || (b.totals as any)?.discountLYD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4">{actualTotalLYD.toLocaleString()}</td>
                       <td className="px-4 py-4">{(b.paidLYD || 0).toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
@@ -1257,7 +1291,8 @@ export default function ReportsModule({ user }: { user: User }) {
                       )}>
                         {remainingLYD.toLocaleString()}
                       </td>
-                      <td className="px-4 py-4">{(b.totals?.totalUSD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4 text-red-400 font-bold">{((b as any).discountUSD || (b.totals as any)?.discountUSD || 0).toLocaleString()}</td>
+                      <td className="px-4 py-4">{actualTotalUSD.toLocaleString()}</td>
                       <td className="px-4 py-4">{(b.paidUSD || 0).toLocaleString()}</td>
                       <td className={clsx(
                         "px-4 py-4 font-bold",
@@ -1290,8 +1325,10 @@ export default function ReportsModule({ user }: { user: User }) {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {getPaymentReminders().map((b, idx) => {
-                    const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
-                    const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
+                    const actualTotalLYD = b.totals?.baseTotalLYD ? b.totals.totalLYD : ((b.totals?.totalLYD || 0) - ((b as any).discountLYD || (b.totals as any)?.discountLYD || 0));
+                    const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
+                    const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
+                    const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
                     return (
                       <tr key={idx} className="hover:bg-white/5 transition-colors">
                         <td className="px-4 py-4">
