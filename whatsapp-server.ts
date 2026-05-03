@@ -227,6 +227,13 @@ class WhatsAppManager {
         user: null
       };
     }
+    
+    // Auto-init if disconnected and not busy
+    if (this.connectionStatus === 'disconnected' && !this.isConnecting) {
+      console.log('WhatsAppManager: Status requested while disconnected, triggering init...');
+      this.init().catch(err => console.error('WhatsAppManager: Auto-init failed:', err));
+    }
+
     return {
       status: this.connectionStatus,
       qr: this.qr,

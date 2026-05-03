@@ -80,7 +80,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [verifyExistingCount, setVerifyExistingCount] = useState(100);
   const [selectionCount, setSelectionCount] = useState(500);
-  const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr: string | null; user?: any } | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr: string | null; user?: any; message?: string } | null>(null);
   const [isPollingStatus, setIsPollingStatus] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [generateCount, setGenerateCount] = useState(20000);
@@ -1345,10 +1345,16 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         <span className="text-xs font-bold text-white">
                           {whatsappStatus?.status === 'connected' ? 'متصل' :
                            whatsappStatus?.status === 'qr' ? 'بانتظار مسح الرمز' :
-                           whatsappStatus?.status === 'connecting' ? 'جاري الاتصال...' : 'غير متصل'}
+                           whatsappStatus?.status === 'connecting' ? 'جاري الاتصال...' : 
+                           whatsappStatus?.status === 'unsupported' ? 'غير مدعوم على هذا الخادم' : 'غير متصل'}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
+                        {whatsappStatus?.status === 'unsupported' && (
+                          <div className="text-[10px] text-amber-500 font-bold max-w-[200px] text-left leading-tight">
+                            {whatsappStatus.message}
+                          </div>
+                        )}
                         <button 
                           onClick={async () => {
                             try {
