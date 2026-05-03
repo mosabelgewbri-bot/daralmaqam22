@@ -1345,7 +1345,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         <span className="text-xs font-bold text-white">
                           {whatsappStatus?.status === 'connected' ? 'متصل' :
                            whatsappStatus?.status === 'qr' ? 'بانتظار مسح الرمز' :
-                           whatsappStatus?.status === 'connecting' ? 'جاري الاتصال...' : 
+                           (whatsappStatus?.status === 'connecting' || (whatsappStatus as any)?.isConnecting) ? 'جاري الاتصال...' : 
                            whatsappStatus?.status === 'unsupported' ? 'غير مدعوم على هذا الخادم' : 'غير متصل'}
                         </span>
                       </div>

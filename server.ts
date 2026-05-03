@@ -1170,15 +1170,9 @@ async function startServer() {
 
   // Handle static files and SPA fallback
   const distPath = path.join(process.cwd(), "dist");
-  console.log("Current working directory:", process.cwd());
-  console.log("Static files path:", distPath);
-  console.log("Static files path exists:", fs.existsSync(distPath));
 
   if (fs.existsSync(distPath)) {
-    console.log("Serving static files from dist...");
     app.use(express.static(distPath));
-  } else {
-    console.warn("Dist folder not found! Static files will not be served.");
   }
 
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {

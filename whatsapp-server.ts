@@ -45,6 +45,8 @@ class WhatsAppManager {
   async init() {
     if (this.sock || this.isConnecting || this.connectionStatus === 'connected') return;
     console.log('WhatsAppManager: Initializing...');
+    this.qr = null;
+    this.connectionStatus = 'connecting';
     this.qrRetryCount = 0;
     this.conflictRetryCount = 0;
     await this.connectWithDelay();
@@ -237,7 +239,8 @@ class WhatsAppManager {
     return {
       status: this.connectionStatus,
       qr: this.qr,
-      user: this.sock?.user
+      user: this.sock?.user,
+      isConnecting: this.isConnecting
     };
   }
 
