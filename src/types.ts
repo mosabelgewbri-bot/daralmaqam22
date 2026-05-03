@@ -64,6 +64,8 @@ export interface Booking {
   transportType?: string;
   isVisaOnly?: boolean;
   exchangeRate?: number;
+  discount?: number;
+  discountCurrency?: "LYD" | "USD";
   createdAt: string;
   updatedAt?: string;
   createdBy?: string; // User ID

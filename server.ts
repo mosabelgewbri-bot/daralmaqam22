@@ -1173,8 +1173,15 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
-      // No wildcard '*' here, let it fall through to public index if needed 
-      // or managed by Vercel rewrites
+      
+      // Serve index.html for all other routes to support SPA routing
+      app.get("*", (req, res) => {
+        // Skip API routes so they return 404 if not matched
+        if (req.path.startsWith('/api/')) {
+          return res.status(404).json({ error: 'API route not found' });
+        }
+        res.sendFile(path.join(distPath, "index.html"));
+      });
     }
   }
 
