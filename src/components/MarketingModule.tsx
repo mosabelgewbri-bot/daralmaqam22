@@ -1333,13 +1333,15 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     onChange={(e) => {
                       setWhatsappService(e.target.value);
                       localStorage.setItem('whatsapp_service', e.target.value);
+                      if (e.target.value === 'whapi') setWhatsappApiUrl('https://gate.whapi.cloud');
+                      else if (e.target.value === 'ultramsg') setWhatsappApiUrl('https://api.ultramsg.com');
                     }}
                     className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white text-sm focus:border-gold/50 transition-all outline-none"
                   >
                     <option value="whapi">Whapi.cloud (احترافي)</option>
                     <option value="ultramsg">UltraMsg (سهل)</option>
-                    <option value="local">سيرفر محلي (WPPConnect/Baileys - تجريبي)</option>
-                    <option value="remote">سيرفر بعيد (Custom API / Baileys)</option>
+                    <option value="local">سيرفر محلي (متوافق مع Vercel)</option>
+                    <option value="remote">سيرفر خاص (cPanel/VPS - Baileys)</option>
                   </select>
                 </div>
 
@@ -1348,146 +1350,120 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                     <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 space-y-3">
                       <div className="flex items-center gap-2 text-blue-400">
                         <Globe className="w-4 h-4" />
-                        <span className="text-xs font-bold">إعدادات السيرفر الخاص (Baileys)</span>
+                        <span className="text-xs font-bold">إعدادات السيرفر الخاص (cPanel)</span>
                       </div>
-                      <p className="text-[10px] text-white/40 leading-relaxed">
-                        لاستخدام استضافتك <span className="text-blue-400 font-mono">umr.daralmaqam.com</span> كبوابة إرسال، اتبع الخطوات البسيطة أدناه لحل مشكلة الـ <span className="text-red-400">NPM Install</span>:
-                      </p>
                       
                       <div className="bg-black/40 rounded-xl p-4 border border-white/5 space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-[10px] text-white/40 block">الخطوة 1: رابط الـ API بالسيرفر:</label>
-                          <input
-                            type="text"
-                            value={whatsappApiUrl}
-                            onChange={(e) => setWhatsappApiUrl(e.target.value)}
-                            placeholder="https://umr.daralmaqam.com/api"
-                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white dir-ltr font-mono"
-                          />
+                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2">
+                          <p className="text-[10px] text-emerald-400 font-bold mb-1">🚀 الحل المستقر للقضاء على أخطاء التشغيل:</p>
+                          <ol className="text-[10px] text-white/40 list-decimal px-4 space-y-1.5 leading-relaxed">
+                             <li>في Node.js Selector، تأكد أن إصدار Node هو <span className="text-emerald-400 font-bold">18.x</span> أو أعلى.</li>
+                             <li>تأكد من إضافة <span className="text-white">@whiskeysockets/baileys</span> و <span className="text-white">express</span> في قائمة الحزم (Packages).</li>
+                             <li>احذف مجلد <span className="text-white font-mono">auth_info</span> من مدير الملفات قبل كل محاولة جديدة.</li>
+                             <li>انسخ الكود أدناه (V5) وضعه في <span className="text-white">app.js</span> ثم اضغط <span className="text-emerald-400">Restart</span>.</li>
+                          </ol>
+                        </div>
+
+                        <div className="space-y-4">
+                          <label className="text-[10px] text-white/40 block">رابط السيرفر (Subdomain):</label>
+                          <div className="relative">
+                            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                            <input
+                              type="text"
+                              value={whatsappApiUrl}
+                              onChange={(e) => setWhatsappApiUrl(e.target.value)}
+                              placeholder="https://wa.daralmaqam.com"
+                              className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white dir-ltr font-mono focus:border-gold/30 transition-all outline-none"
+                            />
+                          </div>
                         </div>
 
                         <div className="pt-2 border-t border-white/5 space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-emerald-400 font-bold">ملف package.json (ضروري لتفعيل الزر):</span>
-                            <button 
-                              onClick={() => {
-                                const pkg = `{
-  "name": "wa-bridge",
-  "version": "1.0.0",
-  "main": "app.js",
-  "dependencies": {
-    "@whiskeysockets/baileys": "^6.5.0",
-    "express": "^4.18.2",
-    "link-preview-js": "^3.0.0"
-  }
-}`;
-                                navigator.clipboard.writeText(pkg);
-                                showToast('تم نسخ package.json', 'success');
-                              }}
-                              className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded hover:bg-emerald-500/30 transition-colors"
-                            >
-                              نسخ الملف
-                            </button>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-gold font-bold">ملف app.js (الكود الأخير والمضمون):</span>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-gold font-bold">كود الواتساب النهائي (V5 المستقر):</span>
+                              <span className="text-[8px] text-white/30">انسخ الكود وضعه في ملف app.js</span>
+                            </div>
                             <button 
                               onClick={() => {
                                 const code = `const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const path = require('path');
+const fs = require('fs');
+
+const logFile = path.join(__dirname, 'debug_log.txt');
+function log(msg) {
+    try {
+        const time = new Date().toLocaleString();
+        fs.appendFileSync(logFile, \`[\${time}] \${msg}\\n\`);
+        console.log(msg);
+    } catch(e) {}
+}
+
+log('--- WhatsApp Server Initializing ---');
 const app = express();
 app.use(express.json());
 
 let lastQr = null;
 let status = 'Initializing...';
+let sock = null;
 
 async function start() {
-    console.log('Starting WhatsApp Bridge...');
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-    const sock = makeWASocket({ 
-        auth: state,
-        printQRInTerminal: true,
-        browser: ["Dar Al Maqam", "Chrome", "1.0.0"]
-    });
+    try {
+        log('Importing Baileys and dependencies...');
+        const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+        const authPath = path.join(__dirname, 'auth_info');
+        if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
+        const { state, saveCreds } = await useMultiFileAuthState(authPath);
+        const { version } = await fetchLatestBaileysVersion();
+        
+        sock = makeWASocket({ 
+            auth: state, 
+            version,
+            printQRInTerminal: false, 
+            browser: ["Dar Al Maqam", "Chrome", "110.0.0"],
+            connectTimeoutMs: 60000
+        });
 
-    sock.ev.on('creds.update', saveCreds);
-    
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if(qr) {
-            lastQr = qr;
-            status = 'Waiting for Scan';
-            console.log('New QR Received');
-        }
-        if(connection === 'close') {
-            status = 'Reconnecting...';
-            start();
-        }
-        if(connection === 'open') {
-            lastQr = null;
-            status = 'Connected';
-            console.log('WhatsApp Connected Successfully!');
-        }
-    });
-
-    app.get('/qr', (req, res) => {
-        if (!lastQr) {
-            if (status === 'Connected') return res.send('<h1 style="color:green;text-align:center;font-family:sans-serif;margin-top:20%;">✅ Connected!</h1>');
-            return res.send('<h1 style="text-align:center;font-family:sans-serif;margin-top:20%;">Generating QR... Please wait 10 seconds and Refresh</h1><script>setTimeout(()=>location.reload(), 5000)</script>');
-        }
-        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(lastQr);
-        res.send(\`
-            <html>
-            <body style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#1a1a1a;color:white;font-family:sans-serif;">
-                <h2 style="margin-bottom:20px;">Scan this QR with WhatsApp</h2>
-                <div style="background:white; padding:20px; border-radius:15px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-                    <img src="\${qrUrl}" style="display:block;" />
-                </div>
-                <p style="margin-top:20px; color:#888;">Status: \${status}</p>
-                <script>setTimeout(()=>location.reload(), 15000)</script>
-            </body>
-            </html>
-        \`);
-    });
-
-    app.get('/status', (req, res) => {
-        res.json({ status: sock.user ? 'connected' : 'disconnected', internal_state: status });
-    });
-
-    app.post('/send', async (req, res) => {
-        try {
-            const { phone, message } = req.body;
-            if (!sock.user) return res.status(401).json({ error: 'Not connected' });
-            const jid = phone.replace(/\\D/g, "") + "@s.whatsapp.net";
-            await sock.sendMessage(jid, { text: message });
-            res.json({ success: true });
-        } catch(e) { res.status(500).json({ error: e.message }); }
-    });
-
-    app.listen(process.env.PORT || 3000);
+        sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update;
+            if(qr) { lastQr = qr; status = 'Waiting for Scan'; log('New QR QR'); }
+            if(connection === 'close') {
+                const errorCode = lastDisconnect?.error?.output?.statusCode;
+                status = 'Disconnected - Code: ' + errorCode;
+                log('Closed: ' + status);
+                if(errorCode !== DisconnectReason.loggedOut) setTimeout(start, 5000);
+            }
+            if(connection === 'open') { lastQr = null; status = 'Connected'; log('SUCCESS'); }
+        });
+    } catch (err) { status = 'Fatal Error'; log(err.message); }
 }
-start();`;
+
+app.get('/qr', (req, res) => {
+    if (status === 'Connected') return res.send('<h1 style="color:green;text-align:center;margin-top:100px;">✅ Connected!</h1>');
+    if (!lastQr) return res.send('<div style="text-align:center;margin-top:100px;"><h1>Status: '+status+'</h1><p>Check debug_log.txt in cPanel</p></div>');
+    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(lastQr);
+    res.send('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#1a1a1a;color:white;font-family:sans-serif;"><div style="background:white;padding:30px;border-radius:20px;text-align:center;"><h2 style="color:#333;">Scan to Connect</h2><img src="'+qrUrl+'" /><p style="color:#666;">Status: '+status+'</p></div></body></html>');
+});
+
+app.get('/status', (req, res) => res.json({ status: status === 'Connected' ? 'connected' : 'disconnected' }));
+app.post('/send', async (req, res) => {
+    try {
+        const { phone, message } = req.body;
+        await sock.sendMessage(phone.replace(/\\D/g, "") + "@s.whatsapp.net", { text: message });
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
                                 navigator.clipboard.writeText(code);
-                                showToast('تم نسخ الكود الأخير، استبدله واعمل Restart', 'success');
+                                showToast('تم نسخ الكود النهائي V5 بنجاح', 'success');
                               }}
                               className="text-[10px] bg-gold/20 text-gold px-2 py-1 rounded hover:bg-gold/30 transition-colors"
                             >
-                              نسخ الكود الأخير
+                              نسخ الكود النهائي
                             </button>
                           </div>
-                        </div>
-
-                        <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2">
-                          <p className="text-[9px] text-emerald-400 leading-relaxed font-bold">
-                            ✅ الحل النهائي لظهور الكود:
-                          </p>
-                          <ol className="text-[9px] text-white/40 list-decimal px-4 space-y-1">
-                            <li><span className="text-red-400 font-bold">هام:</span> احذف مجلد <span className="text-white font-mono">auth_info</span> من الـ File Manager لضمان مسح أي بيانات قديمة تعيق ظهور الكود.</li>
-                            <li>استبدل كود <span className="text-white font-mono">app.js</span> بالسيرفر واضغط <span className="text-emerald-400 font-bold">Restart</span>.</li>
-                            <li>انتظر **دقيقة كاملة** ليتمكن السيرفر من الاتصال بواتساب.</li>
-                            <li>افتح الرابط: <a href="https://umr.daralmaqam.com/qr" target="_blank" className="text-blue-400 underline">umr.daralmaqam.com/qr</a></li>
-                          </ol>
                         </div>
                       </div>
                     </div>
@@ -3167,65 +3143,6 @@ start();`;
               )}
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
-      {/* Confirmation Modal */}
-      <AnimatePresence>
-        {confirmModal && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-[2rem] p-8 text-center"
-            >
-              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-                <AlertCircle className="w-8 h-8 text-red-500" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-4">{confirmModal.message}</h3>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setConfirmModal(null)}
-                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-bold transition-all"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={() => {
-                    confirmModal.onConfirm();
-                    setConfirmModal(null);
-                  }}
-                  className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold transition-all shadow-lg shadow-red-500/20"
-                >
-                  تأكيد
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Toast Notification */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className={clsx(
-              "fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
-              toast.type === 'success' ? "bg-emerald-500/90 border-emerald-500/20 text-white" :
-              toast.type === 'error' ? "bg-red-500/90 border-red-500/20 text-white" :
-              toast.type === 'warning' ? "bg-amber-500/90 border-amber-500/20 text-white" :
-              "bg-blue-500/90 border-blue-500/20 text-white"
-            )}
-          >
-            {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
-             toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : 
-             toast.type === 'warning' ? <AlertCircle className="w-5 h-5" /> :
-             <Zap className="w-5 h-5" />}
-            <span className="font-bold text-sm">{toast.message}</span>
-          </motion.div>
         )}
       </AnimatePresence>
     </div>
