@@ -1378,7 +1378,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   "dependencies": {
     "@whiskeysockets/baileys": "^6.5.0",
     "express": "^4.18.2",
-    "qrcode-terminal": "^0.12.0"
+    "link-preview-js": "^3.0.0"
   }
 }`;
                                 navigator.clipboard.writeText(pkg);
@@ -1391,7 +1391,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                           </div>
                           
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-gold font-bold">ملف app.js (كود التشغيل):</span>
+                            <span className="text-[10px] text-gold font-bold">ملف app.js (الكود الأخير والمضمون):</span>
                             <button 
                               onClick={() => {
                                 const code = `const express = require('express');
@@ -1400,58 +1400,93 @@ const app = express();
 app.use(express.json());
 
 let lastQr = null;
+let status = 'Initializing...';
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-  const sock = makeWASocket({ auth: state, printQRInTerminal: true });
-  
-  sock.ev.on('creds.update', saveCreds);
-  sock.ev.on('connection.update', (u) => { 
-    if(u.connection === 'close') start(); 
-    if(u.qr) lastQr = u.qr;
-    if(u.connection === 'open') lastQr = null;
-  });
+    console.log('Starting WhatsApp Bridge...');
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    const sock = makeWASocket({ 
+        auth: state,
+        printQRInTerminal: true,
+        browser: ["Dar Al Maqam", "Chrome", "1.0.0"]
+    });
 
-  app.get('/qr', (req, res) => {
-    if(!lastQr) return res.send('Connected or No QR available. Refresh later.');
-    res.send('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#000;"><script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script><div id="p"></div><script>var qr=qrcode(0,"M");qr.addData("'+lastQr+'");qr.make();document.getElementById("p").innerHTML=qr.createImgTag(10);</script></body></html>');
-  });
+    sock.ev.on('creds.update', saveCreds);
+    
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if(qr) {
+            lastQr = qr;
+            status = 'Waiting for Scan';
+            console.log('New QR Received');
+        }
+        if(connection === 'close') {
+            status = 'Reconnecting...';
+            start();
+        }
+        if(connection === 'open') {
+            lastQr = null;
+            status = 'Connected';
+            console.log('WhatsApp Connected Successfully!');
+        }
+    });
 
-  app.post('/send', async (req, res) => {
-    try {
-      const { phone, message } = req.body;
-      const cleanPhone = phone.replace(/\\D/g, "");
-      await sock.sendMessage(cleanPhone + "@s.whatsapp.net", { text: message });
-      res.json({ success: true });
-    } catch(e) { res.status(500).json({ error: e.message }); }
-  });
+    app.get('/qr', (req, res) => {
+        if (!lastQr) {
+            if (status === 'Connected') return res.send('<h1 style="color:green;text-align:center;font-family:sans-serif;margin-top:20%;">✅ Connected!</h1>');
+            return res.send('<h1 style="text-align:center;font-family:sans-serif;margin-top:20%;">Generating QR... Please wait 10 seconds and Refresh</h1><script>setTimeout(()=>location.reload(), 5000)</script>');
+        }
+        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(lastQr);
+        res.send(\`
+            <html>
+            <body style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background:#1a1a1a;color:white;font-family:sans-serif;">
+                <h2 style="margin-bottom:20px;">Scan this QR with WhatsApp</h2>
+                <div style="background:white; padding:20px; border-radius:15px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                    <img src="\${qrUrl}" style="display:block;" />
+                </div>
+                <p style="margin-top:20px; color:#888;">Status: \${status}</p>
+                <script>setTimeout(()=>location.reload(), 15000)</script>
+            </body>
+            </html>
+        \`);
+    });
 
-  app.get('/status', (req, res) => {
-    res.json({ status: sock.user ? 'connected' : 'disconnected' });
-  });
+    app.get('/status', (req, res) => {
+        res.json({ status: sock.user ? 'connected' : 'disconnected', internal_state: status });
+    });
 
-  app.listen(process.env.PORT || 3000);
+    app.post('/send', async (req, res) => {
+        try {
+            const { phone, message } = req.body;
+            if (!sock.user) return res.status(401).json({ error: 'Not connected' });
+            const jid = phone.replace(/\\D/g, "") + "@s.whatsapp.net";
+            await sock.sendMessage(jid, { text: message });
+            res.json({ success: true });
+        } catch(e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.listen(process.env.PORT || 3000);
 }
 start();`;
                                 navigator.clipboard.writeText(code);
-                                showToast('تم نسخ كود app.js المطور', 'success');
+                                showToast('تم نسخ الكود الأخير، استبدله واعمل Restart', 'success');
                               }}
                               className="text-[10px] bg-gold/20 text-gold px-2 py-1 rounded hover:bg-gold/30 transition-colors"
                             >
-                              نسخ الكود المطور
+                              نسخ الكود الأخير
                             </button>
                           </div>
                         </div>
 
                         <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2">
                           <p className="text-[9px] text-emerald-400 leading-relaxed font-bold">
-                            ✅ الخطوات النهائية (سهلة جداً):
+                            ✅ الحل النهائي لظهور الكود:
                           </p>
                           <ol className="text-[9px] text-white/40 list-decimal px-4 space-y-1">
-                            <li>حدث ملف <span className="text-white font-mono">app.js</span> بالسيرفر بالكود المطور أعلاه ثم <span className="text-emerald-400">Restart</span>.</li>
-                            <li>افتح هذا الرابط في صفحة جديدة: <a href="https://umr.daralmaqam.com/qr" target="_blank" className="text-blue-400 underline">umr.daralmaqam.com/qr</a></li>
-                            <li><span className="text-emerald-400 font-bold">امسح الكود</span> الذي سيظهر لك هناك باستخدام واتساب هاتفك.</li>
-                            <li>ارجع هنا، اكتب الرابط <span className="text-white font-mono">https://umr.daralmaqam.com</span> في الخانة أعلاه واضغط فحص الاتصال.</li>
+                            <li><span className="text-red-400 font-bold">هام:</span> احذف مجلد <span className="text-white font-mono">auth_info</span> من الـ File Manager لضمان مسح أي بيانات قديمة تعيق ظهور الكود.</li>
+                            <li>استبدل كود <span className="text-white font-mono">app.js</span> بالسيرفر واضغط <span className="text-emerald-400 font-bold">Restart</span>.</li>
+                            <li>انتظر **دقيقة كاملة** ليتمكن السيرفر من الاتصال بواتساب.</li>
+                            <li>افتح الرابط: <a href="https://umr.daralmaqam.com/qr" target="_blank" className="text-blue-400 underline">umr.daralmaqam.com/qr</a></li>
                           </ol>
                         </div>
                       </div>
