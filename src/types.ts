@@ -74,6 +74,7 @@ export interface Booking {
   updatedAt?: string;
   createdBy?: string; // User ID
   companyId?: string;
+  marketingSource?: string;
 }
 
 export interface Company {
@@ -104,6 +105,8 @@ export interface Pilgrim {
   madinahRoom?: string;
   passportImage?: string;
   englishName?: string;
+  gender?: "Male" | "Female";
+  isChild?: boolean;
   serviceType?: "Full" | "TicketOnly" | "AccommodationOnly" | "TicketAndAccommodation" | "VisaOnly" | "AccommodationAndVisa" | "TicketAndVisa";
 }
 

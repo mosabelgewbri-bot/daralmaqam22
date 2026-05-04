@@ -26,6 +26,7 @@ import HotelInventoryModule from './components/HotelInventoryModule';
 import PublicOffer from './components/PublicOffer';
 import PublicImage from './components/PublicImage';
 import Sidebar from './components/Sidebar';
+import InvoicesModule from './components/InvoicesModule';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBell from './components/NotificationBell';
 import { doc, setDoc } from 'firebase/firestore';
@@ -167,6 +168,7 @@ function AppContent({ user, onLogout }: { user: User, onLogout: () => void }) {
               <Route path="/inventory" element={<HotelInventoryModule user={user} />} />
               <Route path="/finance" element={<FinanceModule user={user} />} />
               <Route path="/analytics" element={<FinanceAnalytics />} />
+              <Route path="/invoices" element={<InvoicesModule user={user} />} />
               <Route path="/profit-loss" element={<ProfitLossModule user={user} />} />
               <Route path="/reports" element={<ReportsModule user={user} />} />
               <Route path="/offers" element={<UmrahOffersModule user={user} />} />
@@ -350,7 +352,7 @@ export default function App() {
         const roles: Role[] = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
         
         let updatedAny = false;
-        const allScreens = ['dashboard', 'booking', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'tickets', 'trips', 'users', 'logs', 'settings', 'arrival-notice', 'umrah-pricing'];
+        const allScreens = ['dashboard', 'booking', 'invoices', 'rooming', 'inventory', 'finance', 'analytics', 'profit-loss', 'visa', 'reports', 'offers', 'marketing', 'cards', 'tickets', 'trips', 'users', 'logs', 'settings', 'arrival-notice', 'umrah-pricing'];
 
         for (const role of roles) {
           const existingPerm = perms.find(p => p.role === role);

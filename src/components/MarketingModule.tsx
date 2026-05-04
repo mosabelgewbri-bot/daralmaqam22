@@ -1107,6 +1107,23 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         console.error('Local send failed, falling back to manual:', e);
         sendWhatsAppMessage(customer.phone, lastSentMessage);
       }
+    } else if (whatsappService === 'remote') {
+      try {
+        const sendUrl = `${whatsappApiUrl.replace(/\/+$/, '')}/send`;
+        const res = await fetchWhatsApp(sendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            phone: customer.phone, 
+            message: lastSentMessage,
+            token: whatsappApiKey
+          })
+        });
+        if (!res.ok) throw new Error('Failed to send via remote server');
+      } catch (e) {
+        console.error('Remote send failed, falling back to manual:', e);
+        sendWhatsAppMessage(customer.phone, lastSentMessage);
+      }
     } else {
       sendWhatsAppMessage(customer.phone, lastSentMessage);
     }
@@ -1321,9 +1338,126 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                   >
                     <option value="whapi">Whapi.cloud (احترافي)</option>
                     <option value="ultramsg">UltraMsg (سهل)</option>
-                    <option value="local">سيرفر محلي (WPPConnect/Baileys)</option>
+                    <option value="local">سيرفر محلي (WPPConnect/Baileys - تجريبي)</option>
+                    <option value="remote">سيرفر بعيد (Custom API / Baileys)</option>
                   </select>
                 </div>
+
+                {whatsappService === 'remote' && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 space-y-3">
+                      <div className="flex items-center gap-2 text-blue-400">
+                        <Globe className="w-4 h-4" />
+                        <span className="text-xs font-bold">إعدادات السيرفر الخاص (Baileys)</span>
+                      </div>
+                      <p className="text-[10px] text-white/40 leading-relaxed">
+                        لاستخدام استضافتك <span className="text-blue-400 font-mono">umr.daralmaqam.com</span> كبوابة إرسال، اتبع الخطوات البسيطة أدناه لحل مشكلة الـ <span className="text-red-400">NPM Install</span>:
+                      </p>
+                      
+                      <div className="bg-black/40 rounded-xl p-4 border border-white/5 space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-white/40 block">الخطوة 1: رابط الـ API بالسيرفر:</label>
+                          <input
+                            type="text"
+                            value={whatsappApiUrl}
+                            onChange={(e) => setWhatsappApiUrl(e.target.value)}
+                            placeholder="https://umr.daralmaqam.com/api"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white dir-ltr font-mono"
+                          />
+                        </div>
+
+                        <div className="pt-2 border-t border-white/5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-emerald-400 font-bold">ملف package.json (ضروري لتفعيل الزر):</span>
+                            <button 
+                              onClick={() => {
+                                const pkg = `{
+  "name": "wa-bridge",
+  "version": "1.0.0",
+  "main": "app.js",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.5.0",
+    "express": "^4.18.2",
+    "qrcode-terminal": "^0.12.0"
+  }
+}`;
+                                navigator.clipboard.writeText(pkg);
+                                showToast('تم نسخ package.json', 'success');
+                              }}
+                              className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded hover:bg-emerald-500/30 transition-colors"
+                            >
+                              نسخ الملف
+                            </button>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gold font-bold">ملف app.js (كود التشغيل):</span>
+                            <button 
+                              onClick={() => {
+                                const code = `const express = require('express');
+const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const app = express();
+app.use(express.json());
+
+let lastQr = null;
+
+async function start() {
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  const sock = makeWASocket({ auth: state, printQRInTerminal: true });
+  
+  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('connection.update', (u) => { 
+    if(u.connection === 'close') start(); 
+    if(u.qr) lastQr = u.qr;
+    if(u.connection === 'open') lastQr = null;
+  });
+
+  app.get('/qr', (req, res) => {
+    if(!lastQr) return res.send('Connected or No QR available. Refresh later.');
+    res.send('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#000;"><script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script><div id="p"></div><script>var qr=qrcode(0,"M");qr.addData("'+lastQr+'");qr.make();document.getElementById("p").innerHTML=qr.createImgTag(10);</script></body></html>');
+  });
+
+  app.post('/send', async (req, res) => {
+    try {
+      const { phone, message } = req.body;
+      const cleanPhone = phone.replace(/\\D/g, "");
+      await sock.sendMessage(cleanPhone + "@s.whatsapp.net", { text: message });
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/status', (req, res) => {
+    res.json({ status: sock.user ? 'connected' : 'disconnected' });
+  });
+
+  app.listen(process.env.PORT || 3000);
+}
+start();`;
+                                navigator.clipboard.writeText(code);
+                                showToast('تم نسخ كود app.js المطور', 'success');
+                              }}
+                              className="text-[10px] bg-gold/20 text-gold px-2 py-1 rounded hover:bg-gold/30 transition-colors"
+                            >
+                              نسخ الكود المطور
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2">
+                          <p className="text-[9px] text-emerald-400 leading-relaxed font-bold">
+                            ✅ الخطوات النهائية (سهلة جداً):
+                          </p>
+                          <ol className="text-[9px] text-white/40 list-decimal px-4 space-y-1">
+                            <li>حدث ملف <span className="text-white font-mono">app.js</span> بالسيرفر بالكود المطور أعلاه ثم <span className="text-emerald-400">Restart</span>.</li>
+                            <li>افتح هذا الرابط في صفحة جديدة: <a href="https://umr.daralmaqam.com/qr" target="_blank" className="text-blue-400 underline">umr.daralmaqam.com/qr</a></li>
+                            <li><span className="text-emerald-400 font-bold">امسح الكود</span> الذي سيظهر لك هناك باستخدام واتساب هاتفك.</li>
+                            <li>ارجع هنا، اكتب الرابط <span className="text-white font-mono">https://umr.daralmaqam.com</span> في الخانة أعلاه واضغط فحص الاتصال.</li>
+                          </ol>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {whatsappService === 'local' && (
                   <div className="p-6 rounded-3xl bg-white/5 border border-white/10 space-y-4">
@@ -1525,7 +1659,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                           if (data.status === 'connected') {
                             showToast('✅ السيرفر المحلي متصل وجاهز للعمل', 'success');
                           } else if (data.status === 'unsupported') {
-                            showToast('⚠️ ' + (data.message || 'تشغيل واتساب محلي غير مدعوم على Vercel'), 'warning');
+                            showToast('⚠️ ' + (data.message || 'تشغيل واتساب محلي غير مدعوم في هذه البيئة'), 'warning');
                           } else {
                             showToast('⚠️ السيرفر المحلي يعمل ولكنه غير مرتبط بواتساب حالياً', 'warning');
                           }
@@ -1534,6 +1668,29 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                         }
                       } catch (e) {
                         showToast('❌ خطأ في الاتصال بالسيرفر المحلي', 'error');
+                      } finally {
+                        setIsTestingConnection(false);
+                      }
+                      return;
+                    }
+
+                    if (whatsappService === 'remote') {
+                      setIsTestingConnection(true);
+                      try {
+                        const statusUrl = `${whatsappApiUrl.replace(/\/+$/, '')}/status`;
+                        const res = await fetchWhatsApp(statusUrl);
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.status === 'connected' || data.state === 'CONNECTED' || data.connected) {
+                            showToast('✅ السيرفر البعيد متصل وجاهز للعمل', 'success');
+                          } else {
+                            showToast('⚠️ السيرفر البعيد يعمل ولكنه غير مرتبط بواتساب حالياً', 'warning');
+                          }
+                        } else {
+                          showToast('❌ تعذر الوصول للسيرفر البعيد', 'error');
+                        }
+                      } catch (e) {
+                        showToast('❌ خطأ في الاتصال بالسيرفر البعيد. تأكد من الرابط', 'error');
                       } finally {
                         setIsTestingConnection(false);
                       }

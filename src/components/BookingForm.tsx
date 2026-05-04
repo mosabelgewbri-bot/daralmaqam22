@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Pilgrim } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap, Hotel } from 'lucide-react';
+import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap, Hotel, Megaphone } from 'lucide-react';
 import Logo from './Logo';
 import PassportScanner from './PassportScanner';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -61,6 +61,7 @@ export default function BookingForm({ user }: { user: User }) {
   const [regId, setRegId] = useState('');
   const [phone, setPhone] = useState('');
   const [transportType, setTransportType] = useState('');
+  const [marketingSource, setMarketingSource] = useState('Facebook');
   const [isDuplicateRegId, setIsDuplicateRegId] = useState(false);
   
   // Room Pricing State
@@ -149,6 +150,7 @@ export default function BookingForm({ user }: { user: User }) {
             setRegId(bookingToEdit.regId || '');
             setPhone(bookingToEdit.phone || '');
             setTransportType(bookingToEdit.transportType || '');
+            setMarketingSource(bookingToEdit.marketingSource || 'Facebook');
             if (bookingToEdit.discountLYD !== undefined) setDiscountLYD(bookingToEdit.discountLYD);
             if (bookingToEdit.discountUSD !== undefined) setDiscountUSD(bookingToEdit.discountUSD);
             const gType = bookingToEdit.pilgrims?.[0]?.serviceType || (bookingToEdit.isVisaOnly ? 'VisaOnly' : 'Full');
@@ -276,8 +278,9 @@ export default function BookingForm({ user }: { user: User }) {
     const extractedExpiry = data.expiryDate || data.expiry_date || data.expiry || '';
     const extractedName = data.fullNameArabic || data.nameArabic || data.name_arabic || data.name || '';
     const extractedNameEn = data.fullNameEnglish || data.nameEnglish || data.name_english || data.englishName || '';
+    const extractedGender = data.gender === 'M' || data.gender === 'Male' ? 'Male' : data.gender === 'F' || data.gender === 'Female' ? 'Female' : undefined;
     
-    console.log("BookingForm: Extracted fields:", { extractedNo, extractedExpiry, extractedName, extractedNameEn });
+    console.log("BookingForm: Extracted fields:", { extractedNo, extractedExpiry, extractedName, extractedNameEn, extractedGender });
     
     const expiryDate = extractedExpiry || updated[index].expiryDate || '';
     const isInvalid = isExpiredSoon(expiryDate);
@@ -286,6 +289,7 @@ export default function BookingForm({ user }: { user: User }) {
       ...updated[index], 
       name: extractedName || updated[index].name || '',
       englishName: extractedNameEn || updated[index].englishName || '',
+      gender: extractedGender || updated[index].gender || 'Male',
       passportNo: isInvalid ? 'الجواز منتهي الصلاحية' : (extractedNo || updated[index].passportNo || ''), 
       expiryDate: expiryDate,
       passportImage: image
@@ -727,6 +731,7 @@ export default function BookingForm({ user }: { user: User }) {
                   setMadinahHotel('');
                   setMadinahNights(0);
                   setManualTicketPrice(0);
+                  setMarketingSource('Facebook');
                 }
               }}
               className="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
@@ -836,6 +841,7 @@ export default function BookingForm({ user }: { user: User }) {
         makkahNights: !hasAccommodation ? 0 : makkahNights,
         madinahHotel: !hasAccommodation ? (isVisaOnly ? 'تأشيرة فقط' : 'تذكرة فقط') : madinahHotel,
         madinahNights: !hasAccommodation ? 0 : madinahNights,
+        marketingSource,
         isVisaOnly,
         exchangeRate,
         discountLYD,
@@ -1228,6 +1234,39 @@ export default function BookingForm({ user }: { user: User }) {
           </div>
         </div>
 
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card overflow-hidden"
+        >
+          <div className="bg-white/5 px-6 py-4 border-b border-white/10 flex justify-between items-center">
+            <h3 className="font-semibold text-gold flex items-center gap-2">
+              <Megaphone className="w-5 h-5" /> معلومات التسويق
+            </h3>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2 text-right">
+                <label className="text-xs font-bold text-white/40 uppercase tracking-widest block">قناة التسويق (كيف عرفت بنا؟)</label>
+                <select 
+                  value={marketingSource}
+                  onChange={(e) => setMarketingSource(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-gold outline-none text-sm transition-all"
+                >
+                  <option value="Facebook" className="bg-matte-black">فيسبوك</option>
+                  <option value="TikTok" className="bg-matte-black">تيك توك</option>
+                  <option value="Instagram" className="bg-matte-black">انستقرام</option>
+                  <option value="WhatsApp" className="bg-matte-black">واتساب</option>
+                  <option value="WordOfMouth" className="bg-matte-black">توصية / زبون سابق</option>
+                  <option value="Walk-in" className="bg-matte-black">مكتب / مباشر</option>
+                  <option value="Snapchat" className="bg-matte-black">سناب شات</option>
+                  <option value="Other" className="bg-matte-black">أخرى</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
       <AnimatePresence>
         {activeScannerIndex !== null && (
           <PassportScanner 
@@ -1249,6 +1288,8 @@ export default function BookingForm({ user }: { user: User }) {
                   <th className="px-6 py-4">الاسم (عربي)</th>
                   <th className="px-6 py-4">الاسم (إنجليزي)</th>
                   <th className="px-6 py-4">العلاقة</th>
+                  <th className="px-6 py-4">الجنس</th>
+                  <th className="px-6 py-4">طفل</th>
                   <th className="px-6 py-4">نوع الغرفة</th>
                   <th className="px-6 py-4">بيانات الجواز</th>
                   <th className="px-6 py-4">رفع</th>
@@ -1306,6 +1347,32 @@ export default function BookingForm({ user }: { user: User }) {
                         <option value="Parent">أب/أم</option>
                         <option value="Other">آخر</option>
                       </select>
+                    </td>
+                    <td className="px-6 py-4">
+                      <select 
+                        className="bg-transparent border-b border-white/10 focus:border-gold outline-none w-full py-1 text-right text-xs"
+                        value={p.gender || 'Male'}
+                        onChange={(e) => {
+                          const updated = [...pilgrims];
+                          updated[idx].gender = e.target.value as any;
+                          setPilgrims(updated);
+                        }}
+                      >
+                        <option value="Male">ذكر</option>
+                        <option value="Female">أنثى</option>
+                      </select>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <input 
+                        type="checkbox"
+                        className="w-4 h-4 accent-gold cursor-pointer"
+                        checked={p.isChild || false}
+                        onChange={(e) => {
+                          const updated = [...pilgrims];
+                          updated[idx].isChild = e.target.checked;
+                          setPilgrims(updated);
+                        }}
+                      />
                     </td>
                     <td className="px-6 py-4">
                       { hasAccommodation ? (

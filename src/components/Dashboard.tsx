@@ -28,6 +28,7 @@ import {
   Wallet,
   PieChart,
   Activity,
+  History,
   IdCard
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -151,6 +152,7 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
 
   const modules = [
     { icon: UserPlus, label: 'حجز جديد', path: '/booking', id: 'booking', color: 'bg-gold/10 text-gold' },
+    { icon: History, label: 'سجل الفواتير', path: '/invoices', id: 'invoices', color: 'bg-emerald-500/10 text-emerald-400' },
     { icon: Plane, label: 'إدارة الرحلات', path: '/trips', id: 'trips', color: 'bg-indigo-500/10 text-indigo-400' },
     { icon: Bed, label: 'تسكين الفنادق', path: '/rooming', id: 'rooming', color: 'bg-blue-500/10 text-blue-400' },
     { icon: Wallet, label: 'المالية', path: '/finance', id: 'finance', color: 'bg-amber-500/10 text-amber-400' },
@@ -181,11 +183,11 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
     }
     
     // Fallback
-    if (user.role === 'staff') return ['booking', 'rooming', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs'].includes(m.id);
-    if (user.role === 'accountant') return ['reports', 'finance', 'profit-loss', 'analytics', 'visa', 'cards', 'logs'].includes(m.id);
+    if (user.role === 'staff') return ['booking', 'invoices', 'rooming', 'visa', 'finance', 'cards', 'profit-loss', 'analytics', 'logs'].includes(m.id);
+    if (user.role === 'accountant') return ['reports', 'invoices', 'finance', 'profit-loss', 'analytics', 'visa', 'cards', 'logs'].includes(m.id);
     if (user.role === 'manager') return true;
-    if (user.role === 'visa_specialist') return ['visa', 'reports'].includes(m.id);
-    if (user.role === 'receptionist') return ['booking'].includes(m.id);
+    if (user.role === 'visa_specialist') return ['visa', 'reports', 'invoices'].includes(m.id);
+    if (user.role === 'receptionist') return ['booking', 'invoices'].includes(m.id);
     return false;
   });
 

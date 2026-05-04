@@ -47,6 +47,7 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
   const menuItems = [
     { icon: LayoutDashboard, label: 'لوحة التحكم', path: '/', id: 'dashboard' },
     { icon: PlusCircle, label: 'حجز جديد', path: '/booking', id: 'booking' },
+    { icon: History, label: 'سجل الفواتير', path: '/invoices', id: 'invoices' },
     { icon: Plane, label: 'إدارة الرحلات', path: '/trips', id: 'trips' },
     { icon: Bus, label: 'إشعار الوصول', path: '/arrival-notice', id: 'arrival-notice' },
     { icon: ShieldCheck, label: 'وحدة التأشيرات', path: '/visa', id: 'visa' },
@@ -83,11 +84,11 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
     }
 
     // Fallback to basic logic if no permissions found or role not in saved permissions
-    if (user.role === 'staff') return ['dashboard', 'booking', 'rooming', 'inventory', 'visa', 'finance', 'cards', 'tickets', 'profit-loss', 'analytics', 'logs', 'arrival-notice'].includes(item.id);
-    if (user.role === 'accountant') return ['dashboard', 'reports', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'tickets', 'logs', 'inventory', 'arrival-notice'].includes(item.id);
+    if (user.role === 'staff') return ['dashboard', 'booking', 'invoices', 'rooming', 'inventory', 'visa', 'finance', 'cards', 'tickets', 'profit-loss', 'analytics', 'logs', 'arrival-notice'].includes(item.id);
+    if (user.role === 'accountant') return ['dashboard', 'reports', 'invoices', 'finance', 'analytics', 'profit-loss', 'visa', 'cards', 'tickets', 'logs', 'inventory', 'arrival-notice'].includes(item.id);
     if (user.role === 'manager') return true;
-    if (user.role === 'visa_specialist') return ['dashboard', 'visa', 'reports'].includes(item.id);
-    if (user.role === 'receptionist') return ['dashboard', 'booking'].includes(item.id);
+    if (user.role === 'visa_specialist') return ['dashboard', 'visa', 'reports', 'invoices'].includes(item.id);
+    if (user.role === 'receptionist') return ['dashboard', 'booking', 'invoices'].includes(item.id);
     return false;
   });
 
