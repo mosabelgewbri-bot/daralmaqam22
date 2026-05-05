@@ -80,7 +80,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [verifyExistingCount, setVerifyExistingCount] = useState(100);
   const [selectionCount, setSelectionCount] = useState(500);
-  const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr: string | null; user?: any; message?: string } | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<{ status: string; qr?: string | null; user?: any; message?: string } | null>(null);
   const [isPollingStatus, setIsPollingStatus] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
   const [generateCount, setGenerateCount] = useState(20000);
@@ -95,7 +95,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [verificationIndex, setVerificationIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
-  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified' | 'everything' | 'unverified'>('everything');
+  const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified' | 'everything' | 'unverified' | 'invalid'>('everything');
   const [safetyMode, setSafetyMode] = useState(true);
   
   const itemsPerPage = 50;
@@ -113,16 +113,28 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
   useEffect(() => {
     let interval: any;
-    if (showSettings && whatsappService === 'local') {
+    if (showSettings && (whatsappService === 'local' || (whatsappService === 'remote' && whatsappApiUrl))) {
       const pollStatus = async () => {
         try {
-          const res = await fetch('/api/whatsapp/status');
-          if (res.ok) {
-            const data = await res.json();
-            setWhatsappStatus(data);
+          if (whatsappService === 'local') {
+            const res = await fetch('/api/whatsapp/status');
+            if (res.ok) {
+              const data = await res.json();
+              setWhatsappStatus(data);
+            }
+          } else {
+            const baseUrl = whatsappApiUrl.replace(/\/+$/, '');
+            const res = await fetchWhatsApp(`${baseUrl}/status`);
+            if (res.ok) {
+              const data = await res.json();
+              setWhatsappStatus(data);
+            } else {
+              setWhatsappStatus({ status: 'disconnected' });
+            }
           }
         } catch (e) {
           console.error('Error polling whatsapp status:', e);
+          setWhatsappStatus({ status: 'error', message: 'تعذر الاتصال بالسيرفر الخاص' });
         }
       };
       pollStatus();
@@ -131,7 +143,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       setWhatsappStatus(null);
     }
     return () => clearInterval(interval);
-  }, [showSettings, whatsappService]);
+  }, [showSettings, whatsappService, whatsappApiUrl]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
     setToast({ message, type });
@@ -288,13 +300,19 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     stopGeneratingRef.current = false;
     setVerificationStats({ valid: 0, invalid: 0, total: ids.length, current: 0 });
     
-    const libyanPrefixes = [
-      '091', '092',
-      '91', '92',
-      '21891', '21892'
-    ];
+    const isValidLibyanFormat = (phone: string) => {
+      const clean = phone.replace(/\D/g, '');
+      return (
+        /^(9[12345]\d{7})$/.test(clean) ||
+        /^(09[12345]\d{7})$/.test(clean) ||
+        /^(2189[12345]\d{7})$/.test(clean) ||
+        /^(002189[12345]\d{7})$/.test(clean)
+      );
+    };
+
     const validIds: string[] = [];
     const invalidIds: string[] = [];
+    const confirmedWhatsAppIds = new Set<string>();
 
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId.trim();
@@ -319,10 +337,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           let clean = c!.phone.replace(/\D/g, '');
           if (clean.startsWith('00')) clean = clean.substring(2);
           
-          const isValidPrefix = libyanPrefixes.some(p => clean.startsWith(p));
-          const isValidLength = (clean.length >= 9 && clean.length <= 14);
+          const isFormatValid = isValidLibyanFormat(clean);
           
-          if (isValidPrefix && isValidLength) {
+          if (isFormatValid) {
             customersToDeepCheck.push(c);
           } else {
             invalidIds.push(c!.id);
@@ -382,6 +399,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               const isValid = res.status === 'valid' || res.valid === true || !!res.wa_id;
               if (isValid) {
                 validIds.push(customer.id);
+                confirmedWhatsAppIds.add(customer.id);
                 setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
               } else {
                 // Only mark as invalid if it's explicitly not found
@@ -420,7 +438,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           await new Promise(r => setTimeout(r, 10000 + Math.random() * 5000));
         }
       }
-    } else if (whatsappService === 'local') {
+    } else if (whatsappService === 'local' || whatsappService === 'remote') {
+      const verifyUrl = whatsappService === 'local' 
+        ? '/api/whatsapp/verify' 
+        : `${baseUrl}/verify`;
+
       for (let i = 0; i < ids.length; i++) {
         const id = ids[i];
         const customer = customers.find(c => c.id === id);
@@ -428,8 +450,19 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
         setVerificationStats(prev => ({ ...prev, current: i + 1 }));
 
+        // Pre-check format to avoid redundant API hits
+        let cleanPhone = customer.phone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
+        
+        if (!isValidLibyanFormat(cleanPhone)) {
+          invalidIds.push(id);
+          setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+          continue;
+        }
+
         try {
-          const response = await fetch('/api/whatsapp/verify', {
+          const fetchMethod = whatsappService === 'local' ? fetch : fetchWhatsApp;
+          const response = await (fetchMethod as any)(verifyUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone: customer.phone })
@@ -439,6 +472,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             const data = await response.json();
             if (data.exists) {
               validIds.push(id);
+              confirmedWhatsAppIds.add(id);
               setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
             } else {
               invalidIds.push(id);
@@ -446,18 +480,18 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
             }
           }
         } catch (e) {
-          console.error('Local verification error:', e);
+          console.error(`${whatsappService} verification error:`, e);
         }
 
         if (stopGeneratingRef.current) break;
         
-        // Human-like delay for local (Baileys) - much more sensitive
+        // Human-like delay for Baileys (sensitive)
         const delay = safetyMode
           ? Math.floor(Math.random() * 4000) + 2000 // 2-6 seconds
-          : 200;
+          : (whatsappService === 'local' ? 200 : 500);
         await new Promise(r => setTimeout(r, delay));
 
-        // Long pause every 20 checks
+        // Long pause every 20 checks to prevent session block
         if (safetyMode && i % 20 === 0 && i > 0) {
           await new Promise(r => setTimeout(r, 8000 + Math.random() * 4000));
         }
@@ -473,12 +507,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         let cleanPhone = customer.phone.replace(/\D/g, '');
         if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
         
-        const isValidPrefix = libyanPrefixes.some(p => cleanPhone.startsWith(p));
-        const isValidLength = (cleanPhone.length >= 9 && cleanPhone.length <= 14);
-        
-        let isDeepValid = !trimmedToken;
+        let isFormatValid = isValidLibyanFormat(cleanPhone);
+        let isWhatsAppVerified = false;
 
-        if (trimmedToken && isValidPrefix && isValidLength) {
+        if (trimmedToken && isFormatValid) {
           try {
             let formatted = cleanPhone;
             if (cleanPhone.startsWith('0')) formatted = '218' + cleanPhone.substring(1);
@@ -501,26 +533,39 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
               if (response && response.ok) {
                 const data = await response.json();
-                isDeepValid = data.status === 'valid' || data.exists === true;
+                isWhatsAppVerified = data.status === 'valid' || data.exists === true;
               }
             } finally {
               clearTimeout(timeoutId);
             }
           } catch (e) {
-            isDeepValid = false;
+            isWhatsAppVerified = false;
           }
-        } else {
-          isDeepValid = isValidPrefix && isValidLength;
         }
 
         if (stopGeneratingRef.current) break;
 
-        if (isDeepValid) {
-          validIds.push(id);
-          setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+        // Logic Change: If we have a token, we must have WhatsApp verification. 
+        // If no token, we only check format and mark as "Verified Format" but not necessarily "Has WhatsApp"
+        if (trimmedToken) {
+          if (isWhatsAppVerified) {
+            validIds.push(id);
+            confirmedWhatsAppIds.add(id);
+            setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+          } else {
+            invalidIds.push(id);
+            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+          }
         } else {
-          invalidIds.push(id);
-          setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+          // Smart Scan mode (No Token) - only checks format
+          if (isFormatValid) {
+            validIds.push(id);
+            // We DON'T add to confirmedWhatsAppIds here because it's just format-checked
+            setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
+          } else {
+            invalidIds.push(id);
+            setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
+          }
         }
 
         if (trimmedToken) {
@@ -547,34 +592,60 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       if (validIds.length > 0) {
         const customersToUpdate = customers
           .filter(c => validIds.includes(c.id))
-          .map(c => ({ ...c, hasWhatsApp: true, isVerified: true }));
+          .map(c => ({ 
+            ...c, 
+            hasWhatsApp: confirmedWhatsAppIds.has(c.id), 
+            isVerified: true,
+            lastVerified: new Date().toISOString()
+          }));
         
         await api.bulkSaveCustomers(customersToUpdate);
         
-        setCustomers(prev => prev.map(c => 
-          validIds.includes(c.id) ? { ...c, hasWhatsApp: true, isVerified: true } : c
-        ));
+        setCustomers(prev => prev.map(c => {
+          const update = customersToUpdate.find(u => u.id === c.id);
+          return update ? { ...c, ...update } : c;
+        }));
       }
 
       if (invalidIds.length > 0) {
-        // Automatically delete invalid numbers as requested
+        // Change: Instead of deleting, just mark as verified but no WhatsApp
+        const invalidToUpdate = customers
+          .filter(c => invalidIds.includes(c.id))
+          .map(c => ({
+            ...c,
+            hasWhatsApp: false,
+            isVerified: true,
+            lastVerified: new Date().toISOString()
+          }));
+        
         try {
-          await api.bulkDeleteCustomers(invalidIds);
-          setCustomers(prev => prev.filter(c => !invalidIds.includes(c.id)));
-          setSelectedCustomers(prev => prev.filter(id => !invalidIds.includes(id)));
-          showToast(`تم حذف ${invalidIds.length} رقم غير صالح تلقائياً`, 'info');
-        } catch (e) {
-          console.error('Failed to auto-delete invalid numbers:', e);
+          await api.bulkSaveCustomers(invalidToUpdate);
+          setCustomers(prev => prev.map(c => {
+            const update = invalidToUpdate.find(u => u.id === c.id);
+            return update ? { ...c, ...update } : c;
+          }));
+          showToast(`تم تحديث ${invalidIds.length} رقم كأرقام غير صالحة للواتساب (لم يتم حذفهم)`, 'info');
+        } catch (e: any) {
+          console.error('Failed to save invalid numbers status (Quota?):', e);
+          if (e.message?.includes('Quota') || e.message?.includes('quota')) {
+            showToast('انتهت حصة Firestore اليومية. تم تحديث النتائج في الشاشة فقط ولن يتم حفظها في قاعدة البيانات.', 'warning');
+            // Update UI state even if save failed
+            setCustomers(prev => prev.map(c => {
+              const update = invalidToUpdate.find(u => u.id === c.id);
+              return update ? { ...c, ...update } : c;
+            }));
+          }
         }
       }
 
-      showToast(`اكتمل الفحص الذكي بنجاح. أرقام صالحة: ${validIds.length}، أرقام غير صالحة: ${invalidIds.length}`, 'success');
+      const modeText = trimmedToken ? "فحص واتساب" : "تحقق من الصيغة";
+      showToast(`اكتمل ${modeText} بنجاح. أرقام صالحة: ${validIds.length}، أرقام غير صالحة: ${invalidIds.length}`, 'success');
 
       // Audit Log
       await api.logAction(
         user.id,
         user.name,
-        'فحص ذكي للأرقام',
+        modeText,
         `تم فحص ${ids.length} رقم. صالحة: ${validIds.length}، غير صالحة: ${invalidIds.length}`
       );
     } catch (error) {
@@ -855,8 +926,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       if (!matchesSearch) return false;
       
       if (filter === 'unverified') return !c.isVerified;
-      if (filter === 'verified') return !!c.isVerified;
+      if (filter === 'verified') return !!c.isVerified && !!c.hasWhatsApp;
       if (filter === 'whatsapp') return !!c.hasWhatsApp;
+      if (filter === 'invalid') return !!c.isVerified && !c.hasWhatsApp;
       if (filter === 'active') return (c.totalBookings || 0) > 0;
       if (filter === 'previous') return (c.totalBookings || 0) === 0;
       if (filter === 'everything' || filter === 'all') return true;
@@ -864,6 +936,27 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       return true;
     });
   }, [customers, searchQuery, filter]);
+
+  const generateDemoData = () => {
+    const prefixes = ['091', '092', '094', '095'];
+    const demo: Customer[] = Array.from({ length: 50 }).map((_, i) => ({
+      id: `demo-${Date.now()}-${i}`,
+      name: `عميل تجريبي ${i + 1}`,
+      phone: prefixes[Math.floor(Math.random() * prefixes.length)] + Math.floor(1000000 + Math.random() * 9000000),
+      isVerified: false,
+      hasWhatsApp: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      totalBookings: 0,
+      totalSpent: 0,
+      lastBooking: '',
+      email: '',
+      address: '',
+      notes: ''
+    }));
+    setCustomers(prev => [...demo, ...prev]);
+    showToast('تمت إضافة 50 رقم تجريبي للفحص (في الذاكرة فقط)', 'success');
+  };
 
   const paginatedCustomers = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -1375,15 +1468,38 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
                         <div className="space-y-4">
                           <label className="text-[10px] text-white/40 block">رابط السيرفر (Subdomain):</label>
-                          <div className="relative">
-                            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
-                            <input
-                              type="text"
-                              value={whatsappApiUrl}
-                              onChange={(e) => setWhatsappApiUrl(e.target.value)}
-                              placeholder="https://wa.daralmaqam.com"
-                              className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white dir-ltr font-mono focus:border-gold/30 transition-all outline-none"
-                            />
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-white/20" />
+                              <input
+                                type="text"
+                                value={whatsappApiUrl}
+                                onChange={(e) => setWhatsappApiUrl(e.target.value)}
+                                placeholder="https://wa.daralmaqam.com"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white dir-ltr font-mono focus:border-gold/30 transition-all outline-none"
+                              />
+                            </div>
+                            <button
+                              onClick={async () => {
+                                if (!whatsappApiUrl) return showToast('يرجى إدخال الرابط أولاً', 'error');
+                                const cleanUrl = whatsappApiUrl.replace(/\/$/, "");
+                                showToast('جاري فحص حالة السيرفر...', 'info');
+                                try {
+                                  const resp = await fetchWhatsApp(`${cleanUrl}/status`);
+                                  const data = await resp.json().catch(() => ({ status: 'unknown' }));
+                                  if (data.status) {
+                                    showToast(`السيرفر مستجيب! الحالة الحالية: ${data.status}`, 'success');
+                                  } else {
+                                    showToast('السيرفر مستجيب ولكن الصيغة غير متوافقة.', 'warning');
+                                  }
+                                } catch (e: any) {
+                                  showToast(`فشل الاتصال: ${e.message}`, 'error');
+                                }
+                              }}
+                              className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-xl text-[10px] font-bold transition-all border border-emerald-500/20 whitespace-nowrap"
+                            >
+                              اختبار الاتصال
+                            </button>
                           </div>
                         </div>
 
@@ -1430,41 +1546,80 @@ async function start() {
             version,
             printQRInTerminal: false, 
             browser: ["Dar Al Maqam", "Chrome", "110.0.0"],
-            connectTimeoutMs: 60000
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
+            emitOwnEvents: false,
+            markOnlineOnConnect: true
         });
 
         sock.ev.on('creds.update', saveCreds);
         sock.ev.on('connection.update', (update) => {
             const { connection, lastDisconnect, qr } = update;
-            if(qr) { lastQr = qr; status = 'Waiting for Scan'; log('New QR QR'); }
+            if(qr) { lastQr = qr; status = 'Waiting for Scan'; log('New QR Code Generated'); }
             if(connection === 'close') {
                 const errorCode = lastDisconnect?.error?.output?.statusCode;
                 status = 'Disconnected - Code: ' + errorCode;
                 log('Closed: ' + status);
-                if(errorCode !== DisconnectReason.loggedOut) setTimeout(start, 5000);
+                if (errorCode === DisconnectReason.loggedOut) {
+                    status = 'Logged Out';
+                    return;
+                }
+                const reason = lastDisconnect?.error?.stack || lastDisconnect?.error?.message || '';
+                if (reason.includes('conflict')) {
+                    status = 'Conflict - Reconnecting...';
+                    setTimeout(start, 15000);
+                } else {
+                    setTimeout(start, 5000);
+                }
             }
-            if(connection === 'open') { lastQr = null; status = 'Connected'; log('SUCCESS'); }
+            if(connection === 'open') { lastQr = null; status = 'Connected'; log('SUCCESS: Connected'); }
         });
     } catch (err) { status = 'Fatal Error'; log(err.message); }
 }
 
 app.get('/qr', (req, res) => {
     if (status === 'Connected') return res.send('<h1 style="color:green;text-align:center;margin-top:100px;">✅ Connected!</h1>');
-    if (!lastQr) return res.send('<div style="text-align:center;margin-top:100px;"><h1>Status: '+status+'</h1><p>Check debug_log.txt in cPanel</p></div>');
+    if (!lastQr) return res.send('<div style="text-align:center;margin-top:100px;"><h1>Status: '+status+'</h1><p>Check debug_log.txt in cPanel or Refresh page.</p></div>');
     const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(lastQr);
-    res.send('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#1a1a1a;color:white;font-family:sans-serif;"><div style="background:white;padding:30px;border-radius:20px;text-align:center;"><h2 style="color:#333;">Scan to Connect</h2><img src="'+qrUrl+'" /><p style="color:#666;">Status: '+status+'</p></div></body></html>');
+    res.send('<html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#1a1a1a;color:white;font-family:sans-serif;"><div style="background:white;padding:30px;border-radius:20px;text-align:center;"><h2 style="color:#333;">Scan to Connect</h2><img src="'+qrUrl+'" /><p style="color:#666;">Status: '+status+'</p><p style="font-size:10px;color:#999;">Refresh if QR stays the same</p></div></body></html>');
 });
 
-app.get('/status', (req, res) => res.json({ status: status === 'Connected' ? 'connected' : 'disconnected' }));
+app.get('/status', (req, res) => res.json({ status: status.toLowerCase() === 'connected' ? 'connected' : (status === 'Waiting for Scan' ? 'qr' : 'disconnected') }));
+
+function getCleanJid(phone) {
+    let clean = String(phone).replace(/\D/g, "");
+    if (clean.startsWith('0')) clean = '218' + clean.substring(1);
+    else if (clean.length === 9) clean = '218' + clean;
+    return clean + "@s.whatsapp.net";
+}
+
+app.post('/verify', async (req, res) => {
+    try {
+        const { phone } = req.body;
+        if (!phone) return res.status(400).json({ error: 'Phone required' });
+        const jid = getCleanJid(phone);
+        
+        if (!sock || status !== 'Connected') return res.status(503).json({ error: 'Socket not connected' });
+        const results = await sock.onWhatsApp(jid);
+        if (results && results.length > 0) {
+            res.json({ exists: results[0].exists, jid: results[0].jid });
+        } else {
+            res.json({ exists: false });
+        }
+    } catch(e) { log('Verify Error: ' + e.message); res.status(500).json({ error: e.message }); }
+});
+
 app.post('/send', async (req, res) => {
     try {
         const { phone, message } = req.body;
-        await sock.sendMessage(phone.replace(/\\D/g, "") + "@s.whatsapp.net", { text: message });
+        if (!sock || status !== 'Connected') return res.status(503).json({ error: 'Socket not connected' });
+        const jid = getCleanJid(phone);
+        await sock.sendMessage(jid, { text: message });
         res.json({ success: true });
-    } catch(e) { res.status(500).json({ error: e.message }); }
+    } catch(e) { log('Send Error: ' + e.message); res.status(500).json({ error: e.message }); }
 });
 
-app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
+app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (process.env.PORT || 3000)); start(); });`;
                                 navigator.clipboard.writeText(code);
                                 showToast('تم نسخ الكود النهائي V5 بنجاح', 'success');
                               }}
@@ -1479,9 +1634,9 @@ app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
                   </div>
                 )}
 
-                {whatsappService === 'local' && (
+                {(whatsappService === 'local' || whatsappService === 'remote') && (
                   <div className="p-6 rounded-3xl bg-white/5 border border-white/10 space-y-4">
-                    {window.location.hostname.includes('vercel.app') && (
+                    {whatsappService === 'local' && window.location.hostname.includes('vercel.app') && (
                       <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
                         <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-amber-200/80 leading-relaxed">
@@ -1494,11 +1649,11 @@ app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
                         <div className={clsx(
                           "w-2 h-2 rounded-full animate-pulse",
                           whatsappStatus?.status === 'connected' ? "bg-emerald-500" :
-                          whatsappStatus?.status === 'qr' ? "bg-amber-500" : "bg-red-500"
+                          whatsappStatus?.status === 'qr' || whatsappStatus?.status === 'Waiting for Scan' ? "bg-amber-500" : "bg-red-500"
                         )} />
                         <span className="text-xs font-bold text-white">
                           {whatsappStatus?.status === 'connected' ? 'متصل' :
-                           whatsappStatus?.status === 'qr' ? 'بانتظار مسح الرمز' :
+                           (whatsappStatus?.status === 'qr' || whatsappStatus?.status === 'Waiting for Scan') ? 'بانتظار مسح الرمز' :
                            (whatsappStatus?.status === 'connecting' || (whatsappStatus as any)?.isConnecting) ? (
                              <div className="flex flex-col">
                                <span>جاري الاتصال...</span>
@@ -1510,31 +1665,41 @@ app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
                                <span>غير مدعوم</span>
                                <span className="text-[8px] opacity-40 font-normal">راجع رسالة الخطأ أدناه</span>
                              </div>
-                           ) : 'غير متصل'}
+                           ) : (whatsappStatus?.status === 'error' ? 'خطأ في الاتصال' : 'غير متصل')}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
+                        {whatsappService === 'remote' && whatsappStatus?.status !== 'connected' && (
+                          <button
+                            onClick={() => window.open(`${whatsappApiUrl.replace(/\/+$/, '')}/qr`, '_blank')}
+                            className="px-3 py-1 bg-gold text-black rounded-lg text-[10px] font-bold hover:bg-gold/90 transition-all"
+                          >
+                            فتح صفحة المسح (QR)
+                          </button>
+                        )}
                         {whatsappStatus?.status === 'unsupported' && (
                           <div className="text-[10px] text-amber-500 font-bold max-w-[200px] text-left leading-tight">
                             {whatsappStatus.message}
                           </div>
                         )}
-                        <button 
-                          onClick={async () => {
-                            try {
-                              showToast('جاري إعادة تشغيل الخدمة...', 'info');
-                              await fetch('/api/whatsapp/logout', { method: 'POST' });
-                              // The server will automatically restart it
-                            } catch (e) {
-                              showToast('فشل إعادة التشغيل', 'error');
-                            }
-                          }}
-                          className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-lg transition-all"
-                          title="إعادة تشغيل الخدمة"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                        </button>
-                        {whatsappStatus?.status === 'connected' && (
+                        {whatsappService === 'local' && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                showToast('جاري إعادة تشغيل الخدمة...', 'info');
+                                await fetch('/api/whatsapp/logout', { method: 'POST' });
+                                // The server will automatically restart it
+                              } catch (e) {
+                                showToast('فشل إعادة التشغيل', 'error');
+                              }
+                            }}
+                            className="p-2 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white rounded-lg transition-all"
+                            title="إعادة تشغيل الخدمة"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                          </button>
+                        )}
+                        {whatsappStatus?.status === 'connected' && whatsappService === 'local' && (
                           <button 
                             onClick={async () => {
                               try {
@@ -1552,7 +1717,7 @@ app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
                       </div>
                     </div>
 
-                    {whatsappStatus?.qr && (
+                    {whatsappService === 'local' && whatsappStatus?.qr && (
                       <div className="flex flex-col items-center gap-4 bg-white p-4 rounded-2xl">
                         <img src={whatsappStatus.qr} alt="WhatsApp QR Code" className="w-48 h-48" />
                         <p className="text-[10px] text-slate-900 font-bold text-center">
@@ -2293,6 +2458,10 @@ app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'whatsapp' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >أرقام واتساب</button>
             <button 
+              onClick={() => setFilter('invalid')}
+              className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'invalid' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
+            >أرقام خاطئة</button>
+            <button 
               onClick={() => setFilter('active')}
               className={clsx("px-6 py-3 rounded-xl font-bold text-sm transition-all", filter === 'active' ? "bg-gold text-black" : "text-white/40 hover:bg-white/5")}
             >حجوزات نشطة</button>
@@ -2312,6 +2481,12 @@ app.listen(process.env.PORT || 3000, () => { log('Listening'); start(); });`;
               <span className="px-3 py-1 rounded-full bg-white/5 text-white/40 text-xs font-bold">
                 {filteredCustomers.length} عميل
               </span>
+              <button 
+                onClick={generateDemoData}
+                className="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-500 text-[10px] font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-all"
+              >
+                توليد أرقام تجريبية للتجربة (Quota Out)
+              </button>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">

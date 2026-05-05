@@ -1798,7 +1798,7 @@ export const api = {
             email: '',
             totalBookings: 1,
             lastBookingDate: contact.lastDate,
-            hasWhatsApp: true,
+            hasWhatsApp: false,
             createdAt: serverTimestamp()
           });
         });

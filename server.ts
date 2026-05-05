@@ -1061,26 +1061,33 @@ app.post("/api/whatsapp/proxy", async (req, res) => {
       headers: headers || {},
       body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
       signal: controller.signal
+    }).catch(err => {
+      // Handle network errors before response is created (like DNS or Connect Timeout)
+      console.error(`Proxy network error for ${url}:`, err);
+      return { 
+        ok: false, 
+        status: 504, 
+        statusText: 'Gateway Timeout / Connection Refused',
+        json: async () => ({ error: "Connection Failed", details: err.message })
+      };
     });
 
     clearTimeout(timeout);
 
-    const data = await response.json().catch((err) => {
-      console.warn(`Failed to parse JSON from ${url}:`, err.message);
-      return null;
+    // Ensure we have a valid response object if the catch was triggered
+    const status = (response as any).status || 500;
+    const data = await (response as any).json().catch((err: any) => {
+      console.warn(`Failed to parse JSON from ${url} (Status ${status}):`, err.message);
+      return { error: "Invalid JSON response", status: status };
     });
     
-    if (response.ok) {
-      console.log(`Proxy request to ${url} succeeded with status ${response.status}`);
+    if ((response as any).ok) {
+      console.log(`Proxy request to ${url} succeeded with status ${status}`);
     } else {
-      if (response.status === 402) {
-        console.warn(`Proxy request to ${url} failed with status 402 (Payment Required). Whapi.Cloud account needs credit/subscription.`);
-      } else {
-        console.warn(`Proxy request to ${url} failed with status ${response.status}`);
-      }
+      console.warn(`Proxy request to ${url} failed with status ${status}`);
     }
 
-    res.status(response.status).json(data || { status: response.statusText });
+    res.status(status).json(data);
   } catch (error: any) {
     if (error.name === 'AbortError') {
       console.error(`Proxy request to ${url} was aborted (timeout)`);
