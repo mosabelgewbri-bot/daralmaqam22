@@ -280,12 +280,13 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     return customers.find(c => c.id === selectedCustomers[verificationIndex]);
   }, [showVerificationWizard, selectedCustomers, verificationIndex, customers]);
 
-  const handleBulkVerify = async () => {
-    if (selectedCustomers.length === 0) return;
+  const handleBulkVerify = async (idsToVerify?: string[]) => {
+    const ids = idsToVerify || selectedCustomers;
+    if (ids.length === 0) return;
     
     setIsVerifying(true);
     stopGeneratingRef.current = false;
-    setVerificationStats({ valid: 0, invalid: 0, total: selectedCustomers.length, current: 0 });
+    setVerificationStats({ valid: 0, invalid: 0, total: ids.length, current: 0 });
     
     const libyanPrefixes = [
       '091', '092',
@@ -306,8 +307,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     
     if (whatsappService === 'whapi' && trimmedToken) {
       const batchSize = 50;
-      for (let i = 0; i < selectedCustomers.length; i += batchSize) {
-        const batchIds = selectedCustomers.slice(i, i + batchSize);
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const batchIds = ids.slice(i, i + batchSize);
         const batchCustomers = batchIds.map(id => customers.find(c => c.id === id)).filter(Boolean);
         
         setVerificationStats(prev => ({ ...prev, current: i + batchIds.length }));
@@ -420,8 +421,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         }
       }
     } else if (whatsappService === 'local') {
-      for (let i = 0; i < selectedCustomers.length; i++) {
-        const id = selectedCustomers[i];
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
         const customer = customers.find(c => c.id === id);
         if (!customer) continue;
 
@@ -462,8 +463,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         }
       }
     } else {
-      for (let i = 0; i < selectedCustomers.length; i++) {
-        const id = selectedCustomers[i];
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
         const customer = customers.find(c => c.id === id);
         if (!customer) continue;
 
@@ -522,14 +523,21 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           setVerificationStats(prev => ({ ...prev, invalid: prev.invalid + 1 }));
         }
 
-        const delay = safetyMode
-          ? Math.floor(Math.random() * 3000) + 1500 // 1.5-4.5 seconds
-          : (trimmedToken ? 300 : 50);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        if (trimmedToken) {
+          const delay = safetyMode
+            ? Math.floor(Math.random() * 3000) + 1500 // 1.5-4.5 seconds
+            : 300;
+          await new Promise(resolve => setTimeout(resolve, delay));
 
-        // Long pause every 30 checks
-        if (safetyMode && i % 30 === 0 && i > 0) {
-          await new Promise(r => setTimeout(r, 10000 + Math.random() * 5000));
+          // Long pause every 30 checks
+          if (safetyMode && i % 30 === 0 && i > 0) {
+            await new Promise(r => setTimeout(r, 10000 + Math.random() * 5000));
+          }
+        } else {
+          // Non-API check (Smart Scan): minimal delay to keep UI responsive
+          if (i % 20 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
         }
       }
     }
@@ -567,7 +575,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         user.id,
         user.name,
         'فحص ذكي للأرقام',
-        `تم فحص ${selectedCustomers.length} رقم. صالحة: ${validIds.length}، غير صالحة: ${invalidIds.length}`
+        `تم فحص ${ids.length} رقم. صالحة: ${validIds.length}، غير صالحة: ${invalidIds.length}`
       );
     } catch (error) {
       console.error('Error in bulk verification:', error);
@@ -890,9 +898,10 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       showToast('لا يوجد عملاء غير مفحوصين حالياً', 'warning');
       return;
     }
-    setSelectedCustomers(unverified.map(c => c.id));
+    const ids = unverified.map(c => c.id);
+    setSelectedCustomers(ids);
     setShowBulkVerifier(true);
-    handleBulkVerify();
+    handleBulkVerify(ids);
   };
 
   const handleBulkImport = async () => {

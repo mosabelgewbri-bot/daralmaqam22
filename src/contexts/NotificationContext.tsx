@@ -68,8 +68,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
           duration: 5000,
         });
       }
-    }, (error) => {
-      console.error('Error listening to notifications:', error);
+    }, (error: any) => {
+      const msg = error.message || String(error);
+      if (msg.includes('Quota exceeded') || msg.includes('quota')) {
+        console.warn('Notification listener paused due to quota limits');
+      } else {
+        console.error('Error listening to notifications:', error);
+      }
     });
 
     return () => unsubscribe();

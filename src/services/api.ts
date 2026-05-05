@@ -74,7 +74,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
        return;
     }
     quotaExceeded = true;
-    console.warn('Firestore Transient/Quota Issue (Silently Handled) for path:', path, errorMessage);
+    lastError = errorMessage;
+    console.warn('Firestore Transient/Quota Issue (Handled) for path:', path, errorMessage);
     return;
   }
 
@@ -1179,17 +1180,24 @@ export const api = {
     }
   },
 
-  async getPilgrims(bookingId?: string): Promise<Pilgrim[]> {
+   async getPilgrims(bookingId?: string): Promise<Pilgrim[]> {
     const path = 'pilgrims';
-    try {
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_pilgrims');
-        if (cached) {
+    
+    // Proactively check quota
+    if (quotaExceeded) {
+      const cached = localStorage.getItem('cached_pilgrims');
+      if (cached) {
+        try {
           const all = JSON.parse(cached) as Pilgrim[];
-          return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
-        }
+          if (Array.isArray(all)) {
+            return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
+          }
+        } catch (e) {}
       }
+      return [];
+    }
 
+    try {
       await this.ensureAuth();
       let q = query(collection(db, path));
       if (bookingId) {
@@ -1212,15 +1220,18 @@ export const api = {
         try {
           localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
         } catch (e) {
-          console.warn('Failed to cache pilgrims in localStorage (Quota Exceeded)');
+          console.warn('Failed to cache pilgrims in localStorage');
         }
       }
       return pilgrims;
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
+        lastError = error.message || String(error);
+        console.warn('Quota exceeded in getPilgrims, switching to cache');
+      } else {
+        console.error('Error in getPilgrims:', error);
       }
-      handleFirestoreError(error, OperationType.LIST, path);
       
       const cached = localStorage.getItem('cached_pilgrims');
       if (cached) {
@@ -1231,6 +1242,7 @@ export const api = {
           }
         } catch (e) {}
       }
+      handleFirestoreError(error, OperationType.LIST, path);
       return [];
     }
   },
@@ -1360,15 +1372,22 @@ export const api = {
   async getUmrahOffers(): Promise<UmrahOffer[]> {
     const path = 'umrahOffers';
     const companyId = this.getCompanyId();
-    try {
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_umrah_offers');
-        if (cached) {
+    
+    // Proactively check quota to avoid hitting Firebase
+    if (quotaExceeded) {
+      const cached = localStorage.getItem('cached_umrah_offers');
+      if (cached) {
+        try {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) return parsed as UmrahOffer[];
+        } catch (e) {
+          console.error('Error parsing cached offers:', e);
         }
       }
+      return []; // Return empty if no cache
+    }
 
+    try {
       await this.ensureAuth();
       let q = query(collection(db, path));
       if (companyId) {
@@ -1390,14 +1409,17 @@ export const api = {
 
       try {
         localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
-      } catch (e) {
-        console.warn('Failed to cache umrah offers in localStorage (Quota Exceeded)');
+      } catch (error: any) {
+        console.warn('Failed to cache umrah offers in localStorage');
       }
       return offers;
     } catch (error: any) {
-      console.error('Error in getUmrahOffers:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
+        lastError = error.message || String(error);
+        console.warn('Quota exceeded in getUmrahOffers, switching to cache');
+      } else {
+        console.error('Error in getUmrahOffers:', error);
       }
       
       const cached = localStorage.getItem('cached_umrah_offers');
@@ -1412,9 +1434,7 @@ export const api = {
       
       try {
         handleFirestoreError(error, OperationType.LIST, path);
-      } catch (e) {
-        console.warn('Silencing error in getUmrahOffers to prevent crash');
-      }
+      } catch (e) {}
       return [];
     }
   },
@@ -1527,15 +1547,22 @@ export const api = {
   async getCustomers(): Promise<Customer[]> {
     const path = 'customers';
     const companyId = this.getCompanyId();
-    try {
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_customers');
-        if (cached) {
+    
+    // Proactively check quota
+    if (quotaExceeded) {
+      const cached = localStorage.getItem('cached_customers');
+      if (cached) {
+        try {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) return parsed as Customer[];
+        } catch (e) {
+          console.error('Error parsing cached customers:', e);
         }
       }
+      return [];
+    }
 
+    try {
       await this.ensureAuth();
       let q = query(collection(db, path));
       if (companyId) {
@@ -1546,14 +1573,17 @@ export const api = {
 
       try {
         localStorage.setItem('cached_customers', JSON.stringify(customers));
-      } catch (e) {
-        console.warn('Failed to cache customers in localStorage (Quota Exceeded)');
+      } catch (error: any) {
+        console.warn('Failed to cache customers in localStorage');
       }
       return customers;
     } catch (error: any) {
-      console.error('Error in getCustomers:', error);
       if (isQuotaError(error)) {
         quotaExceeded = true;
+        lastError = error.message || String(error);
+        console.warn('Quota exceeded in getCustomers, switching to cache');
+      } else {
+        console.error('Error in getCustomers:', error);
       }
       
       const cached = localStorage.getItem('cached_customers');
@@ -1568,9 +1598,7 @@ export const api = {
 
       try {
         handleFirestoreError(error, OperationType.LIST, path);
-      } catch (e) {
-        console.warn('Silencing error in getCustomers to prevent crash');
-      }
+      } catch (e) {}
       return [];
     }
   },
