@@ -194,6 +194,7 @@ export default function Settings({ user }: { user: User }) {
     };
     loadSettings();
     loadDbStats();
+    fetchGeminiKey();
   }, []);
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -336,6 +337,50 @@ export default function Settings({ user }: { user: User }) {
 
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
+  const [customApiKey, setCustomApiKey] = useState('');
+  const [currentMaskedKey, setCurrentMaskedKey] = useState('');
+  const [keySaving, setKeySaving] = useState(false);
+
+  const fetchGeminiKey = async () => {
+    try {
+      const res = await fetch('/api/settings/gemini-key');
+      const data = await res.json();
+      if (data.maskedKey) {
+        setCurrentMaskedKey(data.maskedKey);
+      } else {
+        setCurrentMaskedKey('');
+      }
+    } catch (e) {
+      console.error("Failed to load Gemini key diagnostic status:", e);
+    }
+  };
+
+  const handleSaveGeminiKey = async () => {
+    if (!customApiKey.trim()) return;
+    setKeySaving(true);
+    try {
+      const res = await fetch('/api/settings/gemini-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: customApiKey.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('تم حفظ مفتاح Gemini API بنجاح في النظام.', 'success');
+        setCustomApiKey('');
+        await fetchGeminiKey();
+        setTimeout(() => {
+          runDiagnostic();
+        }, 500);
+      } else {
+        showToast(data.error || 'فشل في حفظ مفتاح الـ API.', 'error');
+      }
+    } catch (e) {
+      showToast('خطأ أثناء حفظ مفتاح الـ API.', 'error');
+    } finally {
+      setKeySaving(false);
+    }
+  };
 
   const runDiagnostic = async () => {
     setDiagLoading(true);
@@ -840,15 +885,55 @@ export default function Settings({ user }: { user: User }) {
             <h4 className="font-bold text-white mb-4">أدوات التشخيص</h4>
             <div className="space-y-4">
               <p className="text-[10px] text-white/60 leading-relaxed">
-                إذا كنت تواجه مشاكل في مسح الجوازات، يمكنك استخدام أداة التشخيص للتحقق من صحة مفتاح الـ API والاتصال بخوادم جوجل.
+                إذا كنت تواجه مشاكل في مسح الجوازات، يمكنك استخدام أدوات التشخيص ومسح الجوازات وتحديث مفتاح الـ API للاتصال بخوادم جوجل.
               </p>
+
+              <div className="border border-white/10 p-4.5 rounded-xl bg-black/10 space-y-3">
+                <span className="text-[11px] font-bold text-white block">مفتاح Gemini API الحالي:</span>
+                {currentMaskedKey ? (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg flex items-center justify-between text-[11px] text-emerald-400">
+                    <span className="font-mono">المفتاح النشط: {currentMaskedKey}</span>
+                    <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">مكوّن بنجاح</span>
+                  </div>
+                ) : (
+                  <div className="bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg text-[11px] text-rose-400">
+                    مفتاح Gemini غير مكوّن حالياً أو غير صالح.
+                  </div>
+                )}
+                
+                <div className="space-y-2 mt-2">
+                  <label className="text-[9px] text-white/50 block">لتحديث أو إدخال مفتاح مستقل في قاعدة البيانات:</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="password" 
+                      placeholder="AIzaSy..." 
+                      value={customApiKey}
+                      onChange={(e) => setCustomApiKey(e.target.value)}
+                      className="bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-xs font-mono text-white placeholder-white/20 flex-1 focus:outline-none focus:border-gold"
+                    />
+                    <button 
+                      onClick={handleSaveGeminiKey}
+                      disabled={keySaving || !customApiKey.trim()}
+                      className="bg-gold hover:bg-gold/80 disabled:opacity-45 text-black px-3 py-2 rounded-xl text-[10px] font-bold transition-all shrink-0 flex items-center gap-1"
+                    >
+                      {keySaving ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-3 h-3" />
+                      )}
+                      حفظ
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <button 
                 onClick={runDiagnostic}
                 disabled={diagLoading}
-                className="btn-gold w-full py-2 flex items-center justify-center gap-2 text-xs"
+                className="btn-gold w-full py-2.5 flex items-center justify-center gap-2 text-xs font-bold"
               >
                 <RefreshCw className={clsx("w-3 h-3", diagLoading && "animate-spin")} />
-                {diagLoading ? 'جاري الفحص...' : 'تشغيل فحص الـ API'}
+                {diagLoading ? 'جاري الفحص...' : 'تشغيل فحص اتصال الـ API'}
               </button>
 
               {diagResult && (
