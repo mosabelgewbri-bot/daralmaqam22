@@ -24,7 +24,7 @@ export default function Logo({
 }: LogoProps) {
   const [imgError, setImgError] = React.useState(false);
   const [customLogo, setCustomLogo] = React.useState<string | null>(null);
-  const [companyName, setCompanyName] = React.useState('دار المقام');
+  const [companyName, setCompanyName] = React.useState(() => localStorage.getItem('last_company_name') || 'دار المقام');
   const defaultLogoUrl = "data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10L15 40V90H85V40L50 10Z' fill='%23D4AF37' fill-opacity='0.2' stroke='%23D4AF37' stroke-width='2'/%3E%3Cpath d='M50 30L30 50V80H70V50L50 30Z' fill='%23D4AF37' stroke='%23D4AF37' stroke-width='2'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23D4AF37'/%3E%3C/svg%3E";
 
   const loadSettings = async () => {
@@ -37,9 +37,19 @@ export default function Logo({
       }
       if (settings.company_name) {
         setCompanyName(settings.company_name);
+        localStorage.setItem('last_company_name', settings.company_name);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
+      // Try to recover from localStorage directly if api.getSettings fails high-level
+      const cached = localStorage.getItem('cached_settings');
+      if (cached) {
+        try {
+          const s = JSON.parse(cached);
+          if (s.company_name) setCompanyName(s.company_name);
+          if (s.app_logo) setCustomLogo(s.app_logo);
+        } catch (e) {}
+      }
     }
   };
 

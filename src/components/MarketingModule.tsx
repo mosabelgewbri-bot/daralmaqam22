@@ -28,6 +28,7 @@ import {
   Plus,
   Zap,
   ShieldCheck,
+  User as UserIcon,
   Settings as SettingsIcon,
   Activity
 } from 'lucide-react';
@@ -97,6 +98,11 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'previous' | 'whatsapp' | 'verified' | 'everything' | 'unverified' | 'invalid'>('everything');
   const [safetyMode, setSafetyMode] = useState(true);
+  
+  // Manual Add State
+  const [manualName, setManualName] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const [isAddingManual, setIsAddingManual] = useState(false);
   
   const itemsPerPage = 50;
 
@@ -956,6 +962,65 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     }));
     setCustomers(prev => [...demo, ...prev]);
     showToast('تمت إضافة 50 رقم تجريبي للفحص (في الذاكرة فقط)', 'success');
+  };
+
+  const handleAddManualCustomer = async () => {
+    if (!manualPhone.trim()) {
+      showToast('يرجى إدخال رقم الهاتف', 'error');
+      return;
+    }
+
+    let cleanPhone = manualPhone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '218' + cleanPhone.substring(1);
+    else if (cleanPhone.length === 9) cleanPhone = '218' + cleanPhone;
+
+    if (cleanPhone.length < 10) {
+      showToast('رقم الهاتف غير صالح', 'error');
+      return;
+    }
+
+    // Check if exists
+    if (customers.some(c => c.phone === cleanPhone)) {
+      showToast('هذا الرقم موجود مسبقاً في القائمة', 'warning');
+      return;
+    }
+
+    setIsAddingManual(true);
+    const newCustomer: Customer = {
+      id: `manual-${Date.now()}`,
+      name: manualName.trim() || 'عميل جديد',
+      phone: cleanPhone,
+      isVerified: false,
+      hasWhatsApp: false,
+      totalBookings: 0,
+      totalSpent: 0,
+      lastBooking: '',
+      email: '',
+      address: '',
+      notes: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      await api.saveCustomer(newCustomer);
+      setCustomers(prev => [newCustomer, ...prev]);
+      setManualName('');
+      setManualPhone('');
+      showToast('تمت إضافة العميل بنجاح', 'success');
+    } catch (e: any) {
+      console.error('Failed to save manual customer:', e);
+      if (e.message?.includes('Quota') || e.message?.includes('quota')) {
+        showToast('انتهت حصة Firestore. تمت الإضافة في الذاكرة فقط.', 'warning');
+        setCustomers(prev => [newCustomer, ...prev]);
+        setManualName('');
+        setManualPhone('');
+      } else {
+        showToast('فشل في حفظ العميل في قاعدة البيانات', 'error');
+      }
+    } finally {
+      setIsAddingManual(false);
+    }
   };
 
   const paginatedCustomers = useMemo(() => {
@@ -2221,6 +2286,45 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
         )}
       </AnimatePresence>
 
+      {/* Quota Warning */}
+      {api.isQuotaExceeded() && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-500/10 border border-amber-500/20 p-6 rounded-[2rem] flex flex-col md:flex-row items-center justify-between gap-6 mb-8"
+        >
+          <div className="flex items-center gap-4 text-amber-500">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-lg font-black">تم تجاوز حصة Firebase المجانية لليوم</p>
+              <p className="opacity-80 text-sm font-medium">إذا قمت بالترقية إلى خطة Blaze، اضغط على الزر أدناه لإعادة تنشيط الاتصال أو قم بتحديث الصفحة بالكامل (Ctrl+F5).</p>
+              {api.getLastError() && (
+                <p className="mt-1 text-[10px] opacity-60 font-mono">الخطأ الأخير: {api.getLastError()}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <button 
+              onClick={() => {
+                api.resetQuota();
+                fetchData(false, true);
+              }}
+              className="flex-1 md:flex-none px-8 py-3 bg-amber-500 text-black rounded-xl font-bold hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 whitespace-nowrap"
+            >
+              إعادة التحقق الآن
+            </button>
+            <button 
+              onClick={() => window.open(`https://console.firebase.google.com/project/${api.getCompanyId() || 'gen-lang-client-0227849596'}/usage`, '_blank')}
+              className="flex-1 md:flex-none px-8 py-3 bg-white/5 text-amber-500 border border-amber-500/20 rounded-xl font-bold hover:bg-white/10 transition-all whitespace-nowrap"
+            >
+              فتح لوحة التحكم
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/5 p-8 rounded-[2rem] border border-white/10">
         <div className="flex items-center gap-4">
@@ -2428,6 +2532,50 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Manual Add Section */}
+        <div className="lg:col-span-3 bg-slate-900/50 border border-white/10 rounded-[2.5rem] p-6">
+          <div className="flex flex-col md:flex-row items-end gap-4">
+            <div className="flex-1 space-y-2 w-full">
+              <label className="text-[10px] text-white/40 font-bold mr-2">اسم العميل (اختياري):</label>
+              <div className="relative">
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                <input
+                  type="text"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="محمد علي..."
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm text-white focus:border-gold/30 transition-all outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex-1 space-y-2 w-full">
+              <label className="text-[10px] text-white/40 font-bold mr-2">رقم الهاتف:</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                <input
+                  type="text"
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                  placeholder="091XXXXXXX"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm text-white dir-ltr focus:border-gold/30 transition-all outline-none"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleAddManualCustomer}
+              disabled={isAddingManual}
+              className="px-8 py-3 bg-gold hover:bg-gold/90 text-black rounded-2xl font-bold text-sm transition-all shadow-lg shadow-gold/10 flex items-center gap-2 whitespace-nowrap h-[46px] disabled:opacity-50"
+            >
+              {isAddingManual ? (
+                <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              إضافة الرقم
+            </button>
+          </div>
+        </div>
+
         {/* Search and Filters */}
         <div className="lg:col-span-3 flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative group">

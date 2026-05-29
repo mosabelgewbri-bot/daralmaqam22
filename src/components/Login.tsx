@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { motion } from 'motion/react';
-import { Lock, User as UserIcon, ChevronRight } from 'lucide-react';
+import { Lock, User as UserIcon, ChevronRight, RefreshCw } from 'lucide-react';
 import Logo from './Logo';
 import { api } from '../services/api';
 
@@ -60,7 +60,7 @@ export default function Login({ onLogin }: LoginProps) {
       onLogin(user);
     } catch (err: any) {
       console.error('Google Login Error:', err);
-      setError('فشل تسجيل الدخول عبر Google. يرجى المحاولة مرة أخرى.');
+      setError('فشل تسجيل الدخول عبر Google. يرجى التأكد من أن حسابك مسجل في النظام.');
     } finally {
       setLoading(false);
     }
@@ -75,15 +75,7 @@ export default function Login({ onLogin }: LoginProps) {
       const { user } = await api.login(username, password);
       onLogin(user);
     } catch (err: any) {
-      let msg = err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة';
-      if (msg.includes('network-request-failed')) {
-        msg = 'خطأ في الاتصال بالخادم. يرجى التأكد من اتصال الإنترنت أو إضافة النطاق الحالي إلى Authorized Domains في Firebase.';
-      } else if (msg.includes('admin-restricted-operation')) {
-        msg = '⚠️ خاصية Anonymous Auth معطلة في Firebase Console. يرجى تفعيلها من (Authentication > Sign-in method > Anonymous) أو استخدم تسجيل الدخول عبر Google أدناه.';
-      } else if (msg.includes('Quota exceeded')) {
-        msg = '⚠️ تم تجاوز حصة الاستخدام المجانية لليوم (Quota Exceeded). يرجى المحاولة مرة أخرى غداً أو التواصل مع الإدارة.';
-      }
-      setError(msg);
+      setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة');
     } finally {
       setLoading(false);
     }
@@ -105,7 +97,6 @@ export default function Login({ onLogin }: LoginProps) {
         className="glass-card w-full max-w-md p-10 space-y-10 relative z-10 border-gold/20 shadow-[0_0_50px_rgba(212,175,55,0.1)]"
       >
         <div className="flex flex-col items-center text-center space-y-8">
-          <div className="absolute top-2 right-2 text-[8px] text-gold/40 font-mono">v1.0.6-debug</div>
           <motion.div
             initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -127,39 +118,6 @@ export default function Login({ onLogin }: LoginProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="p-3 bg-gold/5 border border-gold/20 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gold/60 uppercase tracking-wider">أدوات التشخيص</span>
-              <span className="text-[8px] text-white/20">{new Date().toLocaleTimeString()}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                type="button"
-                onClick={async () => {
-                  try {
-                    const stats = await api.getDbStats();
-                    alert(`✅ Firestore Stats: ${JSON.stringify(stats)}`);
-                  } catch (e: any) {
-                    alert(`❌ Firestore check failed: ${e.message}`);
-                  }
-                }}
-                className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
-              >
-                اختبار Firestore
-              </button>
-              <button 
-                type="button"
-                onClick={() => {
-                  const config = localStorage.getItem('user');
-                  alert(`Session: ${config ? 'Active' : 'None'}`);
-                }}
-                className="py-2 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-lg text-gold text-[10px] font-bold transition-all active:scale-95"
-              >
-                حالة الجلسة
-              </button>
-            </div>
-          </div>
-
           {isBootstrapMode && (
             <div className="p-4 bg-gold/10 border border-gold/30 rounded-2xl space-y-3">
               <p className="text-[10px] text-gold font-bold text-center uppercase tracking-widest">إعداد النظام لأول مرة</p>
@@ -195,7 +153,18 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="space-y-2">
             <div className="flex justify-between items-center px-1">
               <label className="text-xs font-bold text-white/40 uppercase tracking-widest">كلمة المرور</label>
-              <button type="button" className="text-[10px] text-gold/60 hover:text-gold transition-colors">نسيت كلمة المرور؟</button>
+              <button 
+                type="button"
+                onClick={async () => {
+                   if (confirm('سيتم محاولة تحديث حالة الاتصال. هل تريد الاستمرار؟')) {
+                     await api.resetQuota();
+                     alert('تم التحديث. حاول الدخول الآن.');
+                   }
+                }}
+                className="text-[10px] text-gold/60 hover:text-gold transition-colors"
+              >
+                مشكلة في الدخول؟
+              </button>
             </div>
             <div className="relative group">
               <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
@@ -216,13 +185,21 @@ export default function Login({ onLogin }: LoginProps) {
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex flex-col gap-1 text-red-500 text-xs"
+              className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex flex-col gap-3 text-red-500 text-xs"
             >
               <div className="flex items-center gap-3">
-                <div className="w-1 h-1 rounded-full bg-red-500" />
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="font-bold">فشل الدخول:</span>
               </div>
-              <p className="mr-4 opacity-80">{error}</p>
+              <p className="mr-5 opacity-80 leading-relaxed font-black">{error}</p>
+              
+              <button
+                type="button"
+                onClick={() => api.deepReset()}
+                className="mt-2 py-2 bg-red-500/20 rounded-lg text-[10px] font-bold text-red-400 hover:bg-red-500/30 transition-colors"
+              >
+                🧹 تنظيف الذاكرة العميقة (Deep Reset)
+              </button>
             </motion.div>
           )}
 
@@ -280,7 +257,6 @@ export default function Login({ onLogin }: LoginProps) {
             <span className="text-sm uppercase tracking-widest">الدخول بواسطة Google</span>
           </button>
         </form>
-
         <div className="pt-4 text-center">
           <p className="text-[10px] text-white/20">
             بمجرد تسجيل الدخول، فإنك توافق على شروط الخدمة وسياسة الخصوصية الخاصة بنا.

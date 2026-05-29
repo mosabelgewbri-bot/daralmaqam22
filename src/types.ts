@@ -269,8 +269,12 @@ export interface Customer {
   name: string;
   phone: string;
   email?: string;
+  address?: string;
+  notes?: string;
+  lastBooking?: string;
   lastBookingDate?: string;
   totalBookings: number;
+  totalSpent?: number;
   createdAt: string;
   hasWhatsApp?: boolean;
   isVerified?: boolean;

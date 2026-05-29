@@ -274,20 +274,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode; user: U
   useEffect(() => {
     if (user) {
       refreshNotifications();
-      // Initial scan
-      scanForTasks();
+      // Initial scan with delay to not block boot and use populated cache
+      const initialScan = setTimeout(() => {
+        if (!api.isQuotaExceeded()) scanForTasks();
+      }, 5000);
       
-      // Periodic refresh every 15 minutes (increased from 5 to save quota)
+      // Periodic refresh every 30 minutes (increased to save quota)
       const interval = setInterval(() => {
         if (!api.isQuotaExceeded()) {
-          refreshNotifications();
+          // refreshNotifications is handled by onSnapshot
           scanForTasks();
         }
-      }, 15 * 60 * 1000);
+      }, 30 * 60 * 1000);
       
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(initialScan);
+        clearInterval(interval);
+      };
     }
-  }, [user, refreshNotifications, scanForTasks]);
+  }, [user, scanForTasks]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 

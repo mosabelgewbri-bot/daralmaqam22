@@ -3,5 +3,8 @@
   "description": "Luxury Umrah Management System with Booking, Rooming, Visa, and Financial Reporting features.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

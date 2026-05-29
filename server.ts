@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 // WhatsApp lazy-loading
 import { whatsappManager } from "./whatsapp-server.js";
@@ -404,8 +404,8 @@ async function initializeDatabase() {
 
 const app = express();
 
-// --- DIAGNOSTICS AT THE VERY TOP ---
-app.get("/api/diag/gemini", (req, res) => {
+// --- DIAGNOSTICS AND GEMINI ENDPOINTS AT THE VERY TOP ---
+app.get("/api/diag/gemini", async (req, res) => {
   const key = process.env.GEMINI_API_KEY || "";
   const isVercel = !!process.env.VERCEL;
   
@@ -414,17 +414,162 @@ app.get("/api/diag/gemini", (req, res) => {
       status: 'error', 
       message: 'مفتاح Gemini API غير مكوّن في البيئة (Environment Variable missing).',
       env: process.env.NODE_ENV,
-      isVercel
+      isVercel,
+      liveTest: {
+        status: 'error',
+        message: 'مفتاح Gemini API غير مكوّن في البيئة.'
+      }
     });
+  }
+
+  // Run a live test server-side to verify the key works on Google servers
+  let backendLiveTest = { status: 'loading', message: '' };
+  try {
+    const ai = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+    const result = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: "Say hello briefly"
+    });
+    const text = result.text || "";
+    backendLiveTest = {
+      status: 'success',
+      message: 'تم التحقق من الاتصال بنجاح من الخادم. الرد: ' + text.substring(0, 50).trim() + (text.length > 50 ? '...' : '')
+    };
+  } catch (error: any) {
+    console.error("Server-side Gemini live test failed:", error);
+    backendLiveTest = {
+      status: 'error',
+      message: 'فشل اختبار اتصال الخادم بـ Gemini: ' + (error.message || 'خطأ غير معروف')
+    };
   }
   
   res.json({ 
     status: 'success', 
-    message: 'مفتاح API مكوّن في البيئة.',
+    message: 'مفتاح API مكوّن في البيئة وعامل بنجاح.',
     keyPrefix: key.substring(0, 4) + '...' + key.substring(key.length - 4),
     env: process.env.NODE_ENV,
-    isVercel
+    isVercel,
+    liveTest: backendLiveTest
   });
+});
+
+app.post("/api/gemini/translate", async (req, res) => {
+  try {
+    const { offerData } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      return res.status(400).json({ error: "مفتاح Gemini API غير مكوّن على الخادم." });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Translate the following Umrah offer details to Arabic. Ensure the terminology is accurate for the Saudi Umrah industry (e.g., use 'رباعي', 'ثلاثي', 'ثنائي', 'كبير', 'صغير').
+      Return ONLY a JSON object with the translated fields.
+      
+      Offer Data: ${JSON.stringify(offerData)}`,
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    if (!response.text) {
+      throw new Error("No response from translation model");
+    }
+
+    const textResponse = response.text.trim();
+    const jsonString = textResponse.startsWith('```') 
+      ? textResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '')
+      : textResponse;
+      
+    const data = JSON.parse(jsonString);
+    res.json(data);
+  } catch (error: any) {
+    console.error("Server-side Translation Error:", error);
+    res.status(500).json({ error: error.message || "فشل في ترجمة العرض" });
+  }
+});
+
+app.post("/api/gemini/scan-passport", async (req, res) => {
+  try {
+    const { base64Image } = req.body;
+    if (!base64Image) {
+      return res.status(400).json({ error: "الصورة مطلوبة لفحص جواز السفر." });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+      return res.status(400).json({ error: "مفتاح Gemini API غير مكوّن على الخادم." });
+    }
+
+    const mimeTypeMatch = base64Image.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+    const dataPart = base64Image.replace(/^data:[^;]+;base64,/, "");
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: dataPart,
+            },
+          },
+          {
+            text: `Extract passport information from this image. 
+            - Identify the passport number.
+            - Identify the expiry date (convert to YYYY-MM-DD format).
+            - Identify the full name in Arabic. If only English is present, transliterate the name accurately to Arabic.
+            - Identify the full name in English.`,
+          },
+        ],
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            passportNumber: { type: Type.STRING, description: "The alphanumeric passport number" },
+            expiryDate: { type: Type.STRING, description: "Expiry date in YYYY-MM-DD format" },
+            fullNameArabic: { type: Type.STRING, description: "Full name in Arabic" },
+            fullNameEnglish: { type: Type.STRING, description: "Full name in English" },
+          },
+          required: ["passportNumber", "expiryDate", "fullNameArabic", "fullNameEnglish"],
+        },
+      },
+    });
+
+    if (!response.text) {
+      throw new Error("لم يتمكن النظام من قراءة بيانات الجواز. يرجى التأكد من وضوح الصورة.");
+    }
+
+    const data = JSON.parse(response.text);
+    res.json(data);
+  } catch (error: any) {
+    console.error("Server-side Passport OCR Error:", error);
+    let userMessage = error.message || "فشل في قراءة بيانات الجواز";
+    if (error.message?.includes("API key not valid") || error.message?.includes("INVALID_ARGUMENT")) {
+      userMessage = "مفتاح API غير صالح. يرجى التأكد من صحة المفتاح في إعدادات الخادم.";
+    }
+    res.status(500).json({ error: userMessage });
+  }
 });
 
 app.get("/api/ping-simple", (req, res) => {

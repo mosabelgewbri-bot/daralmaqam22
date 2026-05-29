@@ -6,7 +6,6 @@ import { Upload, Trash2, Save, CheckCircle, AlertCircle, Image as ImageIcon, Loc
 import Logo from './Logo';
 import { clsx } from 'clsx';
 import { AnimatePresence } from 'framer-motion';
-import { GoogleGenAI } from '@google/genai';
 
 // Toast Component
 const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info' | 'warning', onClose: () => void }) => {
@@ -342,11 +341,9 @@ export default function Settings({ user }: { user: User }) {
     setDiagLoading(true);
     setDiagResult(null);
     
-    // Step 1: Check frontend key
-    const frontendKey = process.env.GEMINI_API_KEY || "";
     const frontendResult = {
-      hasFrontendKey: !!frontendKey,
-      frontendPrefix: frontendKey ? frontendKey.substring(0, 4) + '...' + frontendKey.substring(frontendKey.length - 4) : null
+      hasFrontendKey: false,
+      frontendPrefix: null
     };
 
     try {
@@ -377,28 +374,11 @@ export default function Settings({ user }: { user: User }) {
         return;
       }
 
-      // Step 3: Live Connectivity Test (Client-side)
-      let liveTest = { status: 'loading', message: '' };
-      if (frontendKey) {
-        try {
-          const genAI = new GoogleGenAI({ apiKey: frontendKey });
-          const result = await genAI.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: "Say hello briefly"
-          });
-          const text = result.text || "";
-          liveTest = { 
-            status: 'success', 
-            message: 'تم التحقق من الاتصال بنجاح. الرد: ' + text.substring(0, 50) + (text.length > 50 ? '...' : '') 
-          };
-        } catch (error: any) {
-          console.error("Live test failed:", error);
-          liveTest = { 
-            status: 'error', 
-            message: 'فشل اختبار الاتصال المباشر: ' + (error.message || 'خطأ غير معروف')
-          };
-        }
-      }
+      // Use the server-side computed live test instead of running it on the client
+      const liveTest = data.liveTest || { 
+        status: 'error', 
+        message: 'فشل اختبار الاتصال بالخادم.' 
+      };
 
       setDiagResult({ ...data, ...frontendResult, liveTest });
     } catch (error: any) {
@@ -883,9 +863,9 @@ export default function Settings({ user }: { user: User }) {
                       {diagResult.frontendPrefix && <span className="opacity-60 text-[8px]">({diagResult.frontendPrefix})</span>}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-red-300">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>غير متوفر في الواجهة الأمامية (Browser)</span>
+                    <div className="flex items-center gap-2 text-green-400">
+                      <CheckCircle className="w-3 h-3" />
+                      <span>معالج بالخادم لزيادة الأمان والسرعة (توفير بيئة خادم آمنة)</span>
                     </div>
                   )}
 

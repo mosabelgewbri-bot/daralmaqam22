@@ -70,6 +70,38 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
+        // Try to recover stats from cache first
+        const cacheKey = `dashboard_stats_${user.id}`;
+        const cachedStr = localStorage.getItem(cacheKey);
+        if (cachedStr) {
+          try {
+            const data = JSON.parse(cachedStr);
+            const age = Date.now() - (data.timestamp || 0);
+            if (age < 300000) { // 5 minutes fresh
+              setRecentBookings(data.recentBookings || []);
+              setRevenueData(data.revenueData || []);
+              setTripAvailability(data.tripAvailability || []);
+              
+              // Merge cached values with original icons
+              if (data.stats) {
+                const iconMap: Record<string, any> = {
+                  'إجمالي المعتمرين': Users,
+                  'الرحلات النشطة': Plane,
+                  'نسبة الإشغال': Hotel,
+                  'الإيرادات (د.ل)': TrendingUp
+                };
+                const mergedStats = data.stats.map((s: any) => ({
+                  ...s,
+                  icon: iconMap[s.label] || Users
+                }));
+                setStats(mergedStats);
+              }
+              
+              if (age < 60000) return; // If less than 1 minute old, don't even fetch
+            }
+          } catch (e) {}
+        }
+
         const [allBookings, allTrips] = await Promise.all([
           api.getBookings(),
           api.getTrips()
@@ -135,6 +167,23 @@ export default function Dashboard({ user, onLogout }: { user: User, onLogout: ()
           { label: 'نسبة الإشغال', value: `${occupancy}%`, icon: Hotel, color: 'text-emerald-400' },
           { label: 'الإيرادات (د.ل)', value: totalRevenue.toLocaleString(), icon: TrendingUp, color: 'text-purple-400' },
         ]);
+
+        // Update Cache
+        try {
+          const cacheKey = `dashboard_stats_${user.id}`;
+          localStorage.setItem(cacheKey, JSON.stringify({
+            recentBookings: sorted,
+            revenueData: chartData,
+            tripAvailability: availability,
+            stats: [
+              { label: 'إجمالي المعتمرين', value: totalPilgrims.toLocaleString(), color: 'text-blue-400' },
+              { label: 'الرحلات النشطة', value: activeTripsCount.toString(), color: 'text-gold' },
+              { label: 'نسبة الإشغال', value: `${occupancy}%`, color: 'text-emerald-400' },
+              { label: 'الإيرادات (د.ل)', value: totalRevenue.toLocaleString(), color: 'text-purple-400' },
+            ],
+            timestamp: Date.now()
+          }));
+        } catch (e) {}
 
         // Auto-sync seats once for admin to fix old data
         if (user.role === 'admin' && !sessionStorage.getItem('initial_sync_done')) {

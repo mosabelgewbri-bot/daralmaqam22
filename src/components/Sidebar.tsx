@@ -23,9 +23,11 @@ import {
   Bus,
   Megaphone,
   Globe,
-  Building2
+  Building2,
+  RefreshCw
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { api } from '../services/api';
 
 interface SidebarProps {
   user: User;
@@ -166,6 +168,20 @@ export default function Sidebar({ user, onLogout, isOpen, onClose }: SidebarProp
         </nav>
 
         <div className="p-6 border-t border-white/10 bg-white/[0.01] space-y-2">
+          <button
+            onClick={() => {
+              if (confirm('سيتم تحديث كافة البيانات والاتصال. هل تريد الاستمرار؟')) {
+                api.resetQuota();
+                window.location.reload();
+              }
+            }}
+            className="flex items-center gap-4 px-4 py-3 w-full text-gold/60 hover:text-gold hover:bg-gold/5 rounded-2xl transition-all group border border-transparent hover:border-gold/10 mb-2"
+          >
+            <div className="p-2 rounded-lg bg-gold/10 group-hover:bg-gold/20 transition-colors">
+              <RefreshCw className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-sm">تحديث عميق</span>
+          </button>
           <button
             onClick={onLogout}
             className="flex items-center gap-4 px-4 py-3 w-full text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-2xl transition-all group border border-transparent hover:border-red-400/10"

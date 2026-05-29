@@ -220,6 +220,30 @@ export default function App() {
             </button>
             <button 
               onClick={() => {
+                if (confirm('سيتم حذف كافة البيانات المؤقتة وذاكرة Firestore لتصحيح الاتصال. هل أنت متأكد؟')) {
+                  api.deepReset();
+                }
+              }}
+              className="bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 border border-red-500/20"
+            >
+              <RefreshCw className="w-3 h-3" />
+              تنظيف الذاكرة (Deep Reset)
+            </button>
+            <button 
+              onClick={() => {
+                const res = api.forceReset();
+                if (res) {
+                  setConnectionError(null);
+                  window.location.reload();
+                }
+              }}
+              className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 border border-white/10"
+            >
+              <RefreshCw className="w-3 h-3" />
+              تجاوز الخطأ (Bypass)
+            </button>
+            <button 
+              onClick={() => {
                 api.resetQuota();
                 window.location.reload();
               }}
@@ -270,6 +294,8 @@ export default function App() {
       if (api.isQuotaExceeded()) {
         const detail = api.getLastError();
         setConnectionError(`تعذر الاتصال بقاعدة البيانات (${detail?.includes('quota') ? 'Quota Exceeded' : 'Offline'}). ${detail ? `Details: ${detail}` : ''}`);
+      } else {
+        setConnectionError(null);
       }
     };
     checkQuota();

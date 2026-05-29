@@ -16,7 +16,8 @@ import {
   getDocsFromCache,
   writeBatch,
   orderBy,
-  limit
+  limit,
+  clearIndexedDbPersistence
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -52,30 +53,47 @@ interface FirestoreErrorInfo {
 function isQuotaError(error: any): boolean {
   if (!error) return false;
   const msg = (error.message || error.error || String(error)).toLowerCase();
-  return msg.includes('quota') || 
-         msg.includes('exhausted') || 
+  const code = String(error.code || "").toLowerCase();
+  const errorCode = error.status || error.code;
+  
+  if (code === '8' || code === 'resource-exhausted' || code.includes('quota-exceeded')) return true;
+  if (errorCode === 8 || errorCode === 429 || errorCode === '8') return true;
+  
+  return msg.includes('quota exceeded') || 
+         msg.includes('resource exhausted') || 
          msg.includes('limit exceeded') || 
-         msg.includes('offline') || 
+         msg.includes('daily limit');
+}
+
+function isConnectionError(error: any): boolean {
+  if (!error) return false;
+  const msg = (error.message || error.error || String(error)).toLowerCase();
+  return msg.includes('offline') || 
          msg.includes('unavailable') || 
          msg.includes('could not reach') || 
          msg.includes('connection terminated') || 
          msg.includes('terminated by server') || 
          msg.includes('network error') || 
-         msg.includes('internal error');
+         msg.includes('internal error') ||
+         msg.includes('failed to fetch');
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const isTransient = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
+  const errorMessage = error instanceof Error ? errorMessageFrom(error) : String(error);
+  const isQuota = isQuotaError(error) || errorMessage.toLowerCase().includes('quota exceeded');
+  const isConn = isConnectionError(error);
   
-  if (isTransient) {
+  if (isQuota || isConn) {
     if (errorMessage.toLowerCase().includes('connection terminated') || errorMessage.toLowerCase().includes('terminated by server')) {
        console.warn('Firestore Connection Terminated (Retrying or Handled) for path:', path);
        return;
     }
-    quotaExceeded = true;
+    if (isQuota) {
+      quotaExceeded = true;
+      lastQuotaErrorTime = Date.now();
+    }
     lastError = errorMessage;
-    console.warn('Firestore Transient/Quota Issue (Handled) for path:', path, errorMessage);
+    console.warn(`Firestore ${isQuota ? 'Quota' : 'Connection'} Issue (Handled) for path:`, path, errorMessage);
     return;
   }
 
@@ -108,39 +126,60 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function errorMessageFrom(error: any): string {
+  if (typeof error === 'string') return error;
+  return error.message || error.error || JSON.stringify(error);
+}
+
 // Test connection on boot
 let quotaExceeded = false;
+let lastQuotaErrorTime = 0;
+const QUOTA_RETRY_DELAY = 5 * 60 * 1000; // 5 minutes block on quota exceeded
+
 let lastError: string | null = null;
 let currentCompanyId: string | null = null;
 
+function canMakeRequest(): boolean {
+  if (!quotaExceeded) return true;
+  
+  const now = Date.now();
+  if (now - lastQuotaErrorTime > QUOTA_RETRY_DELAY) {
+    console.log('Quota backoff period expired. Attempting requests again.');
+    quotaExceeded = false;
+    return true;
+  }
+  return false;
+}
+
 async function testConnection(retries = 3) {
+  if (quotaExceeded && !canMakeRequest()) return;
+
   try {
-    // Attempting to read a public dummy document to verify connectivity
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Attempting to read using a query that might fail if offline but doesn't require a specific document
+    await getDocsFromServer(query(collection(db, 'trips'), limit(1)));
     console.log("Firestore connection test successful");
     quotaExceeded = false;
     lastError = null;
   } catch (error: any) {
-    const errorMsg = error.message || String(error);
+    const errorMsg = errorMessageFrom(error);
     console.warn("Connection test failed:", errorMsg);
     lastError = errorMsg;
 
-    // If it's just a 404 (document not found), that's actually a successful connection!
-    if (errorMsg.includes('not-found') || error.code === 'not-found') {
-      console.log("Firestore connected (path not found but server reached)");
+    // If it's a permission error, it means we ARE connected but just can't read yet (expected if not logged in)
+    if (errorMsg.includes('permission-denied') || errorMsg.includes('insufficient permissions')) {
+      console.log("Firestore connected (Auth pending or permissions restricted)");
       quotaExceeded = false;
-      lastError = null;
       return;
     }
 
-    if (retries > 0 && isQuotaError(error)) {
-      console.warn(`Connection test failed, retrying (${retries} left)...`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    if (retries > 0 && (isQuotaError(error) || isConnectionError(error))) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
       return testConnection(retries - 1);
     }
 
     if (isQuotaError(error)) {
       quotaExceeded = true;
+      lastQuotaErrorTime = Date.now();
     }
   }
 }
@@ -188,11 +227,97 @@ function mapDocData<T>(doc: any): T {
 }
 
 export const api = {
-  resetQuota: () => {
+  async resetQuota() {
     quotaExceeded = false;
     lastError = null;
-    testConnection();
+    console.log('Force manual quota reset. Re-checking server connection...');
+    
+    // Attempt 3 different collections to find a bypass
+    const tests = ['trips', 'users', 'logs'];
+    let successCount = 0;
+    let lastErrDetail = '';
+
+    for (const colName of tests) {
+      try {
+        await getDocsFromServer(query(collection(db, colName), limit(1)));
+        successCount++;
+        break; // One success is enough
+      } catch (e: any) {
+        lastErrDetail = errorMessageFrom(e);
+      }
+    }
+
+    if (successCount > 0) {
+      console.log('Server connection verified! System is online.');
+      quotaExceeded = false;
+      lastError = null;
+      return { success: true };
+    } else {
+      console.error('Connection still blocked by server:', lastErrDetail);
+      if (lastErrDetail.toLowerCase().includes('quota') || lastErrDetail.toLowerCase().includes('exhausted')) {
+        quotaExceeded = true;
+      }
+      lastError = lastErrDetail;
+      return { success: false, error: 'Still blocked by server', detail: lastErrDetail };
+    }
   },
+
+  forceReset() {
+    console.log('Forcefully clearing quota flag without checking server.');
+    quotaExceeded = false;
+    lastError = null;
+    return true;
+  },
+
+  async deepReset() {
+    console.log('Starting deep reset...');
+    console.log('Project Identity:', {
+      projectId: 'gen-lang-client-0227849596',
+      database: 'ai-studio-17a07b55-b746-4e2d-a308-a63e401936a9',
+      apiKeyPrefix: 'AIzaSy'
+    });
+    try {
+      // 1. Clear Firestore persistence
+      try {
+        await clearIndexedDbPersistence(db);
+      } catch (e) {
+        console.warn('Persistence clear skipped:', e);
+      }
+      
+      // 2. Clear typical browser caches
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // 3. Reset JS flags
+      quotaExceeded = false;
+      lastError = null;
+      
+      // 4. Force fully clean IndexedDB
+      try {
+        const databases = await window.indexedDB.databases();
+        for (const dbInfo of databases) {
+          if (dbInfo.name) window.indexedDB.deleteDatabase(dbInfo.name);
+        }
+      } catch (e) {}
+      
+      console.log('Deep reset complete. Power cycling...');
+      window.location.reload();
+    } catch (e) {
+      console.error('Fatal reset error:', e);
+      localStorage.clear();
+      window.location.reload();
+    }
+  },
+  
+  async checkOriginalError() {
+    try {
+      await getDocsFromServer(query(collection(db, 'users'), limit(1)));
+      return "Success: Connection is working now!";
+    } catch (e: any) {
+      return `Error: ${e.code || 'No code'} - ${e.message || String(e)}`;
+    }
+  },
+  
   isQuotaExceeded: () => quotaExceeded,
   getLastError: () => lastError,
   
@@ -224,17 +349,6 @@ export const api = {
     const path = 'users';
     try {
       await this.ensureAuth();
-      
-      // If quota exceeded, try to find user in cache
-      if (quotaExceeded) {
-        const cachedUsers = localStorage.getItem('cached_users');
-        if (cachedUsers) {
-          const users = JSON.parse(cachedUsers) as User[];
-          const user = users.find(u => u.username === username && (u as any).password === password);
-          if (user) return { user };
-        }
-      }
-
       const q = query(collection(db, path), where("username", "==", username), where("password", "==", password));
       const querySnapshot = await getDocs(q);
       
@@ -250,21 +364,9 @@ export const api = {
         this.setCompanyId(userData.companyId);
       }
 
-      // CRITICAL: Link this user record to the current Firebase UID if not linked
-      // This allows Firestore Rules to correctly identify the user's role
       if (uid && userDoc.id !== uid) {
-        console.log('Linking user record to Firebase UID:', uid);
         const newUserRef = doc(db, path, uid);
-        const newUserSnap = await getDoc(newUserRef);
-        
-        // Sync or Create linked record
-        if (!newUserSnap.exists() || newUserSnap.data()?.role !== userData.role) {
-          await setDoc(newUserRef, { 
-            ...userData, 
-            linkedFrom: userDoc.id,
-            updatedAt: serverTimestamp() 
-          }, { merge: true });
-        }
+        await setDoc(newUserRef, { ...userData, linkedFrom: userDoc.id, updatedAt: serverTimestamp() }, { merge: true });
       }
       
       return { 
@@ -281,8 +383,6 @@ export const api = {
       }
       if (error instanceof Error && error.message === 'اسم المستخدم أو كلمة المرور غير صحيحة') throw error;
       handleFirestoreError(error, OperationType.GET, path);
-      // If handleFirestoreError didn't throw (quota error), we still need to throw something to stop login
-      if (isQuotaError(error)) throw new Error('تم تجاوز حصة الاستخدام المجانية لليوم. يرجى المحاولة لاحقاً.');
       throw error;
     }
   },
@@ -363,20 +463,37 @@ export const api = {
     }
   },
 
+  // Trips
   async getTrips(): Promise<Trip[]> {
     const path = 'trips';
     const companyId = this.getCompanyId();
-    try {
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_trips');
-        if (cached) return JSON.parse(cached);
-      }
+    
+    // Cache first
+    const cachedStr = localStorage.getItem('cached_trips');
+    if (cachedStr) {
+      try {
+        const all = JSON.parse(cachedStr) as Trip[];
+        const lastFetch = Number(localStorage.getItem('last_trips_fetch') || 0);
+        const isFresh = Date.now() - lastFetch < (quotaExceeded ? 300000 : 120000); // 5 mins if quota error, 2 mins normally
+        if (isFresh || (quotaExceeded && !canMakeRequest())) return all;
+      } catch (e) {}
+    }
 
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr) : [];
+    }
+
+    try {
       await this.ensureAuth();
       let q = query(collection(db, path));
-      if (companyId) {
+      
+      // Only filter by company if not admin
+      const userStr = localStorage.getItem('user');
+      const userObj = userStr ? JSON.parse(userStr) : null;
+      if (companyId && userObj?.role !== 'admin') {
         q = query(q, where("companyId", "==", companyId));
       }
+      
       const querySnapshot = await getDocs(q);
       const trips = querySnapshot.docs.map(doc => {
         const data = doc.data();
@@ -388,20 +505,17 @@ export const api = {
         } as unknown as Trip;
       });
       
-      try {
-        localStorage.setItem('cached_trips', JSON.stringify(trips));
-      } catch (e) {
-        console.warn('Failed to cache trips in localStorage (Quota Exceeded)');
-      }
+      localStorage.setItem('cached_trips', JSON.stringify(trips));
+      localStorage.setItem('last_trips_fetch', Date.now().toString());
+      
       return trips;
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        const cached = localStorage.getItem('cached_trips');
-        if (cached) return JSON.parse(cached);
-      } else {
-        handleFirestoreError(error, OperationType.LIST, path);
+        if (cachedStr) return JSON.parse(cachedStr);
       }
+      handleFirestoreError(error, OperationType.LIST, path);
+      if (cachedStr) return JSON.parse(cachedStr);
       return [];
     }
   },
@@ -410,25 +524,16 @@ export const api = {
     const { id, ...data } = trip;
     const companyId = this.getCompanyId();
     
-    // Remove undefined fields to avoid Firestore errors
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
-    );
+    const cleanData = cleanUndefined(data);
 
     try {
       await this.ensureAuth();
       if (id && id !== 'new') {
         const docRef = doc(db, path, id);
-        const docSnap = await getDocFromServer(docRef);
-        if (docSnap.exists()) {
-          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
-        } else {
-          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
-        }
-        await this.syncTripSeats(id);
+        await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        // Don't force sync on every save to save quota, it will be synced on next booking
       } else {
-        const docRef = await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
-        await this.syncTripSeats(docRef.id);
+        await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -448,18 +553,31 @@ export const api = {
   async getBookings(limitCount?: number): Promise<Booking[]> {
     const path = 'bookings';
     const companyId = this.getCompanyId();
-    try {
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_bookings');
-        if (cached) {
-          const all = JSON.parse(cached) as Booking[];
-          return limitCount ? all.slice(0, limitCount) : all;
+    
+    const cachedStr = localStorage.getItem('cached_bookings');
+    if (cachedStr) {
+      try {
+        const all = JSON.parse(cachedStr) as Booking[];
+        const lastFetch = Number(localStorage.getItem('last_bookings_fetch') || 0);
+        // Extend cache validity during quota issues
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 600000 : 60000;
+        if (Date.now() - lastFetch < cacheTTL) {
+           return limitCount ? all.slice(0, limitCount) : all;
         }
-      }
+      } catch (e) {}
+    }
 
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr).slice(0, limitCount || 1000) : [];
+    }
+
+    try {
       await this.ensureAuth();
       let q = query(collection(db, path), orderBy("createdAt", "desc"));
-      if (companyId) {
+      
+      const userStr = localStorage.getItem('user');
+      const userObj = userStr ? JSON.parse(userStr) : null;
+      if (companyId && userObj?.role !== 'admin') {
         q = query(q, where("companyId", "==", companyId));
       }
       if (limitCount) {
@@ -481,28 +599,17 @@ export const api = {
       });
 
       if (!limitCount) {
-        try {
-          localStorage.setItem('cached_bookings', JSON.stringify(bookings));
-        } catch (e) {
-          console.warn('Failed to cache bookings in localStorage (Quota Exceeded)');
-        }
+        localStorage.setItem('cached_bookings', JSON.stringify(bookings));
+        localStorage.setItem('last_bookings_fetch', Date.now().toString());
       }
       return bookings;
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
+        if (cachedStr) return JSON.parse(cachedStr).slice(0, limitCount || 1000);
       }
       handleFirestoreError(error, OperationType.LIST, path);
-      
-      const cached = localStorage.getItem('cached_bookings');
-      if (cached) {
-        try {
-          const all = JSON.parse(cached) as Booking[];
-          if (Array.isArray(all)) {
-            return limitCount ? all.slice(0, limitCount) : all;
-          }
-        } catch (e) {}
-      }
+      if (cachedStr) return JSON.parse(cachedStr);
       return [];
     }
   },
@@ -557,64 +664,32 @@ export const api = {
     const { id, ...data } = booking;
     const companyId = this.getCompanyId();
     
-    // Remove undefined fields to avoid Firestore errors
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
-    );
+    const cleanData = cleanUndefined(data);
 
     try {
       await this.ensureAuth();
       if (id && id !== 'new') {
         const docRef = doc(db, path, id);
-        const docSnap = await getDocFromServer(docRef);
-        
-        // Get old booking to check if tripId changed
-        const oldBooking = docSnap.exists() ? docSnap.data() as Booking : null;
-        const oldTripId = oldBooking?.tripId;
-        
-        if (docSnap.exists()) {
-          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
-        } else {
-          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
-        }
-        
-        // Sync seats for current trip
-        if (booking.tripId) {
-          await this.syncTripSeats(booking.tripId);
-        }
-        
-        // If trip changed, sync old trip too
-        if (oldTripId && oldTripId !== booking.tripId) {
-          await this.syncTripSeats(oldTripId);
-        }
-      } else {
-        const newBookingRef = await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
-        if (booking.tripId) {
-          await this.syncTripSeats(booking.tripId);
-        }
-
-        // Notify admins and managers about new booking
+        // Only get doc if we actually NEED to check the trip change, otherwise just update
+        let oldTripId: string | undefined;
         try {
-          const users = await this.getUsers();
-          const adminsAndManagers = users.filter(u => 
-            (u.role === 'admin' || u.role === 'manager') && 
-            u.id !== auth.currentUser?.uid &&
-            u.status === 'active'
-          );
-
-          if (adminsAndManagers.length > 0) {
-            const notifications = adminsAndManagers.map(u => ({
-              title: 'حجز جديد',
-              message: `تم إنشاء حجز جديد لـ ${booking.headName} بواسطة ${auth.currentUser?.displayName || 'موظف'}.`,
-              type: 'success' as const,
-              userId: u.id,
-              read: false
-            }));
-            await this.bulkAddNotifications(notifications);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+             oldTripId = (docSnap.data() as Booking).tripId;
+             await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+          } else {
+             await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
           }
         } catch (e) {
-          console.warn('Failed to send notifications for new booking:', e);
+          // If getDoc fails, just try setDoc
+          await setDoc(docRef, { ...cleanData, companyId, updatedAt: serverTimestamp() }, { merge: true });
         }
+        
+        if (booking.tripId) await this.syncTripSeats(booking.tripId);
+        if (oldTripId && oldTripId !== booking.tripId) await this.syncTripSeats(oldTripId);
+      } else {
+        await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
+        if (booking.tripId) await this.syncTripSeats(booking.tripId);
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -638,12 +713,13 @@ export const api = {
     }
   },
   async syncTripSeats(tripId: string): Promise<void> {
+    if (quotaExceeded && !canMakeRequest()) return;
     try {
       await this.ensureAuth();
       
-      // 1. Get all bookings for this trip from server to ensure accuracy
+      // Use standard getDocs to allow cache hits
       const bookingsQuery = query(collection(db, 'bookings'), where("tripId", "==", tripId));
-      const bookingsSnapshot = await getDocsFromServer(bookingsQuery);
+      const bookingsSnapshot = await getDocs(bookingsQuery);
       
       let totalSeatsDeducted = 0;
       bookingsSnapshot.docs.forEach(doc => {
@@ -684,11 +760,12 @@ export const api = {
     }
   },
   async syncAllTripsSeats(): Promise<void> {
+    if (quotaExceeded && !canMakeRequest()) return;
     try {
       await this.ensureAuth();
-      // Use server-side fetches for full sync to ensure absolute accuracy
-      const tripsSnapshot = await getDocsFromServer(collection(db, 'trips'));
-      const bookingsSnapshot = await getDocsFromServer(collection(db, 'bookings'));
+      // Use getDocs instead of getDocsFromServer to utilize cache and save quota
+      const tripsSnapshot = await getDocs(collection(db, 'trips'));
+      const bookingsSnapshot = await getDocs(collection(db, 'bookings'));
       
       const trips = tripsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Trip));
       const bookings = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Booking));
@@ -823,62 +900,45 @@ export const api = {
   async getUsers(): Promise<User[]> {
     const path = 'users';
     const companyId = this.getCompanyId();
-    try {
-      // If quota exceeded, return cache immediately
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_users');
-        if (cached) return JSON.parse(cached);
-      }
+    
+    const cachedStr = localStorage.getItem('cached_users');
+    if (cachedStr) {
+      try {
+        const lastFetch = Number(localStorage.getItem('last_users_fetch') || 0);
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 900000 : 300000;
+        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
+          return JSON.parse(cachedStr);
+        }
+      } catch (e) {}
+    }
 
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr) : [];
+    }
+
+    try {
       await this.ensureAuth();
       let q = query(collection(db, path));
-      if (companyId) {
+      
+      const userStr = localStorage.getItem('user');
+      const userObj = userStr ? JSON.parse(userStr) : null;
+      if (companyId && userObj?.role !== 'admin') {
         q = query(q, where("companyId", "==", companyId));
       }
-      const querySnapshot = await getDocs(q);
-      const users = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return { 
-          id: doc.id, 
-          ...data,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-        } as unknown as User;
-      });
       
-      // Cache users
-      try {
-        localStorage.setItem('cached_users', JSON.stringify(users));
-      } catch (e) {
-        console.warn('Failed to cache users in localStorage (Quota Exceeded)');
-      }
+      const querySnapshot = await getDocs(q);
+      const users = querySnapshot.docs.map(doc => mapDocData<User>(doc));
+      
+      localStorage.setItem('cached_users', JSON.stringify(users));
+      localStorage.setItem('last_users_fetch', Date.now().toString());
       return users;
     } catch (error: any) {
-      // Return cached users if quota exceeded
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        try {
-          const cacheSnapshot = await getDocsFromCache(collection(db, path));
-          if (!cacheSnapshot.empty) {
-            return cacheSnapshot.docs.map(doc => {
-              const data = doc.data();
-              return { 
-                id: doc.id, 
-                ...data,
-                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-              } as unknown as User;
-            });
-          }
-        } catch (cacheError) {
-          // console.warn('Cache fetch failed:', cacheError);
-        }
-        const cached = localStorage.getItem('cached_users');
-        if (cached) return JSON.parse(cached);
-      } else {
-        handleFirestoreError(error, OperationType.LIST, path);
+        lastQuotaErrorTime = Date.now();
       }
-      return [];
+      handleFirestoreError(error, OperationType.LIST, path);
+      return cachedStr ? JSON.parse(cachedStr) : [];
     }
   },
   async saveUser(user: Partial<User> & { password?: string }): Promise<void> {
@@ -886,21 +946,12 @@ export const api = {
     const { id, ...data } = user;
     const companyId = this.getCompanyId();
     
-    // Remove undefined fields to avoid Firestore errors
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v !== undefined)
-    );
+    const cleanData = cleanUndefined(data);
 
     try {
       await this.ensureAuth();
       if (id && id !== 'new') {
-        const docRef = doc(db, path, id);
-        const docSnap = await getDocFromServer(docRef);
-        if (docSnap.exists()) {
-          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
-        } else {
-          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
-        }
+        await updateDoc(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
       } else {
         await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
       }
@@ -921,13 +972,22 @@ export const api = {
   // Settings
   async getSettings(): Promise<Record<string, string>> {
     const path = 'settings';
-    try {
-      // If quota exceeded, return cache immediately
-      if (quotaExceeded) {
-        const cached = localStorage.getItem('cached_settings');
-        if (cached) return JSON.parse(cached);
-      }
+    
+    // Always check cache first
+    const cached = localStorage.getItem('cached_settings');
+    const lastFetch = Number(localStorage.getItem('last_settings_fetch') || 0);
+    const isQuotaReady = !quotaExceeded || canMakeRequest();
+    const isFresh = Date.now() - lastFetch < (isQuotaReady ? 600000 : 3600000); // 10 mins vs 1 hour
 
+    if (cached && (isFresh || !isQuotaReady)) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {}
+    }
+
+    if (!isQuotaReady) return cached ? JSON.parse(cached) : {};
+
+    try {
       await this.ensureAuth();
       const querySnapshot = await getDocs(collection(db, path));
       const settings: Record<string, string> = {};
@@ -936,35 +996,17 @@ export const api = {
         if (data.key) settings[data.key] = data.value;
       });
       
-      // Cache settings
-      try {
-        localStorage.setItem('cached_settings', JSON.stringify(settings));
-      } catch (e) {
-        console.warn('Failed to cache settings in localStorage (Quota Exceeded)');
-      }
+      localStorage.setItem('cached_settings', JSON.stringify(settings));
+      localStorage.setItem('last_settings_fetch', Date.now().toString());
       return settings;
     } catch (error: any) {
-      // Return cached settings if quota exceeded
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        try {
-          const cacheSnapshot = await getDocsFromCache(collection(db, path));
-          if (!cacheSnapshot.empty) {
-            const settings: Record<string, string> = {};
-            cacheSnapshot.docs.forEach(doc => {
-              const data = doc.data();
-              if (data.key) settings[data.key] = data.value;
-            });
-            return settings;
-          }
-        } catch (cacheError) {
-          // console.warn('Cache fetch failed:', cacheError);
-        }
-        const cached = localStorage.getItem('cached_settings');
+        lastQuotaErrorTime = Date.now();
         if (cached) return JSON.parse(cached);
-      } else {
-        handleFirestoreError(error, OperationType.LIST, path);
       }
+      console.warn('Settings fetch failed, falling back to cache:', error.message);
+      if (cached) return JSON.parse(cached);
       return {};
     }
   },
@@ -1184,11 +1226,21 @@ export const api = {
     const path = 'pilgrims';
     
     // Proactively check quota
-    if (quotaExceeded) {
-      const cached = localStorage.getItem('cached_pilgrims');
-      if (cached) {
+    const cachedStr = localStorage.getItem('cached_pilgrims');
+    if (cachedStr && !bookingId) {
+      try {
+        const lastFetch = Number(localStorage.getItem('last_pilgrims_fetch') || 0);
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 900000 : 180000; // 15 mins vs 3 mins
+        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
+          return JSON.parse(cachedStr);
+        }
+      } catch (e) {}
+    }
+
+    if (quotaExceeded && !canMakeRequest()) {
+      if (cachedStr) {
         try {
-          const all = JSON.parse(cached) as Pilgrim[];
+          const all = JSON.parse(cachedStr) as Pilgrim[];
           if (Array.isArray(all)) {
             return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
           }
@@ -1373,26 +1425,31 @@ export const api = {
     const path = 'umrahOffers';
     const companyId = this.getCompanyId();
     
-    // Proactively check quota to avoid hitting Firebase
-    if (quotaExceeded) {
-      const cached = localStorage.getItem('cached_umrah_offers');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed as UmrahOffer[];
-        } catch (e) {
-          console.error('Error parsing cached offers:', e);
+    const cachedStr = localStorage.getItem('cached_umrah_offers');
+    if (cachedStr) {
+      try {
+        const lastFetch = Number(localStorage.getItem('last_offers_fetch') || 0);
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 1200000 : 300000; // 20 mins vs 5 mins
+        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
+          return JSON.parse(cachedStr);
         }
-      }
-      return []; // Return empty if no cache
+      } catch (e) {}
+    }
+
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr) : [];
     }
 
     try {
       await this.ensureAuth();
       let q = query(collection(db, path));
-      if (companyId) {
+      
+      const userStr = localStorage.getItem('user');
+      const userObj = userStr ? JSON.parse(userStr) : null;
+      if (companyId && userObj?.role !== 'admin') {
         q = query(q, where("companyId", "==", companyId));
       }
+      
       const querySnapshot = await getDocs(q);
       const offers = querySnapshot.docs.map(doc => {
         const data = doc.data();
@@ -1548,26 +1605,31 @@ export const api = {
     const path = 'customers';
     const companyId = this.getCompanyId();
     
-    // Proactively check quota
-    if (quotaExceeded) {
-      const cached = localStorage.getItem('cached_customers');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) return parsed as Customer[];
-        } catch (e) {
-          console.error('Error parsing cached customers:', e);
+    const cachedStr = localStorage.getItem('cached_customers');
+    if (cachedStr) {
+      try {
+        const lastFetch = Number(localStorage.getItem('last_customers_fetch') || 0);
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 1800000 : 300000; // 30 mins vs 5 mins
+        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
+          return JSON.parse(cachedStr);
         }
-      }
-      return [];
+      } catch (e) {}
+    }
+
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr) : [];
     }
 
     try {
       await this.ensureAuth();
       let q = query(collection(db, path));
-      if (companyId) {
+      
+      const userStr = localStorage.getItem('user');
+      const userObj = userStr ? JSON.parse(userStr) : null;
+      if (companyId && userObj?.role !== 'admin') {
         q = query(q, where("companyId", "==", companyId));
       }
+      
       const querySnapshot = await getDocs(q);
       const customers = querySnapshot.docs.map(doc => mapDocData<Customer>(doc));
 
@@ -1605,8 +1667,10 @@ export const api = {
   async saveCustomer(customer: Partial<Customer>): Promise<void> {
     const path = 'customers';
     const { id, createdAt, updatedAt, ...data } = customer;
+    const companyId = this.getCompanyId();
     
     const cleanData = cleanUndefined(data);
+    if (!cleanData.companyId && companyId) cleanData.companyId = companyId;
 
     try {
       await this.ensureAuth();
@@ -1662,6 +1726,7 @@ export const api = {
   },
   async bulkSaveCustomers(customers: Partial<Customer>[], existingMap?: Map<string, string>): Promise<void> {
     const path = 'customers';
+    const companyId = this.getCompanyId();
     try {
       await this.ensureAuth();
       
@@ -1688,8 +1753,9 @@ export const api = {
           if (!data.phone) return; // Skip if no phone
 
           const cleanData = cleanUndefined(data);
+          if (!cleanData.companyId && companyId) cleanData.companyId = companyId;
 
-          const existingId = existingCustomersMap.get(data.phone);
+          const existingId = existingCustomersMap!.get(data.phone);
           if (existingId) {
             batch.update(doc(db, path, existingId), { ...cleanData, updatedAt: serverTimestamp() });
           } else {
@@ -1789,6 +1855,7 @@ export const api = {
       for (let i = 0; i < contactsArray.length; i += chunkSize) {
         const chunk = contactsArray.slice(i, i + chunkSize);
         const batch = writeBatch(db);
+        const companyId = this.getCompanyId();
         
         chunk.forEach(contact => {
           const newDocRef = doc(collection(db, path));
@@ -1799,6 +1866,7 @@ export const api = {
             totalBookings: 1,
             lastBookingDate: contact.lastDate,
             hasWhatsApp: false,
+            companyId,
             createdAt: serverTimestamp()
           });
         });
@@ -1818,22 +1886,47 @@ export const api = {
   async getHotels(): Promise<Hotel[]> {
     const path = 'hotels';
     const companyId = this.getCompanyId();
+    
+    const cachedStr = localStorage.getItem('cached_hotels');
+    if (cachedStr) {
+      try {
+        const lastFetch = Number(localStorage.getItem('last_hotels_fetch') || 0);
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 3600000 : 600000; // 1 hour vs 10 mins
+        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
+          return JSON.parse(cachedStr);
+        }
+      } catch (e) {}
+    }
+
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr) : [];
+    }
+
     try {
-      if (quotaExceeded) return [];
       await this.ensureAuth();
       let q = query(collection(db, path));
-      if (companyId) {
+      
+      const userStr = localStorage.getItem('user');
+      const userObj = userStr ? JSON.parse(userStr) : null;
+      if (companyId && userObj?.role !== 'admin') {
         q = query(q, where('companyId', '==', companyId));
       } else {
         q = query(q, orderBy('createdAt', 'desc'));
       }
       
-      let querySnapshot = await this.withRetry(() => getDocs(q));
+      const querySnapshot = await this.withRetry(() => getDocs(q));
+      const hotels = querySnapshot.docs.map(doc => mapDocData<Hotel>(doc));
       
-      return querySnapshot.docs.map(doc => mapDocData<Hotel>(doc));
-    } catch (error) {
+      localStorage.setItem('cached_hotels', JSON.stringify(hotels));
+      localStorage.setItem('last_hotels_fetch', Date.now().toString());
+      return hotels;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        lastQuotaErrorTime = Date.now();
+      }
       handleFirestoreError(error, OperationType.LIST, path);
-      return [];
+      return cachedStr ? JSON.parse(cachedStr) : [];
     }
   },
   async saveHotel(hotel: Partial<Hotel>): Promise<string> {
@@ -2015,6 +2108,22 @@ export const api = {
   // Umrah Pricing
   async getUmrahPricings(): Promise<UmrahPricing[]> {
     const path = 'umrah_pricing';
+    
+    const cachedStr = localStorage.getItem('cached_umrah_pricing');
+    if (cachedStr) {
+      try {
+        const lastFetch = Number(localStorage.getItem('last_pricing_fetch') || 0);
+        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 1800000 : 600000;
+        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
+          return JSON.parse(cachedStr);
+        }
+      } catch (e) {}
+    }
+
+    if (quotaExceeded && !canMakeRequest()) {
+      return cachedStr ? JSON.parse(cachedStr) : [];
+    }
+
     try {
       await this.ensureAuth();
       // Try with orderBy first
@@ -2027,10 +2136,17 @@ export const api = {
         querySnapshot = await this.withRetry(() => getDocs(q));
       }
       
-      return querySnapshot.docs.map(doc => mapDocData<UmrahPricing>(doc));
-    } catch (error) {
+      const pricings = querySnapshot.docs.map(doc => mapDocData<UmrahPricing>(doc));
+      localStorage.setItem('cached_umrah_pricing', JSON.stringify(pricings));
+      localStorage.setItem('last_pricing_fetch', Date.now().toString());
+      return pricings;
+    } catch (error: any) {
+      if (isQuotaError(error)) {
+        quotaExceeded = true;
+        lastQuotaErrorTime = Date.now();
+      }
       handleFirestoreError(error, OperationType.LIST, path);
-      return [];
+      return cachedStr ? JSON.parse(cachedStr) : [];
     }
   },
   async saveUmrahPricing(pricing: UmrahPricing): Promise<void> {
