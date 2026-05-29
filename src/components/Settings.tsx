@@ -129,6 +129,7 @@ export default function Settings({ user }: { user: User }) {
     theme: 'gold',
     backupFrequency: 'daily'
   });
+  const [geminiApiKey, setGeminiApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [dbStats, setDbStats] = useState<any>(null);
@@ -188,6 +189,7 @@ export default function Settings({ user }: { user: User }) {
           theme: settings.pref_theme || 'gold',
           backupFrequency: settings.backup_frequency || 'daily'
         } as any);
+        setGeminiApiKey(settings.gemini_api_key || '');
       } catch (error) {
         console.error('Error loading settings:', error);
       }
@@ -256,7 +258,8 @@ export default function Settings({ user }: { user: User }) {
         pref_date_format: preferences.dateFormat,
         pref_language: preferences.language,
         pref_theme: preferences.theme,
-        backup_frequency: (preferences as any).backupFrequency || 'daily'
+        backup_frequency: (preferences as any).backupFrequency || 'daily',
+        gemini_api_key: geminiApiKey
       });
 
       // Audit Log
@@ -347,7 +350,11 @@ export default function Settings({ user }: { user: User }) {
     };
 
     try {
-      const response = await fetch('/api/diag/gemini');
+      const headers: Record<string, string> = {};
+      if (geminiApiKey) {
+        headers["X-Gemini-API-Key"] = geminiApiKey;
+      }
+      const response = await fetch('/api/diag/gemini', { headers });
       const text = await response.text();
       
       let data;
@@ -837,19 +844,54 @@ export default function Settings({ user }: { user: User }) {
           </div>
           
           <div className="glass-card p-6">
-            <h4 className="font-bold text-white mb-4">أدوات التشخيص</h4>
+            <h4 className="font-bold text-white mb-4">إعدادات الذكاء الاصطناعي وفحص الـ API</h4>
             <div className="space-y-4">
-              <p className="text-[10px] text-white/60 leading-relaxed">
-                إذا كنت تواجه مشاكل في مسح الجوازات، يمكنك استخدام أداة التشخيص للتحقق من صحة مفتاح الـ API والاتصال بخوادم جوجل.
-              </p>
-              <button 
-                onClick={runDiagnostic}
-                disabled={diagLoading}
-                className="btn-gold w-full py-2 flex items-center justify-center gap-2 text-xs"
-              >
-                <RefreshCw className={clsx("w-3 h-3", diagLoading && "animate-spin")} />
-                {diagLoading ? 'جاري الفحص...' : 'تشغيل فحص الـ API'}
-              </button>
+              <div className="space-y-2">
+                <label className="text-[11px] text-white/60 block font-medium">مفتاح الـ Gemini API (Google AI Studio)</label>
+                <div className="relative">
+                  <input 
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => {
+                      setGeminiApiKey(e.target.value);
+                      setSuccess(false);
+                    }}
+                    placeholder="أدخل مفتاح الـ API الخاص بك (تبدأ من AIzaSy...)"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-gold/50 transition-all font-mono"
+                  />
+                  {geminiApiKey && (
+                    <button 
+                      type="button" 
+                      onClick={() => setGeminiApiKey('')}
+                      className="absolute right-2 top-2 text-white/40 hover:text-white transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[9px] text-white/40 leading-relaxed">
+                  هذا المفتاح يُمكنك من مسح صور الجوازات لاستخراج البيانات تلقائياً وترجمة عروض العمرة. يمكنك توليد مفتاح مجاني وبسرعة من منصة <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-gold underline hover:text-gold/80">Google AI Studio</a>.
+                </p>
+                {geminiApiKey && (
+                  <div className="flex justify-end pt-1">
+                    <span className="text-[8px] bg-gold/10 text-gold px-2 py-0.5 rounded-full font-medium">مفتاح مدخل يدوياً بقاعدة البيانات</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-white/5 space-y-3">
+                <p className="text-[10px] text-white/60 leading-relaxed">
+                  يمكنك استخدام أداة التشخيص أدناه للتحقق من صحة مفتاح الـ API المدخل (أو المكوّن كمتغير بيئة) والاتصال المباشر بخوادم Gemini.
+                </p>
+                <button 
+                  onClick={runDiagnostic}
+                  disabled={diagLoading}
+                  className="btn-gold w-full py-2 flex items-center justify-center gap-2 text-xs"
+                >
+                  <RefreshCw className={clsx("w-3 h-3", diagLoading && "animate-spin")} />
+                  {diagLoading ? 'جاري الفحص...' : 'تشغيل فحص الـ API'}
+                </button>
+              </div>
 
               {diagResult && (
                 <div className={clsx(

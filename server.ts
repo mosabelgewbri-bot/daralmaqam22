@@ -410,18 +410,21 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --- DIAGNOSTICS AND GEMINI ENDPOINTS AT THE VERY TOP ---
 app.get("/api/diag/gemini", async (req, res) => {
-  const key = process.env.GEMINI_API_KEY || "";
+  const headerKey = req.headers["x-gemini-api-key"] as string;
+  const key = headerKey || process.env.GEMINI_API_KEY || "";
   const isVercel = !!process.env.VERCEL;
+  const source = headerKey ? "أعدادات النظام بقاعدة البيانات (Settings in Firestore DB)" : "متغيرات بيئة الخادم (Environment Variables / .env)";
   
   if (!key) {
     return res.status(200).json({ 
       status: 'error', 
-      message: 'مفتاح Gemini API غير مكوّن في البيئة (Environment Variable missing).',
+      message: 'مفتاح Gemini API غير مكوّن في البيئة أو قاعدة البيانات.',
       env: process.env.NODE_ENV,
       isVercel,
+      source,
       liveTest: {
         status: 'error',
-        message: 'مفتاح Gemini API غير مكوّن في البيئة.'
+        message: 'مفتاح Gemini API غير مكوّن.'
       }
     });
   }
@@ -439,7 +442,7 @@ app.get("/api/diag/gemini", async (req, res) => {
     });
     const result = await ai.models.generateContent({
       model: "gemini-3.5-flash",
-      contents: "Say hello briefly"
+      contents: "Say hello briefly in Arabic"
     });
     const text = result.text || "";
     backendLiveTest = {
@@ -455,11 +458,12 @@ app.get("/api/diag/gemini", async (req, res) => {
   }
   
   res.json({ 
-    status: 'success', 
-    message: 'مفتاح API مكوّن في البيئة وعامل بنجاح.',
-    keyPrefix: key.substring(0, 4) + '...' + key.substring(key.length - 4),
+    status: backendLiveTest.status === 'success' ? 'success' : 'error', 
+    message: backendLiveTest.status === 'success' ? 'مفتاح API مكوّن وعامل بنجاح.' : 'مفتاح API مكوّن لكنه غير صالح أو معرّف بشكل خاطئ.',
+    keyPrefix: key.length > 8 ? (key.substring(0, 6) + '...' + key.substring(key.length - 4)) : 'أقصر من اللازم',
     env: process.env.NODE_ENV,
     isVercel,
+    source,
     liveTest: backendLiveTest
   });
 });
@@ -467,7 +471,8 @@ app.get("/api/diag/gemini", async (req, res) => {
 app.post("/api/gemini/translate", async (req, res) => {
   try {
     const { offerData } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY || "";
+    const headerKey = req.headers["x-gemini-api-key"] as string;
+    const apiKey = headerKey || process.env.GEMINI_API_KEY || "";
     if (!apiKey) {
       return res.status(400).json({ error: "مفتاح Gemini API غير مكوّن على الخادم." });
     }
@@ -512,7 +517,8 @@ app.post("/api/gemini/scan-passport", async (req, res) => {
       return res.status(400).json({ error: "الصورة مطلوبة لفحص جواز السفر." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || "";
+    const headerKey = req.headers["x-gemini-api-key"] as string;
+    const apiKey = headerKey || process.env.GEMINI_API_KEY || "";
     if (!apiKey) {
       return res.status(400).json({ error: "مفتاح Gemini API غير مكوّن على الخادم." });
     }
