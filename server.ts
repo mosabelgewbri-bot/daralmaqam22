@@ -90,9 +90,6 @@ class MockDatabase {
         return [];
       },
       get: (...args: any[]) => {
-        if (normalizedSql.includes("from settings where key = ?")) {
-          return self.data.settings.find((s: any) => s.key === args[0]) || null;
-        }
         if (normalizedSql.includes("from users where username = ? and password = ?")) {
           return self.data.users.find((u: any) => u.username === args[0] && u.password === args[1]);
         }
@@ -110,16 +107,6 @@ class MockDatabase {
       },
       run: (...args: any[]) => {
         console.log(`MockDB run: ${sql} with args:`, args);
-        if (normalizedSql.includes("insert or replace into settings") || normalizedSql.includes("insert into settings") || normalizedSql.includes("replace into settings")) {
-          const key = args[0];
-          const value = args[1];
-          const idx = self.data.settings.findIndex((s: any) => s.key === key);
-          if (idx !== -1) {
-            self.data.settings[idx].value = value;
-          } else {
-            self.data.settings.push({ key, value });
-          }
-        }
         return { changes: 1, lastInsertRowid: Date.now() };
       },
       close: () => {}
@@ -417,84 +404,24 @@ async function initializeDatabase() {
 
 const app = express();
 
-// Apply body parser middlewares immediately so they are available for all routes, including Gemini endpoints
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ limit: "5mb", extended: true }));
+// Apply body parsing middlewares at the very top so that bodies are parsed for all endpoints, especially Gemini endpoints
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Helper function to get the Gemini API Key
-function getGeminiApiKey(): string {
-  let key = process.env.GEMINI_API_KEY || "";
-  if (!key || key.trim() === "" || key === "undefined" || key === "false") {
-    try {
-      const saved = db.prepare("SELECT value FROM settings WHERE key = ?").get("gemini_api_key") as { value: string } | undefined;
-      if (saved && saved.value) {
-        key = saved.value.trim();
-      }
-    } catch (e) {
-      console.error("Error fetching gemini_api_key from settings table:", e);
-    }
-  }
-  return key;
-}
-
-// Endpoints for custom API Key management
-app.get("/api/settings/gemini-key", (req, res) => {
-  try {
-    let key = "";
-    const saved = db.prepare("SELECT value FROM settings WHERE key = ?").get("gemini_api_key") as { value: string } | undefined;
-    if (saved && saved.value) {
-      key = saved.value.trim();
-    }
-    
-    if (key) {
-      const masked = key.length > 8 
-        ? key.substring(0, 4) + "..." + key.substring(key.length - 4) 
-        : "****";
-      return res.json({ hasKey: true, maskedKey: masked });
-    }
-    
-    const envKey = process.env.GEMINI_API_KEY || "";
-    if (envKey && envKey !== "undefined" && envKey !== "false") {
-      const masked = envKey.length > 8
-        ? envKey.substring(0, 4) + "..." + envKey.substring(envKey.length - 4)
-        : "****";
-      return res.json({ hasKey: true, maskedKey: masked + " (بيئة النظام)" });
-    }
-
-    res.json({ hasKey: false, maskedKey: "" });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/settings/gemini-key", (req, res) => {
-  try {
-    const { key } = req.body;
-    if (!key || key.trim() === "") {
-      return res.status(400).json({ error: "مفتاح الـ API مطلوب." });
-    }
-    
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run("gemini_api_key", key.trim());
-    res.json({ success: true, message: "تم حفظ مفتاح Gemini API بنجاح في النظام." });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// --- DIAGNOSTICS AND GEMINI ENDPOINTS ---
+// --- DIAGNOSTICS AND GEMINI ENDPOINTS AT THE VERY TOP ---
 app.get("/api/diag/gemini", async (req, res) => {
-  const key = getGeminiApiKey();
+  const key = process.env.GEMINI_API_KEY || "";
   const isVercel = !!process.env.VERCEL;
   
   if (!key) {
     return res.status(200).json({ 
       status: 'error', 
-      message: 'مفتاح Gemini API غير مكوّن في البيئة أو قاعدة البيانات.',
+      message: 'مفتاح Gemini API غير مكوّن في البيئة (Environment Variable missing).',
       env: process.env.NODE_ENV,
       isVercel,
       liveTest: {
         status: 'error',
-        message: 'مفتاح Gemini API غير مكوّن.'
+        message: 'مفتاح Gemini API غير مكوّن في البيئة.'
       }
     });
   }
@@ -529,8 +456,8 @@ app.get("/api/diag/gemini", async (req, res) => {
   
   res.json({ 
     status: 'success', 
-    message: 'مفتاح API مكوّن وعامل بنجاح.',
-    keyPrefix: key.length > 8 ? key.substring(0, 4) + '...' + key.substring(key.length - 4) : '****',
+    message: 'مفتاح API مكوّن في البيئة وعامل بنجاح.',
+    keyPrefix: key.substring(0, 4) + '...' + key.substring(key.length - 4),
     env: process.env.NODE_ENV,
     isVercel,
     liveTest: backendLiveTest
@@ -540,7 +467,7 @@ app.get("/api/diag/gemini", async (req, res) => {
 app.post("/api/gemini/translate", async (req, res) => {
   try {
     const { offerData } = req.body;
-    const apiKey = getGeminiApiKey();
+    const apiKey = process.env.GEMINI_API_KEY || "";
     if (!apiKey) {
       return res.status(400).json({ error: "مفتاح Gemini API غير مكوّن على الخادم." });
     }
@@ -585,7 +512,7 @@ app.post("/api/gemini/scan-passport", async (req, res) => {
       return res.status(400).json({ error: "الصورة مطلوبة لفحص جواز السفر." });
     }
 
-    const apiKey = getGeminiApiKey();
+    const apiKey = process.env.GEMINI_API_KEY || "";
     if (!apiKey) {
       return res.status(400).json({ error: "مفتاح Gemini API غير مكوّن على الخادم." });
     }
@@ -642,10 +569,18 @@ app.post("/api/gemini/scan-passport", async (req, res) => {
   } catch (error: any) {
     console.error("Server-side Passport OCR Error:", error);
     let userMessage = error.message || "فشل في قراءة بيانات الجواز";
-    if (error.message?.includes("API key not valid") || error.message?.includes("INVALID_ARGUMENT")) {
+    if (
+      error.message?.includes("API key not valid") || 
+      error.message?.includes("INVALID_ARGUMENT") || 
+      error.message?.includes("API_KEY_INVALID") ||
+      error.message?.includes("invalid key")
+    ) {
       userMessage = "مفتاح API غير صالح. يرجى التأكد من صحة المفتاح في إعدادات الخادم.";
     }
-    res.status(500).json({ error: userMessage });
+    res.status(500).json({ 
+      error: userMessage,
+      details: error.message || error.toString()
+    });
   }
 });
 
@@ -656,6 +591,8 @@ app.get("/api/ping-simple", (req, res) => {
 app.get("/api/test-html", (req, res) => {
   res.send("<h1>الخادم يعمل (HTML Test OK)</h1>");
 });
+
+// Middlewares already applied at the very top level for Vercel and other requests
 
 // API routes defined at top level
 app.get("/api/health", (req, res) => {

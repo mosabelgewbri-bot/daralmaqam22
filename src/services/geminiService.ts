@@ -40,7 +40,10 @@ export async function extractPassportData(base64Image: string) {
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({ error: "فشل الاتصال بالخادم" }));
-      throw new Error(errData.error || "فشل في قراءة بيانات الجواز");
+      const errorMsg = errData.details
+        ? `${errData.error} (${errData.details})`
+        : (errData.error || "فشل في قراءة بيانات الجواز");
+      throw new Error(errorMsg);
     }
 
     return await response.json();
