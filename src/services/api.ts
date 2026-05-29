@@ -1024,6 +1024,18 @@ export const api = {
           await addDoc(collection(db, path), { key, value });
         }
       }
+
+      // Update local storage cache immediately so changes reflect everywhere instantly
+      const cached = localStorage.getItem('cached_settings');
+      let currentCached: Record<string, string> = {};
+      if (cached) {
+        try {
+          currentCached = JSON.parse(cached);
+        } catch (e) {}
+      }
+      const updatedCached = { ...currentCached, ...settings };
+      localStorage.setItem('cached_settings', JSON.stringify(updatedCached));
+      localStorage.setItem('last_settings_fetch', Date.now().toString());
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }

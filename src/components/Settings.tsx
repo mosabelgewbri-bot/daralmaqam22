@@ -130,6 +130,8 @@ export default function Settings({ user }: { user: User }) {
     backupFrequency: 'daily'
   });
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [saveKeyLoading, setSaveKeyLoading] = useState(false);
+  const [saveKeySuccess, setSaveKeySuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [dbStats, setDbStats] = useState<any>(null);
@@ -397,6 +399,45 @@ export default function Settings({ user }: { user: User }) {
       });
     } finally {
       setDiagLoading(false);
+    }
+  };
+
+  const handleSaveGeminiKey = async () => {
+    setSaveKeyLoading(true);
+    setSaveKeySuccess(false);
+    try {
+      await api.saveSettings({
+        gemini_api_key: geminiApiKey
+      });
+
+      // Audit Log
+      await api.logAction(
+        user.id,
+        user.name,
+        'تحديث مفتاح Gemini API',
+        'تم تحديث مفتاح Gemini API وتخزينه في قاعدة البيانات'
+      );
+
+      // Immediately synchronize cache in local storage as well for instant update in all pages
+      const cached = localStorage.getItem('cached_settings');
+      let currentCached: Record<string, string> = {};
+      if (cached) {
+        try {
+          currentCached = JSON.parse(cached);
+        } catch (e) {}
+      }
+      currentCached.gemini_api_key = geminiApiKey;
+      localStorage.setItem('cached_settings', JSON.stringify(currentCached));
+      localStorage.setItem('last_settings_fetch', Date.now().toString());
+
+      setSaveKeySuccess(true);
+      showToast('تم حفظ ومزامنة مفتاح الـ API بنجاح! وهو الآن جاهز للاستخدام ومحفوظ بشكل آمن.', 'success');
+      setTimeout(() => setSaveKeySuccess(false), 4000);
+    } catch (error: any) {
+      console.error('Error saving Gemini API key:', error);
+      showToast('حدث خطأ أثناء حفظ مفتاح API.', 'error');
+    } finally {
+      setSaveKeyLoading(false);
     }
   };
 
@@ -877,6 +918,36 @@ export default function Settings({ user }: { user: User }) {
                     <span className="text-[8px] bg-gold/10 text-gold px-2 py-0.5 rounded-full font-medium">مفتاح مدخل يدوياً بقاعدة البيانات</span>
                   </div>
                 )}
+              </div>
+
+              <div className="pt-2">
+                <button 
+                  onClick={handleSaveGeminiKey}
+                  disabled={saveKeyLoading}
+                  className={clsx(
+                    "w-full py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs font-bold transition-all",
+                    saveKeySuccess 
+                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
+                      : "bg-gold text-matte-black hover:bg-gold/90 shadow-lg shadow-gold/10 hover:shadow-gold/20"
+                  )}
+                >
+                  {saveKeyLoading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>جاري حفظ ومزامنة المفتاح...</span>
+                    </>
+                  ) : saveKeySuccess ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>تم حفظ مفتاح الـ API وتفعيله بنجاح!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>حفظ واستخدام مفتاح الـ API</span>
+                    </>
+                  )}
+                </button>
               </div>
 
               <div className="pt-2 border-t border-white/5 space-y-3">
