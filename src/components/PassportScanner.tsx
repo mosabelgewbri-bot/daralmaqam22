@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { Camera, X, Scan, Loader2, RefreshCw, Upload } from 'lucide-react';
+import { Camera, X, Scan, Loader2, RefreshCw, Upload, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { extractPassportData } from '../services/geminiService';
 import { resizeImage } from '../utils/imageUtils';
+import { api } from '../services/api';
 
 interface PassportScannerProps {
   onScan: (data: any, image: string) => void;
@@ -15,6 +16,10 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+
+  const [customKey, setCustomKey] = useState('');
+  const [savingKey, setSavingKey] = useState(false);
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   const capture = useCallback(async () => {
     console.log("PassportScanner: Capture triggered");
@@ -44,6 +49,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
         const msg = err.message || '';
         const lowerMsg = msg.toLowerCase();
         if (msg.includes("API key") || msg.includes("مفتاح API") || msg.includes("غير مكوّن") || msg.includes("invalid key") || msg.includes("INVALID_ARGUMENT")) {
+          setShowKeyInput(true);
           setError(
             <div className="space-y-3">
               <p className="font-bold text-red-400">مشكلة في مفتاح API</p>
@@ -55,13 +61,14 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
             </div>
           );
         } else if (lowerMsg.includes("quota") || lowerMsg.includes("limit") || lowerMsg.includes("429") || lowerMsg.includes("exhausted") || msg.includes("تجاوز حصة")) {
-          setError(`تم تجاوز حصة الاستخدام المجانية أو حد الطلبات المسموح لمفتاح الـ API على منصة Google AI Studio. يرجى الانتظار لمدة دقيقة والمحاولة ثانياً.`);
+          setShowKeyInput(true);
+          setError(`تم تجاوز حصة الاستخدام المجانية أو حد الطلبات المسموح لمفتاح الـ API المشترك للنظام.`);
         } else if (msg.includes("safety") || msg.includes("أمان")) {
           setError(`تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة وتجربة لقطة أخرى.`);
         } else {
           setError(`حدث خطأ: ${msg.substring(0, 150) || 'خطأ غير معروف'}`);
         }
-        setCapturedImage(null);
+        // Don't set captured image to null immediately so they can retry with a new key they enter
       } finally {
         setLoading(false);
       }
@@ -70,6 +77,62 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
       setError("فشل التقاط الصورة من الكاميرا. يرجى التأكد من أن الكاميرا تعمل.");
     }
   }, [webcamRef, onScan, onClose]);
+
+  const handleSaveAndRetry = async () => {
+    if (!customKey.trim()) return;
+    setSavingKey(true);
+    setError(null);
+    try {
+      // 1. Save to database via API
+      await api.saveSettings({
+        gemini_api_key: customKey.trim()
+      });
+      
+      // 2. Update local storage cache immediately so local functions read the new key
+      const cached = localStorage.getItem('cached_settings');
+      let currentCached: Record<string, string> = {};
+      if (cached) {
+        try {
+          currentCached = JSON.parse(cached);
+        } catch (e) {}
+      }
+      currentCached.gemini_api_key = customKey.trim();
+      localStorage.setItem('cached_settings', JSON.stringify(currentCached));
+      localStorage.setItem('last_settings_fetch', Date.now().toString());
+
+      // Try to dispatch settings_updated event
+      window.dispatchEvent(new Event('settings_updated'));
+
+      setError(null);
+      setShowKeyInput(false);
+
+      // 3. If there is already a captured/uploaded image, automatically re-run!
+      if (capturedImage) {
+        setLoading(true);
+        try {
+          console.log("PassportScanner (auto-retry): Resizing...");
+          const resizedImage = await resizeImage(capturedImage);
+          console.log("PassportScanner (auto-retry): Scanning again with new key...");
+          const data = await extractPassportData(resizedImage);
+          if (data) {
+            onScan(data, resizedImage);
+            onClose();
+          } else {
+            setError('مفتاح جديد مفعّل، لكن لم نتمكن من استخراج البيانات. يرجى التأكد من وضوح صورة الجواز.');
+          }
+        } catch (retryError: any) {
+          setError(`فشل باستخدام المفتاح الجديد: ${retryError.message || 'خطأ غير معروف'}`);
+        } finally {
+          setLoading(false);
+        }
+      }
+    } catch (saveError: any) {
+      console.error('Failed to save key in scanner:', saveError);
+      setError(`فشل حفظ المفتاح الجديد: ${saveError.message || 'خطأ غير معروف'}`);
+    } finally {
+      setSavingKey(false);
+    }
+  };
 
   return (
     <motion.div 
@@ -121,7 +184,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                         >
                           إعادة تحميل الصفحة
                         </button>
-                        <p className="text-[10px] text-gold/60">يمكنك استخدام خيار "رفع صورة الجواز" كبديل سريع.</p>
+                        <p className="text-[10px] text-gold/60 font-sans">يمكنك استخدام خيار "رفع صورة الجواز" كبديل سريع.</p>
                       </div>
                     </div>
                   );
@@ -149,7 +212,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                   />
                   
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <p className="text-gold/60 text-[10px] uppercase tracking-[0.2em] font-bold">Passport Area</p>
+                    <p className="text-gold/60 text-[10px] uppercase tracking-[0.2em] font-bold font-sans">Passport Area</p>
                   </div>
                 </div>
               </div>
@@ -166,7 +229,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
           )}
         </div>
 
-        <div className="p-8 space-y-4 bg-white/5">
+        <div className="p-8 space-y-4 bg-white/5 max-h-[250px] overflow-y-auto">
           {error && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
@@ -177,19 +240,87 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
             </motion.div>
           )}
 
+          {showKeyInput && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-4 bg-gradient-to-br from-amber-500/15 to-transparent border border-amber-500/30 rounded-2xl space-y-3 text-right"
+            >
+              <div className="flex items-center gap-2 text-amber-400 font-bold justify-between">
+                <span className="flex items-center gap-2 text-sm">
+                  <AlertCircle className="w-4 h-4 text-amber-400 animate-bounce" />
+                  حل سريع: استخدام مفتاح API مجاني وخاص بك 🚀
+                </span>
+                <span className="text-[9px] bg-amber-500/20 px-2 py-0.5 rounded text-amber-500 font-bold">100% Free</span>
+              </div>
+              
+              <p className="text-xs text-white/80 leading-relaxed font-sans">
+                الحصة المشتركة للمفتاح العام انتهت. لتجاوز المشكلة فوراً وبشكل مجاني تماماً، يمكنك إنشاء مفتاح API مستقل وآمن خاص بك (غير مشترك ولن ينقطع):
+              </p>
+
+              <div className="text-xs text-white/60 space-y-2 bg-black/40 p-3 rounded-xl border border-white/5 font-sans">
+                <p className="flex items-start gap-1">
+                  <span className="text-gold font-bold">1.</span>
+                  <span>اضغط لفتح: 
+                    <a 
+                      href="https://aistudio.google.com/" 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-gold underline hover:text-amber-400 font-bold inline-block mx-1"
+                    >
+                       Google AI Studio ↗
+                    </a>
+                  </span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <span className="text-gold font-bold">2.</span>
+                  <span>اضغط على <strong className="text-white font-bold">Get API Key</strong> ثم <strong className="text-white font-bold">Create API Key</strong>.</span>
+                </p>
+                <p className="flex items-start gap-1">
+                  <span className="text-gold font-bold">3.</span>
+                  <span>انسخ المفتاح (يبدأ بـ AIzaSy) والصقه هنا:</span>
+                </p>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[10px] font-bold text-gold uppercase tracking-widest block font-sans">مفتاح الـ API الخاص بك</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="password"
+                    placeholder="AIzaSy..."
+                    value={customKey}
+                    onChange={(e) => setCustomKey(e.target.value)}
+                    className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-white text-xs outline-none focus:border-gold transition-all font-mono"
+                  />
+                  <button
+                    onClick={handleSaveAndRetry}
+                    disabled={savingKey || !customKey.trim()}
+                    className="bg-gold hover:bg-gold/90 text-black font-bold px-4 rounded-xl text-xs flex items-center justify-center shrink-0 disabled:opacity-40 transition-all font-sans"
+                  >
+                    {savingKey ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      "تفعيل ومتابعة"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           <div className="flex flex-col items-center gap-4">
             {!capturedImage ? (
               <div className="flex flex-wrap justify-center gap-4">
                 <button 
                   onClick={capture}
                   disabled={loading}
-                  className="btn-gold px-12 py-4 rounded-2xl flex items-center gap-3 text-lg shadow-xl shadow-gold/20 active:scale-95 transition-all"
+                  className="btn-gold px-12 py-4 rounded-2xl flex items-center gap-3 text-lg shadow-xl shadow-gold/20 active:scale-95 transition-all font-sans"
                 >
                   <Camera className="w-6 h-6" />
                   التقاط صورة للمسح
                 </button>
                 
-                <label className="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-2xl flex items-center gap-3 transition-all cursor-pointer active:scale-95">
+                <label className="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-2xl flex items-center gap-3 transition-all cursor-pointer active:scale-95 font-sans">
                   <Upload className="w-5 h-5 text-gold" />
                   <span>رفع صورة الجواز</span>
                   <input 
@@ -220,20 +351,16 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                             const msg = err.message || '';
                             const lowerMsg = msg.toLowerCase();
                             if (msg.includes("API key") || msg.includes("مفتاح API") || msg.includes("غير مكوّن") || msg.includes("invalid key") || msg.includes("INVALID_ARGUMENT")) {
-                              setError(
-                                <div className="space-y-2 text-center text-xs">
-                                  <span className="text-red-400 block font-bold">مفتاح API غير مكوّن بشكل صحيح أو غير صالح.</span>
-                                  <span className="text-[10px] font-mono block text-white/50 bg-black/40 p-1.5 rounded word-break break-all select-all">{msg.substring(0, 100)}</span>
-                                </div>
-                              );
+                              setShowKeyInput(true);
+                              setError('مفتاح API غير مكوّن بشكل صحيح أو غير صالح.');
                             } else if (lowerMsg.includes("quota") || lowerMsg.includes("limit") || lowerMsg.includes("429") || lowerMsg.includes("exhausted") || msg.includes("تجاوز حصة")) {
-                              setError(`تم تجاوز حصة الاستخدام المجانية أو حد الطلبات المسموح لمفتاح الـ API على منصة Google AI Studio. يرجى الانتظار لمدة دقيقة والمحاولة ثانياً.`);
+                              setShowKeyInput(true);
+                              setError(`تم تجاوز حصة الاستخدام المجانية أو حد الطلبات المسموح لمفتاح الـ API المشترك للنظام.`);
                             } else if (msg.includes("safety") || msg.includes("أمان")) {
                               setError(`تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة.`);
                             } else {
                               setError(`خطأ: ${msg.substring(0, 150)}`);
                             }
-                            setCapturedImage(null);
                           } finally {
                             setLoading(false);
                           }
@@ -246,8 +373,12 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
               </div>
             ) : (
               <button 
-                onClick={() => setCapturedImage(null)}
-                className="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-2xl flex items-center gap-3 transition-all"
+                onClick={() => {
+                  setCapturedImage(null);
+                  setError(null);
+                  setShowKeyInput(false);
+                }}
+                className="bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-2xl flex items-center gap-3 transition-all font-sans"
               >
                 <RefreshCw className="w-5 h-5" />
                 إعادة المحاولة
@@ -255,7 +386,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
             )}
           </div>
           
-          <p className="text-center text-white/40 text-xs">
+          <p className="text-center text-white/40 text-[11px] font-sans">
             ضع الجواز داخل الإطار وتأكد من وضوح النص والإضاءة الجيدة
           </p>
         </div>
