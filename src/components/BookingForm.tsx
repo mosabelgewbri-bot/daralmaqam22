@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Trip, Pilgrim } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap, Hotel, Megaphone } from 'lucide-react';
+import { Plus, Trash2, Upload, AlertCircle, Loader2, ArrowLeft, ShieldCheck, FileText, Download, Camera, Scan, Eye, X, MessageSquare, CheckCircle2, Zap, Hotel } from 'lucide-react';
 import Logo from './Logo';
 import PassportScanner from './PassportScanner';
 import { differenceInMonths, parseISO } from 'date-fns';
@@ -1240,38 +1240,7 @@ export default function BookingForm({ user }: { user: User }) {
           </div>
         </div>
 
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card overflow-hidden"
-        >
-          <div className="bg-white/5 px-6 py-4 border-b border-white/10 flex justify-between items-center">
-            <h3 className="font-semibold text-gold flex items-center gap-2">
-              <Megaphone className="w-5 h-5" /> معلومات التسويق
-            </h3>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2 text-right">
-                <label className="text-xs font-bold text-white/40 uppercase tracking-widest block">قناة التسويق (كيف عرفت بنا؟)</label>
-                <select 
-                  value={marketingSource}
-                  onChange={(e) => setMarketingSource(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-gold outline-none text-sm transition-all"
-                >
-                  <option value="Facebook" className="bg-matte-black">فيسبوك</option>
-                  <option value="TikTok" className="bg-matte-black">تيك توك</option>
-                  <option value="Instagram" className="bg-matte-black">انستقرام</option>
-                  <option value="WhatsApp" className="bg-matte-black">واتساب</option>
-                  <option value="WordOfMouth" className="bg-matte-black">توصية / زبون سابق</option>
-                  <option value="Walk-in" className="bg-matte-black">مكتب / مباشر</option>
-                  <option value="Snapchat" className="bg-matte-black">سناب شات</option>
-                  <option value="Other" className="bg-matte-black">أخرى</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+
 
       <AnimatePresence>
         {activeScannerIndex !== null && (
