@@ -409,6 +409,35 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --- DIAGNOSTICS AND GEMINI ENDPOINTS AT THE VERY TOP ---
+function formatGeminiError(error: any): { userMessage: string; isQuota: boolean } {
+  const errMsg = (error.message || error.toString() || "").toLowerCase();
+  let userMessage = "حدث خطأ غير متوقع أثناء المعالجة الذكية.";
+  let isQuota = false;
+
+  if (
+    errMsg.includes("api key not valid") || 
+    errMsg.includes("invalid_argument") || 
+    errMsg.includes("api_key_invalid") ||
+    errMsg.includes("invalid key")
+  ) {
+    userMessage = "مفتاح الـ API غير صالح أو غير معرّف بشكل صحيح. يرجى مراجعة إعدادات المفتاح وتجربة مفتاح آخر.";
+  } else if (
+    errMsg.includes("quota") ||
+    errMsg.includes("429") ||
+    errMsg.includes("resource_exhausted") ||
+    errMsg.includes("exceeded") ||
+    errMsg.includes("rate limit") ||
+    errMsg.includes("rate_limit")
+  ) {
+    userMessage = "تم تجاوز حصة الاستخدام (Quota) أو معدل المسموح به لمفتاح الـ API الحالي على منصة Google AI Studio. يمكنك إما المحاولة مرة أخرى بعد دقيقة أو استخدام مفتاح API مفعّل به باقة الدفع لتجنب الانقطاع.";
+    isQuota = true;
+  } else {
+    userMessage = `فشل الاتصال بالذكاء الاصطناعي: ${error.message || error.toString()}`;
+  }
+
+  return { userMessage, isQuota };
+}
+
 app.get("/api/diag/gemini", async (req, res) => {
   const headerKey = req.headers["x-gemini-api-key"] as string;
   const key = headerKey || process.env.GEMINI_API_KEY || "";
@@ -451,15 +480,16 @@ app.get("/api/diag/gemini", async (req, res) => {
     };
   } catch (error: any) {
     console.error("Server-side Gemini live test failed:", error);
+    const { userMessage } = formatGeminiError(error);
     backendLiveTest = {
       status: 'error',
-      message: 'فشل اختبار اتصال الخادم بـ Gemini: ' + (error.message || 'خطأ غير معروف')
+      message: 'فشل اختبار اتصال الخادم بـ Gemini: ' + userMessage
     };
   }
   
   res.json({ 
     status: backendLiveTest.status === 'success' ? 'success' : 'error', 
-    message: backendLiveTest.status === 'success' ? 'مفتاح API مكوّن وعامل بنجاح.' : 'مفتاح API مكوّن لكنه غير صالح أو معرّف بشكل خاطئ.',
+    message: backendLiveTest.status === 'success' ? 'مفتاح API مكوّن وعامل بنجاح.' : 'فشل مسبق في فحص الـ API.',
     keyPrefix: key.length > 8 ? (key.substring(0, 6) + '...' + key.substring(key.length - 4)) : 'أقصر من اللازم',
     env: process.env.NODE_ENV,
     isVercel,
@@ -506,7 +536,8 @@ app.post("/api/gemini/translate", async (req, res) => {
     res.json(data);
   } catch (error: any) {
     console.error("Server-side Translation Error:", error);
-    res.status(500).json({ error: error.message || "فشل في ترجمة العرض" });
+    const { userMessage } = formatGeminiError(error);
+    res.status(500).json({ error: userMessage, details: error.message || error.toString() });
   }
 });
 
@@ -574,15 +605,7 @@ app.post("/api/gemini/scan-passport", async (req, res) => {
     res.json(data);
   } catch (error: any) {
     console.error("Server-side Passport OCR Error:", error);
-    let userMessage = error.message || "فشل في قراءة بيانات الجواز";
-    if (
-      error.message?.includes("API key not valid") || 
-      error.message?.includes("INVALID_ARGUMENT") || 
-      error.message?.includes("API_KEY_INVALID") ||
-      error.message?.includes("invalid key")
-    ) {
-      userMessage = "مفتاح API غير صالح. يرجى التأكد من صحة المفتاح في إعدادات الخادم.";
-    }
+    const { userMessage } = formatGeminiError(error);
     res.status(500).json({ 
       error: userMessage,
       details: error.message || error.toString()

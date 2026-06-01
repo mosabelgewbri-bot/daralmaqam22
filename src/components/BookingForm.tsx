@@ -244,22 +244,39 @@ export default function BookingForm({ user }: { user: User }) {
         
         // Provide more specific error message if available
         let errorMessage = "فشل استخراج البيانات من الصورة. يرجى إدخال البيانات يدوياً.";
+        let shouldAppendRaw = true;
+
         if (e.message) {
           console.error("Detailed OCR Error:", e.message);
-          if (e.message.includes("API key not valid") || e.message.includes("غير صالح") || e.message.includes("API_KEY_INVALID") || e.message.includes("invalid key")) {
-            errorMessage = "مفتاح API غير صالح. يرجى التأكد من نسخ المفتاح كاملاً من Google AI Studio وتفعيل Generative Language API.";
-          } else if (e.message.includes("Quota exceeded") || e.message.includes("تجاوز حصة")) {
-            errorMessage = "تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً.";
+          if (
+            e.message.includes("API key not valid") || 
+            e.message.includes("غير صالح") || 
+            e.message.includes("API_KEY_INVALID") || 
+            e.message.includes("invalid key")
+          ) {
+            errorMessage = "مفتاح الـ API غير صالح أو غير مكوّن بشكل صحيح. يرجى مراجعة إعدادات المفتاح وتجربة مفتاح آخر.";
+            shouldAppendRaw = false;
+          } else if (
+            e.message.includes("Quota exceeded") || 
+            e.message.includes("تجاوز حصة") || 
+            e.message.includes("quota") || 
+            e.message.includes("429") || 
+            e.message.includes("RESOURCE_EXHAUSTED")
+          ) {
+            errorMessage = "تم تجاوز حصة الاستخدام المجانية أو حد معدل الطلبات لمفتاح الـ API الحالي على منصة Google AI Studio. يرجى الانتظار لمدة دقيقة والمحاولة لاحقاً.";
+            shouldAppendRaw = false;
           } else if (e.message.includes("API key is not configured") || e.message.includes("غير مكوّن")) {
-            errorMessage = "مفتاح API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات النظام.";
+            errorMessage = "مفتاح الـ API غير مكوّن على الخادم. يرجى إضافة GEMINI_API_KEY في إعدادات النظام.";
+            shouldAppendRaw = false;
           } else if (e.message.includes("Connection Terminated") || e.message.includes("fetch failed") || e.message.includes("timeout")) {
-            errorMessage = "فشل الاتصال بالخادم. جاري محاولة القراءة محلياً إذا كان المفتاح متاحاً، وإلا يرجى تقليل حجم الصورة وإعادة المحاولة.";
+            errorMessage = "فشل الاتصال بالخادم. يرجى التأكد من اتصال الإنترنت وإعادة المحاولة.";
+            shouldAppendRaw = false;
           } else {
             errorMessage = e.message;
           }
 
-          if (errorMessage !== e.message && !errorMessage.includes(e.message)) {
-            errorMessage = `${errorMessage} (${e.message})`;
+          if (shouldAppendRaw && errorMessage !== e.message && !errorMessage.includes(e.message)) {
+            errorMessage = `${errorMessage} (${e.message.substring(0, 150)})`;
           }
         }
         

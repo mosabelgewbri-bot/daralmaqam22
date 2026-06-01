@@ -42,6 +42,7 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
       } catch (err: any) {
         console.error('PassportScanner: Scan error:', err);
         const msg = err.message || '';
+        const lowerMsg = msg.toLowerCase();
         if (msg.includes("API key") || msg.includes("مفتاح API") || msg.includes("غير مكوّن") || msg.includes("invalid key") || msg.includes("INVALID_ARGUMENT")) {
           setError(
             <div className="space-y-3">
@@ -49,16 +50,16 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
               <p className="text-xs text-white/70">يبدو أن مفتاح Gemini API غير مكوّن بشكل صحيح أو غير متاح في المتصفح حالياً.</p>
               <div className="pt-2 border-t border-white/10 text-white/40">
                 <p className="text-[10px]">يرجى التأكد من إضافة GEMINI_API_KEY في إعدادات النظام.</p>
-                {msg && <p className="text-[9px] font-mono select-all pt-1 bg-black/20 p-1.5 rounded text-red-400/80 break-all">{msg}</p>}
+                {msg && <p className="text-[9px] font-mono select-all pt-1 bg-black/20 p-1.5 rounded text-red-400/80 break-all">{msg.substring(0, 100)}</p>}
               </div>
             </div>
           );
-        } else if (msg.includes("Quota exceeded") || msg.includes("تجاوز حصة")) {
-          setError(`تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً. (${msg})`);
+        } else if (lowerMsg.includes("quota") || lowerMsg.includes("limit") || lowerMsg.includes("429") || lowerMsg.includes("exhausted") || msg.includes("تجاوز حصة")) {
+          setError(`تم تجاوز حصة الاستخدام المجانية أو حد الطلبات المسموح لمفتاح الـ API على منصة Google AI Studio. يرجى الانتظار لمدة دقيقة والمحاولة ثانياً.`);
         } else if (msg.includes("safety") || msg.includes("أمان")) {
-          setError(`تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة. (${msg})`);
+          setError(`تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة وتجربة لقطة أخرى.`);
         } else {
-          setError(`حدث خطأ: ${msg || 'خطأ غير معروف'}`);
+          setError(`حدث خطأ: ${msg.substring(0, 150) || 'خطأ غير معروف'}`);
         }
         setCapturedImage(null);
       } finally {
@@ -217,19 +218,20 @@ export default function PassportScanner({ onScan, onClose }: PassportScannerProp
                           } catch (err: any) {
                             console.error('PassportScanner: Upload scan error:', err);
                             const msg = err.message || '';
+                            const lowerMsg = msg.toLowerCase();
                             if (msg.includes("API key") || msg.includes("مفتاح API") || msg.includes("غير مكوّن") || msg.includes("invalid key") || msg.includes("INVALID_ARGUMENT")) {
                               setError(
                                 <div className="space-y-2 text-center text-xs">
                                   <span className="text-red-400 block font-bold">مفتاح API غير مكوّن بشكل صحيح أو غير صالح.</span>
-                                  <span className="text-[10px] font-mono block text-white/50 bg-black/40 p-1.5 rounded word-break break-all select-all">{msg}</span>
+                                  <span className="text-[10px] font-mono block text-white/50 bg-black/40 p-1.5 rounded word-break break-all select-all">{msg.substring(0, 100)}</span>
                                 </div>
                               );
-                            } else if (msg.includes("Quota exceeded") || msg.includes("تجاوز حصة")) {
-                              setError(`تم تجاوز حصة الاستخدام المجانية لمفتاح API. يرجى المحاولة لاحقاً. (${msg})`);
+                            } else if (lowerMsg.includes("quota") || lowerMsg.includes("limit") || lowerMsg.includes("429") || lowerMsg.includes("exhausted") || msg.includes("تجاوز حصة")) {
+                              setError(`تم تجاوز حصة الاستخدام المجانية أو حد الطلبات المسموح لمفتاح الـ API على منصة Google AI Studio. يرجى الانتظار لمدة دقيقة والمحاولة ثانياً.`);
                             } else if (msg.includes("safety") || msg.includes("أمان")) {
-                              setError(`تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة. (${msg})`);
+                              setError(`تم حجب الصورة بواسطة فلاتر الأمان. يرجى التأكد من وضوح الصورة.`);
                             } else {
-                              setError(`خطأ: ${msg}`);
+                              setError(`خطأ: ${msg.substring(0, 150)}`);
                             }
                             setCapturedImage(null);
                           } finally {
