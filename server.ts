@@ -438,6 +438,52 @@ function formatGeminiError(error: any): { userMessage: string; isQuota: boolean 
   return { userMessage, isQuota };
 }
 
+async function generateContentWithFallback(ai: any, params: any) {
+  // We can attempt models in sequence to prevent 'High Demand / 503 Spike' failures:
+  const modelsToTry = [
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest"
+  ];
+  
+  if (params.model && !modelsToTry.includes(params.model)) {
+    modelsToTry.unshift(params.model);
+  } else if (params.model) {
+    const idx = modelsToTry.indexOf(params.model);
+    if (idx > -1) {
+      modelsToTry.splice(idx, 1);
+    }
+    modelsToTry.unshift(params.model);
+  }
+
+  let lastError: any = null;
+  for (const model of modelsToTry) {
+    try {
+      console.log(`[Gemini Fallback System] Attempting generation with model: ${model}`);
+      const response = await ai.models.generateContent({
+        ...params,
+        model: model
+      });
+      console.log(`[Gemini Fallback System] Success with model: ${model}`);
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = (err.message || "").toLowerCase();
+      console.warn(`[Gemini Fallback System] Model ${model} failed with message:`, err.message || err);
+      
+      // If API key is definitely wrong, fail right away to prevent useless cycling
+      if (
+        errMsg.includes("api key not valid") || 
+        errMsg.includes("invalid key") ||
+        errMsg.includes("api_key_invalid")
+      ) {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
+}
+
 app.get("/api/diag/gemini", async (req, res) => {
   const headerKey = req.headers["x-gemini-api-key"] as string;
   const key = headerKey || process.env.GEMINI_API_KEY || "";
@@ -469,7 +515,7 @@ app.get("/api/diag/gemini", async (req, res) => {
         }
       }
     });
-    const result = await ai.models.generateContent({
+    const result = await generateContentWithFallback(ai, {
       model: "gemini-3.5-flash",
       contents: "Say hello briefly in Arabic"
     });
@@ -512,7 +558,7 @@ app.post("/api/gemini/translate", async (req, res) => {
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithFallback(ai, {
       model: "gemini-3.5-flash",
       contents: `Translate the following Umrah offer details to Arabic. Ensure the terminology is accurate for the Saudi Umrah industry (e.g., use 'رباعي', 'ثلاثي', 'ثنائي', 'كبير', 'صغير').
       Return ONLY a JSON object with the translated fields.
@@ -563,7 +609,7 @@ app.post("/api/gemini/scan-passport", async (req, res) => {
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithFallback(ai, {
       model: "gemini-3.5-flash",
       contents: {
         parts: [
