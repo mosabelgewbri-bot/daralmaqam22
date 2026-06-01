@@ -474,20 +474,6 @@ export default function TripForm({ user }: { user: User }) {
 
               <form onSubmit={handleSubmit} className="p-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Trip Number */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      <Info className="w-3 h-3" /> رقم الرحلة
-                    </label>
-                    <input 
-                      type="text" 
-                      placeholder="مثال: TRIP-001"
-                      className="input-field w-full"
-                      value={formData.tripNumber || ''}
-                      onChange={(e) => setFormData({...formData, tripNumber: e.target.value})}
-                    />
-                  </div>
-
                   {/* Trip Name */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
@@ -496,7 +482,7 @@ export default function TripForm({ user }: { user: User }) {
                     <input 
                       type="text" 
                       required
-                      placeholder="مثال: عمرة رمضان"
+                      placeholder="مثال: رحلة عمرة رمضان الأولى"
                       className="input-field w-full"
                       value={formData.name || ''}
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -511,7 +497,7 @@ export default function TripForm({ user }: { user: User }) {
                     <input 
                       type="text" 
                       required
-                      placeholder="مثال: الخطوط الليبية"
+                      placeholder="مثال: الخطوط الجوية الليبية"
                       className="input-field w-full"
                       value={formData.airline || ''}
                       onChange={(e) => setFormData({...formData, airline: e.target.value})}
@@ -521,7 +507,7 @@ export default function TripForm({ user }: { user: User }) {
                   {/* Total Seats */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      <Users className="w-3 h-3" /> إجمالي المقاعد
+                      <Users className="w-3 h-3" /> عدد المقاعد
                     </label>
                     <input 
                       type="number" 
@@ -536,7 +522,7 @@ export default function TripForm({ user }: { user: User }) {
                   {/* Ticket Price */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      سعر التذكرة
+                      <CreditCard className="w-3 h-3" /> سعر التذكرة (LYD)
                     </label>
                     <input 
                       type="number" 
@@ -546,175 +532,6 @@ export default function TripForm({ user }: { user: User }) {
                       value={formData.ticketPrice}
                       onChange={(e) => setFormData({...formData, ticketPrice: parseFloat(e.target.value) || 0})}
                     />
-                  </div>
-
-                  {/* Currency */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      العملة
-                    </label>
-                    <select 
-                      className="input-field w-full"
-                      value={formData.currency}
-                      onChange={(e) => setFormData({...formData, currency: e.target.value as any})}
-                    >
-                      <option value="LYD">LYD</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </div>
-
-                  {/* Exchange Rate */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      سعر صرف الدولار (LYD)
-                    </label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      min="0"
-                      className="input-field w-full"
-                      value={formData.exchangeRate || (formData.exchangeRate === 0 ? 0 : '')}
-                      onChange={(e) => setFormData({...formData, exchangeRate: parseFloat(e.target.value) || 0})}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  {/* Start Date */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      <Calendar className="w-3 h-3" /> تاريخ بداية الرحلة
-                    </label>
-                    <input 
-                      type="date" 
-                      className="input-field w-full"
-                      value={formData.startDate || ''}
-                      onChange={(e) => setFormData({...formData, startDate: e.target.value})}
-                    />
-                  </div>
-
-                  {/* Departure Date */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gold uppercase tracking-widest flex items-center gap-2">
-                      <Calendar className="w-3 h-3" /> تاريخ المغادرة
-                    </label>
-                    <input 
-                      type="date" 
-                      className="input-field w-full"
-                      value={formData.departureDate || ''}
-                      onChange={(e) => setFormData({...formData, departureDate: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                {/* Costs Section */}
-                <div className="mt-8 pt-8 border-t border-white/10">
-                  <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-gold" /> تكاليف الرحلة (للتحليل المالي)
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* LYD Costs */}
-                    <div className="space-y-4 bg-white/[0.02] p-6 rounded-2xl border border-white/5">
-                      <h4 className="text-sm font-bold text-emerald-400 mb-4">التكاليف بالدينار الليبي (LYD)</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">طيران</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.flightLYD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, flightLYD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">فندق</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.hotelLYD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, hotelLYD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">نقل</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.transportLYD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, transportLYD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">تأشيرة</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.visaLYD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, visaLYD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1 col-span-2">
-                          <label className="text-[10px] text-white/40 uppercase">أخرى</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.otherLYD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, otherLYD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* USD Costs */}
-                    <div className="space-y-4 bg-white/[0.02] p-6 rounded-2xl border border-white/5">
-                      <h4 className="text-sm font-bold text-blue-400 mb-4">التكاليف بالدولار (USD)</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">طيران</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.flightUSD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, flightUSD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">فندق</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.hotelUSD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, hotelUSD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">نقل</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.transportUSD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, transportUSD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] text-white/40 uppercase">تأشيرة</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.visaUSD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, visaUSD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                        <div className="space-y-1 col-span-2">
-                          <label className="text-[10px] text-white/40 uppercase">أخرى</label>
-                          <input 
-                            type="number" 
-                            className="input-field w-full py-1.5 text-sm"
-                            value={formData.costs?.otherUSD}
-                            onChange={(e) => setFormData({...formData, costs: {...formData.costs!, otherUSD: parseFloat(e.target.value) || 0}})}
-                          />
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
 

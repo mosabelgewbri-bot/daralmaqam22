@@ -530,10 +530,20 @@ export const api = {
       await this.ensureAuth();
       if (id && id !== 'new') {
         const docRef = doc(db, path, id);
-        await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
-        // Don't force sync on every save to save quota, it will be synced on next booking
+        let docSnap;
+        try {
+          docSnap = await getDoc(docRef);
+        } catch (e) {
+          // Fall back gracefully if offline or cache issue
+        }
+
+        if (docSnap && docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        }
       } else {
-        await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
+        await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       }
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
