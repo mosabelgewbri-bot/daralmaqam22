@@ -325,6 +325,37 @@ export default function RoomingModule({ user }: { user: User }) {
       return matchesTrip && matchesSearch;
     });
 
+  const bookingsNoAccommodation = bookings.filter(b => {
+    let matchesTrip = !selectedTripId;
+    if (selectedTripId) {
+      const selectedTrip = findTripRobust(trips, selectedTripId);
+      const resolvedTrip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
+      if (selectedTrip && resolvedTrip) {
+        matchesTrip = (selectedTrip.id === resolvedTrip.id);
+      } else {
+        const normSelected = normalizeTripString(selectedTripId);
+        const normTripRef = normalizeTripString(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName);
+        if (normSelected && normTripRef && normSelected === normTripRef) {
+          matchesTrip = true;
+        }
+      }
+    }
+    
+    if (!matchesTrip) return false;
+
+    const matchesSearch = (b.headName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+                          (b.regId?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+
+    const pilgrims = b.pilgrims || [];
+    const hasAccommodation = pilgrims.some(p => {
+      const type = p.serviceType || 'Full';
+      return (type === 'Full' || type === 'AccommodationOnly' || type === 'TicketAndAccommodation' || type === 'AccommodationAndVisa') && p.roomType !== 'VisaOnly' && p.roomType !== 'None';
+    });
+
+    return !hasAccommodation;
+  });
+
   const getRoomTypeArabic = (type?: string) => {
     switch (type) {
       case 'Double': return 'ثنائية';
@@ -605,6 +636,26 @@ export default function RoomingModule({ user }: { user: User }) {
           </div>
         </div>
       </div>
+
+      {selectedTripId && bookingsNoAccommodation.length > 0 && (
+        <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3 text-right">
+          <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="font-bold text-blue-300 text-xs">تنبيه بخصوص الحجوزات بدون سكن (تأشيرة أو تذكرة فقط)</h4>
+            <p className="text-[11px] text-blue-200/90 leading-relaxed">
+              هناك <strong>{bookingsNoAccommodation.length}</strong> حجز في هذه الرحلة لا تملك خدمات سكن فندقي (مثل تذكرة فقط أو تأشيرة فقط)، ولذلك لا تظهر في جدول التسكين أدناه. البيانات محفوظة وآمنة بالكامل:
+            </p>
+            <div className="text-[10px] text-blue-300 font-mono mt-1 flex flex-wrap gap-1.5">
+              <span>أرقام القيد المعنية:</span>
+              {bookingsNoAccommodation.map((b, i) => (
+                <span key={b.id} className="bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-300 font-bold border border-blue-500/10">
+                  {b.regId || '---'} {b.headName ? `(${b.headName})` : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="glass-card overflow-hidden">
         <div className="overflow-x-auto p-4" id="rooming-table">

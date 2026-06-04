@@ -111,9 +111,9 @@ export default function BookingForm({ user }: { user: User }) {
 
   useEffect(() => {
     const checkDuplicate = async () => {
-      if (regId) {
+      if (regId && selectedTripId) {
         try {
-          const duplicate = await api.checkDuplicateRegId(regId, id);
+          const duplicate = await api.checkDuplicateRegId(regId, id, selectedTripId);
           setIsDuplicateRegId(duplicate);
         } catch (error) {
           console.error('Error checking duplicate regId:', error);
@@ -123,7 +123,7 @@ export default function BookingForm({ user }: { user: User }) {
       }
     };
     checkDuplicate();
-  }, [regId, id]);
+  }, [regId, id, selectedTripId]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -808,19 +808,25 @@ export default function BookingForm({ user }: { user: User }) {
     if (!headName) setError('headName');
     if (!regId) setError('regId');
     
-    // Check for duplicate regId
-    let allBookings: any[] = [];
-    try {
-      console.log('Fetching bookings for duplicate check...');
-      allBookings = await api.getBookings();
-      if (regId && allBookings.some((b: any) => String(b.regId).trim() === String(regId).trim() && b.id !== id)) {
-        console.warn('Duplicate regId found');
-        setError('regId');
-        setFormError('رقم القيد هذا مسجل مسبقاً في حجز آخر');
-      }
-    } catch (error) {
-      console.error('Error checking duplicate regId during save:', error);
-    }
+     // Check for duplicate regId within the same logical trip
+     let allBookings: any[] = [];
+     try {
+       console.log('Fetching bookings for duplicate check...');
+       allBookings = await api.getBookings();
+       const targetTrip = trips.find(t => t.id === selectedTripId);
+       if (regId && targetTrip && allBookings.some((b: any) => {
+         if (b.id === id) return false;
+         if (String(b.regId).trim().toLowerCase() !== String(regId).trim().toLowerCase()) return false;
+         const bTrip = trips.find(t => t.id === b.tripId || t.name === b.tripId || t.name === (b as any).tripName);
+         return bTrip && bTrip.id === targetTrip.id;
+       })) {
+         console.warn('Duplicate regId found in same trip');
+         setError('regId');
+         setFormError('رقم القيد هذا مسجل مسبقاً في هذه الرحلة');
+       }
+     } catch (error) {
+       console.error('Error checking duplicate regId during save:', error);
+     }
 
     if (!phone) setError('phone');
     if (hasAccommodation) {

@@ -135,7 +135,7 @@ function safeLocalStorageSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch (error: any) {
-    console.warn(`LocalStorage write failed for key "${key}":`, error.message || error);
+    console.log(`Local storage write failed: ${error.message || error}`);
     
     const isQuota = 
       error.name === 'QuotaExceededError' || 
@@ -144,35 +144,65 @@ function safeLocalStorageSetItem(key: string, value: string): void {
       String(error.message || '').toLowerCase().includes('quota');
       
     if (isQuota) {
-      console.warn("Attempting to free up spaces in LocalStorage by clearing non-critical caches.");
-      const keysToClear = [
-        'cached_bookings',
-        'cached_pilgrims',
-        'cached_notifications',
-        'cached_customers',
-        'cached_umrah_offers',
-        'cached_hotels',
-        'cached_umrah_pricing',
-        'cached_users',
-        'cached_permissions',
-        'cached_trips'
-      ];
+      console.log("Freeing local storage cache by aggressively pruning old stored state...");
       
-      for (const k of keysToClear) {
-        if (k !== key) {
-          try {
-            localStorage.removeItem(k);
-            localStorage.removeItem(`last_${k.replace('cached_', '')}_fetch`);
-          } catch (_) {}
+      const keysToKeep = ['user', 'token', 'theme', 'companyId'];
+      const keysToRemove: string[] = [];
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && !keysToKeep.includes(k) && k !== key) {
+          keysToRemove.push(k);
         }
       }
       
-      // Retry
+      for (const k of keysToRemove) {
+        try {
+          localStorage.removeItem(k);
+          localStorage.removeItem(`last_${k.replace('cached_', '')}_fetch`);
+        } catch (_) {}
+      }
+      
+      // Retry putting original value
       try {
         localStorage.setItem(key, value);
-        console.log(`Successfully wrote key "${key}" to LocalStorage after clearing caches.`);
-      } catch (retryError: any) {
-        console.error(`LocalStorage write still failed for key "${key}" after cache clear:`, retryError.message || retryError);
+        console.log(`Cache key "${key}" saved successfully after purging non-critical keys.`);
+        return;
+      } catch (e) {
+        // If it still fails, let's compress the collection itself
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            console.log(`Pruning collection "${key}" of length ${parsed.length} to fit quota.`);
+            // Prune to the latest 30 items
+            const reduced = parsed.slice(0, 30).map((item: any) => {
+              if (item && typeof item === 'object') {
+                // Strip non-essential fields to minimize size
+                const {
+                  makkahHotel, madinahHotel, notes, makkahCheckIn, madinahCheckIn,
+                  makkahBookingNo, madinahBookingNo, auditLogs, ...essential
+                } = item;
+                // If it contains pilgrims array, also prune them
+                if (Array.isArray(essential.pilgrims)) {
+                  essential.pilgrims = essential.pilgrims.map((p: any) => {
+                    if (p && typeof p === 'object') {
+                      const { passportImage, ...essentialPilgrim } = p;
+                      return essentialPilgrim;
+                    }
+                    return p;
+                  });
+                }
+                return essential;
+              }
+              return item;
+            });
+            
+            localStorage.setItem(key, JSON.stringify(reduced));
+            console.log(`Successfully persisted compressed collection for key "${key}".`);
+          }
+        } catch (compressError: any) {
+          console.log(`Persistence deferred to avoid browser storage exhaustion.`);
+        }
       }
     }
   }
@@ -271,6 +301,98 @@ function mapDocData<T>(doc: any): T {
   };
 
   return { id, ...processValue(data) } as T;
+}
+
+// Invalidate stale globally-deduplicated bookings cache to force a fresh fetch
+try {
+  localStorage.removeItem('cached_bookings');
+  localStorage.removeItem('last_bookings_fetch');
+} catch (e) {}
+
+const normalizeTripString = (str: string): string => {
+  if (!str) return '';
+  const arabicNumbers = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+  let normalized = str;
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(arabicNumbers[i], String(i));
+  }
+  normalized = normalized.replace(/[-.\s\\_]+/g, '/');
+  normalized = normalized.trim().toLowerCase();
+  if (/^\d+(\/\d+)+$/.test(normalized)) {
+    normalized = normalized.split('/').map(part => {
+      const parsed = parseInt(part, 10);
+      return isNaN(parsed) ? part : String(parsed);
+    }).join('/');
+  }
+  return normalized;
+};
+
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  
+  // 1. Try exact match first
+  const exactFound = tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    return tId === queryId || tName === queryId || (bTripName && tName === bTripName);
+  });
+  if (exactFound) return exactFound;
+
+  // 2. Try normalized comparison
+  const normQuery = normalizeTripString(queryId);
+  const normBookingName = normalizeTripString(bTripName);
+
+  return tripsList.find(t => {
+    const tId = normalizeTripString(t.id);
+    const tName = normalizeTripString(t.name);
+    return (normQuery && (tId === normQuery || tName === normQuery)) ||
+           (normBookingName && tName === normBookingName);
+  });
+};
+
+function deduplicateBookings(bookings: Booking[], trips?: Trip[]): Booking[] {
+  // Sort bookings by createdAt descending in memory (Index-free, safe, and robust)
+  const sorted = [...bookings].sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  // Ensure absolute uniqueness by document ID
+  const seenIds = new Set<string>();
+  let filtered = sorted.filter(b => {
+    if (!b.id) return false;
+    if (seenIds.has(b.id)) return false;
+    seenIds.add(b.id);
+    return true;
+  });
+
+  // De-duplicate by regId per trip - keep the latest one (since we sorted by createdAt desc)
+  const seenTripRegIds = new Set<string>();
+  filtered = filtered.filter(b => {
+    let tId = '';
+    if (trips && trips.length > 0) {
+      const resolved = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
+      if (resolved) {
+        tId = resolved.id;
+      }
+    }
+    if (!tId) {
+      tId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+    }
+    const rId = String(b.regId || '').trim();
+    if (!tId || !rId) return true; // Keep if empty/null
+    const uniqueKey = `${tId}_${rId}`;
+    if (seenTripRegIds.has(uniqueKey)) {
+      console.warn('Filtered duplicate registration ID within trip during deduplication helper:', uniqueKey);
+      return false;
+    }
+    seenTripRegIds.add(uniqueKey);
+    return true;
+  });
+
+  return filtered;
 }
 
 export const api = {
@@ -677,34 +799,34 @@ export const api = {
         return timeB - timeA;
       });
 
-      // Ensure absolute uniqueness by document ID
-      const seenIds = new Set<string>();
-      bookings = bookings.filter(b => {
-        if (!b.id) return false;
-        if (seenIds.has(b.id)) return false;
-        seenIds.add(b.id);
-        return true;
-      });
+      // Fetch trips to resolve robust trip IDs during deduplication
+      let trips: Trip[] = [];
+      try {
+        const tripsSnapshot = await getDocs(collection(db, 'trips'));
+        trips = tripsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Trip));
+      } catch (tripsError) {
+        console.warn('Could not fetch trips for deduplication:', tripsError);
+      }
 
-      // De-duplicate by regId - keep the latest one (since we sorted by createdAt desc)
-      const seenRegIds = new Set<string>();
-      bookings = bookings.filter(b => {
-        const rId = String(b.regId || '').trim();
-        if (!rId) return true; // Keep if empty/null
-        if (seenRegIds.has(rId)) {
-          console.warn('Filtered duplicate registration ID:', rId);
-          return false;
-        }
-        seenRegIds.add(rId);
-        return true;
-      });
+      bookings = deduplicateBookings(bookings, trips);
 
       if (limitCount) {
         bookings = bookings.slice(0, limitCount);
       }
 
       if (!limitCount) {
-        safeLocalStorageSetItem('cached_bookings', JSON.stringify(bookings));
+        // Strip heavy passportImage from cached_bookings to prevent exceeding LocalStorage quota
+        const lightweightBookings = bookings.map(b => ({
+          ...b,
+          pilgrims: (b.pilgrims || []).map(p => {
+            if (p && 'passportImage' in p) {
+              const { passportImage, ...rest } = p;
+              return rest;
+            }
+            return p;
+          })
+        }));
+        safeLocalStorageSetItem('cached_bookings', JSON.stringify(lightweightBookings));
         safeLocalStorageSetItem('last_bookings_fetch', Date.now().toString());
       }
       return bookings;
@@ -747,7 +869,7 @@ export const api = {
       return null;
     }
   },
-  async checkDuplicateRegId(regId: string, excludeId?: string): Promise<boolean> {
+  async checkDuplicateRegId(regId: string, excludeId?: string, tripId?: string): Promise<boolean> {
     const path = 'bookings';
     try {
       await this.ensureAuth();
@@ -755,10 +877,27 @@ export const api = {
       const snapshot = await getDocs(q);
       if (snapshot.empty) return false;
       
+      let docs = snapshot.docs;
       if (excludeId) {
-        return snapshot.docs.some(doc => doc.id !== excludeId);
+        docs = docs.filter(doc => doc.id !== excludeId);
       }
-      return true;
+      
+      if (docs.length === 0) return false;
+      if (!tripId) {
+        return true;
+      }
+
+      // If tripId is provided, check if the booking's trip matches the targeted trip in-memory (index-free)
+      const tripsSnapshot = await getDocs(collection(db, 'trips'));
+      const trips = tripsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Trip));
+      const targetTrip = trips.find(t => t.id === tripId);
+      if (!targetTrip) return false;
+
+      return docs.some(doc => {
+        const b = doc.data();
+        const bTrip = trips.find(t => t.id === b.tripId || t.name === b.tripId || t.name === (b as any).tripName);
+        return bTrip && bTrip.id === targetTrip.id;
+      });
     } catch (error) {
       console.error('Error checking duplicate regId:', error);
       return false;
@@ -822,44 +961,46 @@ export const api = {
     try {
       await this.ensureAuth();
       
-      // Use standard getDocs to allow cache hits
-      const bookingsQuery = query(collection(db, 'bookings'), where("tripId", "==", tripId));
-      const bookingsSnapshot = await getDocs(bookingsQuery);
+      const tripsSnapshot = await getDocs(collection(db, 'trips'));
+      const trips = tripsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Trip));
+      const targetTrip = trips.find(t => t.id === tripId);
+      if (!targetTrip) {
+        console.warn(`Trip with ID ${tripId} not found during seat sync.`);
+        return;
+      }
+
+      const bookingsSnapshot = await getDocs(collection(db, 'bookings'));
+      let bookings = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Booking));
+      
+      bookings = deduplicateBookings(bookings, trips);
+
+      const tripBookings = bookings.filter(b => {
+        const resolved = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
+        return resolved && resolved.id === targetTrip.id;
+      });
       
       let totalSeatsDeducted = 0;
-      bookingsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const pilgrims = (data.pilgrims || []) as Pilgrim[];
-        
+      tripBookings.forEach(b => {
+        const pilgrims = (b.pilgrims || []) as Pilgrim[];
         if (pilgrims.length > 0) {
-          // Count only pilgrims that have a service type involving a ticket
           const ticketPilgrims = pilgrims.filter(p => {
             const type = p.serviceType || 'Full';
             return type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation' || type === 'TicketAndVisa';
           });
           totalSeatsDeducted += ticketPilgrims.length;
         } else {
-          // Fallback for very old data or malformed bookings
-          totalSeatsDeducted += (data.passengerCount || 0);
+          totalSeatsDeducted += (b.passengerCount || 0);
         }
       });
       
-      // 2. Get the trip from server
-      const tripRef = doc(db, 'trips', tripId);
-      const tripSnap = await getDocFromServer(tripRef);
+      const availableSeats = Math.max(0, targetTrip.totalSeats - totalSeatsDeducted);
       
-      if (tripSnap.exists()) {
-        const tripData = tripSnap.data() as Trip;
-        const availableSeats = Math.max(0, tripData.totalSeats - totalSeatsDeducted);
-        
-        // 3. Update the trip
-        await updateDoc(tripRef, { 
-          availableSeats,
-          updatedAt: serverTimestamp()
-        });
-        
-        console.log(`Synced trip ${tripId}: ${totalSeatsDeducted} tickets, ${availableSeats} available seats`);
-      }
+      await updateDoc(doc(db, 'trips', targetTrip.id), { 
+        availableSeats,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log(`Synced trip ${targetTrip.name}: ${totalSeatsDeducted} tickets, ${availableSeats} available seats`);
     } catch (error) {
       console.error(`Error syncing trip seats for ${tripId}:`, error);
     }
@@ -868,15 +1009,19 @@ export const api = {
     if (quotaExceeded && !canMakeRequest()) return;
     try {
       await this.ensureAuth();
-      // Use getDocs instead of getDocsFromServer to utilize cache and save quota
       const tripsSnapshot = await getDocs(collection(db, 'trips'));
       const bookingsSnapshot = await getDocs(collection(db, 'bookings'));
       
       const trips = tripsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Trip));
-      const bookings = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Booking));
+      let bookings = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Booking));
+      
+      bookings = deduplicateBookings(bookings, trips);
       
       for (const trip of trips) {
-        const tripBookings = bookings.filter(b => b.tripId === trip.id);
+        const tripBookings = bookings.filter(b => {
+          const resolved = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
+          return resolved && resolved.id === trip.id;
+        });
         
         let totalSeatsDeducted = 0;
         tripBookings.forEach(b => {
@@ -884,7 +1029,7 @@ export const api = {
           if (pilgrims.length > 0) {
             const ticketPilgrims = pilgrims.filter(p => {
               const type = p.serviceType || 'Full';
-              return type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation';
+              return type === 'Full' || type === 'TicketOnly' || type === 'TicketAndAccommodation' || type === 'TicketAndVisa';
             });
             totalSeatsDeducted += ticketPilgrims.length;
           } else {
@@ -927,6 +1072,8 @@ export const api = {
         });
         await batch.commit();
       }
+      // Automatically sync all trip bookings and seats to keep reports/counters pristine
+      await this.syncAllTripsSeats();
     } catch (error) {
       console.error('Error in bulkSaveBookings:', error);
       handleFirestoreError(error, OperationType.WRITE, path);
@@ -1419,7 +1566,9 @@ export const api = {
       });
 
       if (!bookingId) {
-        safeLocalStorageSetItem('cached_pilgrims', JSON.stringify(pilgrims));
+        // Strip heavy passportImage from cached_pilgrims to prevent exceeding LocalStorage quota
+        const lightweightPilgrims = pilgrims.map(({ passportImage, ...rest }) => rest);
+        safeLocalStorageSetItem('cached_pilgrims', JSON.stringify(lightweightPilgrims));
       }
       return pilgrims;
     } catch (error: any) {
