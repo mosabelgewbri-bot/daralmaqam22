@@ -25,6 +25,21 @@ import { api } from '../services/api';
 import { Trip, Booking, User } from '../types';
 import { clsx } from 'clsx';
 
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  return tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    
+    return tId === queryId || 
+           tName === queryId || 
+           (bTripName && tName === bTripName);
+  });
+};
+
 export default function ProfitLossModule({ user }: { user: User }) {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -124,8 +139,32 @@ export default function ProfitLossModule({ user }: { user: User }) {
   };
 
   const calculateDetailedMetrics = () => {
-    const filteredTrips = selectedTripId === 'all' ? trips : trips.filter(t => t.id === selectedTripId);
-    const filteredBookings = selectedTripId === 'all' ? bookings : bookings.filter(b => b.tripId === selectedTripId);
+    const filteredTrips = selectedTripId === 'all' ? trips : trips.filter(t => String(t.id).trim().toLowerCase() === String(selectedTripId).trim().toLowerCase());
+    const filteredBookings = selectedTripId === 'all' 
+      ? bookings 
+      : bookings.filter(b => {
+          const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+          const sTripId = String(selectedTripId).trim().toLowerCase();
+          
+          if (bTripId === sTripId) return true;
+          
+          const selectedTrip = trips.find(t => String(t.id).trim().toLowerCase() === sTripId);
+          const selectedTripName = selectedTrip ? String(selectedTrip.name).trim().toLowerCase() : '';
+          
+          if (selectedTripName && bTripId === selectedTripName) return true;
+          if (selectedTripName && (b as any).tripName && String((b as any).tripName).trim().toLowerCase() === selectedTripName) return true;
+          
+          const bookingTrip = trips.find(t => 
+            String(t.id).trim().toLowerCase() === bTripId || 
+            String(t.name).trim().toLowerCase() === bTripId
+          );
+          if (bookingTrip) {
+            const btId = String(bookingTrip.id).trim().toLowerCase();
+            const btName = String(bookingTrip.name).trim().toLowerCase();
+            return btId === sTripId || (selectedTripName && btName === selectedTripName);
+          }
+          return false;
+        });
 
     const tripCostsPerPax = new Map<string, { lyd: number, usd: number }>();
     
@@ -142,8 +181,9 @@ export default function ProfitLossModule({ user }: { user: User }) {
     });
 
     const detailedRows = filteredBookings.map(booking => {
-      const trip = trips.find(t => t.id === booking.tripId);
-      const costPerPax = tripCostsPerPax.get(booking.tripId) || { lyd: 0, usd: 0 };
+      const bTripId = String(booking.tripId || (booking as any).tripid || (booking as any).trip_id || '').trim().toLowerCase();
+      const trip = findTripRobust(trips, bTripId, booking);
+      const costPerPax = tripCostsPerPax.get(trip?.id || bTripId) || { lyd: 0, usd: 0 };
       
       const revenueLYD = booking.totals?.baseTotalLYD ? booking.totals.totalLYD : ((booking.totals?.totalLYD || 0) - ((booking as any).discountLYD || (booking.totals as any)?.discountLYD || 0));
       const revenueUSD = booking.totals?.baseTotalUSD ? booking.totals.totalUSD : ((booking.totals?.totalUSD || 0) - ((booking as any).discountUSD || (booking.totals as any)?.discountUSD || 0));

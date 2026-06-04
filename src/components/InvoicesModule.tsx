@@ -23,6 +23,21 @@ import { clsx } from 'clsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  return tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    
+    return tId === queryId || 
+           tName === queryId || 
+           (bTripName && tName === bTripName);
+  });
+};
+
 export default function InvoicesModule({ user }: { user: User }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -57,7 +72,34 @@ export default function InvoicesModule({ user }: { user: User }) {
   }, []);
 
   const filteredBookings = bookings.filter(b => {
-    const matchesTrip = selectedTripId === 'all' || b.tripId === selectedTripId;
+    const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+    const sTripId = String(selectedTripId).trim().toLowerCase();
+    
+    let matchesTrip = selectedTripId === 'all';
+    if (selectedTripId !== 'all') {
+      if (bTripId === sTripId) {
+        matchesTrip = true;
+      } else {
+        const selectedTrip = trips.find(t => String(t.id).trim().toLowerCase() === sTripId);
+        const selectedTripName = selectedTrip ? String(selectedTrip.name).trim().toLowerCase() : '';
+        
+        if (selectedTripName && bTripId === selectedTripName) {
+          matchesTrip = true;
+        } else if (selectedTripName && (b as any).tripName && String((b as any).tripName).trim().toLowerCase() === selectedTripName) {
+          matchesTrip = true;
+        } else {
+          const bookingTrip = trips.find(t => 
+            String(t.id).trim().toLowerCase() === bTripId || 
+            String(t.name).trim().toLowerCase() === bTripId
+          );
+          if (bookingTrip) {
+            const btId = String(bookingTrip.id).trim().toLowerCase();
+            const btName = String(bookingTrip.name).trim().toLowerCase();
+            matchesTrip = btId === sTripId || (selectedTripName && btName === selectedTripName);
+          }
+        }
+      }
+    }
     
     let matchesSearch = true;
     if (searchTerm) {
@@ -85,7 +127,8 @@ export default function InvoicesModule({ user }: { user: User }) {
 
   const exportInvoicePDF = async (booking: Booking) => {
     setPrintingId(booking.id);
-    const selectedTrip = trips.find(t => t.id === booking.tripId);
+    const bTripId = String(booking.tripId || (booking as any).tripid || (booking as any).trip_id || '').trim().toLowerCase();
+    const selectedTrip = findTripRobust(trips, bTripId, booking);
     const tripName = selectedTrip?.name || 'الرحلة المختارة';
     
     const getBase64FromUrl = async (url: string): Promise<string> => {
@@ -414,7 +457,8 @@ export default function InvoicesModule({ user }: { user: User }) {
             <tbody className="divide-y divide-white/5">
               <AnimatePresence mode="popLayout">
                 {filteredBookings.length > 0 ? filteredBookings.map((b, idx) => {
-                  const trip = trips.find(t => t.id === b.tripId);
+                  const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || '').trim().toLowerCase();
+                  const trip = findTripRobust(trips, bTripId, b);
                   const totalLYD = b.totals.totalLYD || 0;
                   const totalUSD = b.totals.totalUSD || 0;
 

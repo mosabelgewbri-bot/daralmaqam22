@@ -131,6 +131,53 @@ function errorMessageFrom(error: any): string {
   return error.message || error.error || JSON.stringify(error);
 }
 
+function safeLocalStorageSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error: any) {
+    console.warn(`LocalStorage write failed for key "${key}":`, error.message || error);
+    
+    const isQuota = 
+      error.name === 'QuotaExceededError' || 
+      error.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      String(error).toLowerCase().includes('quota') ||
+      String(error.message || '').toLowerCase().includes('quota');
+      
+    if (isQuota) {
+      console.warn("Attempting to free up spaces in LocalStorage by clearing non-critical caches.");
+      const keysToClear = [
+        'cached_bookings',
+        'cached_pilgrims',
+        'cached_notifications',
+        'cached_customers',
+        'cached_umrah_offers',
+        'cached_hotels',
+        'cached_umrah_pricing',
+        'cached_users',
+        'cached_permissions',
+        'cached_trips'
+      ];
+      
+      for (const k of keysToClear) {
+        if (k !== key) {
+          try {
+            localStorage.removeItem(k);
+            localStorage.removeItem(`last_${k.replace('cached_', '')}_fetch`);
+          } catch (_) {}
+        }
+      }
+      
+      // Retry
+      try {
+        localStorage.setItem(key, value);
+        console.log(`Successfully wrote key "${key}" to LocalStorage after clearing caches.`);
+      } catch (retryError: any) {
+        console.error(`LocalStorage write still failed for key "${key}" after cache clear:`, retryError.message || retryError);
+      }
+    }
+  }
+}
+
 // Test connection on boot
 let quotaExceeded = false;
 let lastQuotaErrorTime = 0;
@@ -236,6 +283,7 @@ export const api = {
     const tests = ['trips', 'users', 'logs'];
     let successCount = 0;
     let lastErrDetail = '';
+    let isQuotaStillExceeded = false;
 
     for (const colName of tests) {
       try {
@@ -244,6 +292,23 @@ export const api = {
         break; // One success is enough
       } catch (e: any) {
         lastErrDetail = errorMessageFrom(e);
+        const errLower = lastErrDetail.toLowerCase();
+        
+        // If it's a security/permission denial, the server is alive and evaluated the security rules (quota is fine!)
+        if (errLower.includes('permission-denied') || errLower.includes('insufficient') || errLower.includes('permissions')) {
+          successCount++;
+          break;
+        }
+
+        // If it's any other error that is NOT a quota error and NOT a connection error, the server processed it
+        if (!isQuotaError(e) && !isConnectionError(e)) {
+          successCount++;
+          break;
+        }
+
+        if (isQuotaError(e)) {
+          isQuotaStillExceeded = true;
+        }
       }
     }
 
@@ -254,7 +319,7 @@ export const api = {
       return { success: true };
     } else {
       console.error('Connection still blocked by server:', lastErrDetail);
-      if (lastErrDetail.toLowerCase().includes('quota') || lastErrDetail.toLowerCase().includes('exhausted')) {
+      if (isQuotaStillExceeded || lastErrDetail.toLowerCase().includes('quota') || lastErrDetail.toLowerCase().includes('exhausted')) {
         quotaExceeded = true;
       }
       lastError = lastErrDetail;
@@ -505,8 +570,8 @@ export const api = {
         } as unknown as Trip;
       });
       
-      localStorage.setItem('cached_trips', JSON.stringify(trips));
-      localStorage.setItem('last_trips_fetch', Date.now().toString());
+      safeLocalStorageSetItem('cached_trips', JSON.stringify(trips));
+      safeLocalStorageSetItem('last_trips_fetch', Date.now().toString());
       
       return trips;
     } catch (error: any) {
@@ -583,19 +648,16 @@ export const api = {
 
     try {
       await this.ensureAuth();
-      let q = query(collection(db, path), orderBy("createdAt", "desc"));
+      let q = query(collection(db, path));
       
       const userStr = localStorage.getItem('user');
       const userObj = userStr ? JSON.parse(userStr) : null;
       if (companyId && userObj?.role !== 'admin') {
         q = query(q, where("companyId", "==", companyId));
       }
-      if (limitCount) {
-        q = query(q, limit(limitCount));
-      }
       
       const querySnapshot = await getDocs(q);
-      const bookings = querySnapshot.docs.map(doc => {
+      let bookings = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return { 
           id: doc.id, 
@@ -608,9 +670,42 @@ export const api = {
         } as unknown as Booking;
       });
 
+      // Sort bookings by createdAt descending in memory (Index-free, safe, and robust)
+      bookings.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      // Ensure absolute uniqueness by document ID
+      const seenIds = new Set<string>();
+      bookings = bookings.filter(b => {
+        if (!b.id) return false;
+        if (seenIds.has(b.id)) return false;
+        seenIds.add(b.id);
+        return true;
+      });
+
+      // De-duplicate by regId - keep the latest one (since we sorted by createdAt desc)
+      const seenRegIds = new Set<string>();
+      bookings = bookings.filter(b => {
+        const rId = String(b.regId || '').trim();
+        if (!rId) return true; // Keep if empty/null
+        if (seenRegIds.has(rId)) {
+          console.warn('Filtered duplicate registration ID:', rId);
+          return false;
+        }
+        seenRegIds.add(rId);
+        return true;
+      });
+
+      if (limitCount) {
+        bookings = bookings.slice(0, limitCount);
+      }
+
       if (!limitCount) {
-        localStorage.setItem('cached_bookings', JSON.stringify(bookings));
-        localStorage.setItem('last_bookings_fetch', Date.now().toString());
+        safeLocalStorageSetItem('cached_bookings', JSON.stringify(bookings));
+        safeLocalStorageSetItem('last_bookings_fetch', Date.now().toString());
       }
       return bookings;
     } catch (error: any) {
@@ -853,11 +948,7 @@ export const api = {
       const perms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as RolePermissions));
       
       // Cache permissions
-      try {
-        localStorage.setItem('cached_permissions', JSON.stringify(perms));
-      } catch (e) {
-        console.warn('Failed to cache permissions in localStorage (Quota Exceeded)');
-      }
+      safeLocalStorageSetItem('cached_permissions', JSON.stringify(perms));
       return perms;
     } catch (error: any) {
       // Return cached permissions if quota exceeded
@@ -939,8 +1030,8 @@ export const api = {
       const querySnapshot = await getDocs(q);
       const users = querySnapshot.docs.map(doc => mapDocData<User>(doc));
       
-      localStorage.setItem('cached_users', JSON.stringify(users));
-      localStorage.setItem('last_users_fetch', Date.now().toString());
+      safeLocalStorageSetItem('cached_users', JSON.stringify(users));
+      safeLocalStorageSetItem('last_users_fetch', Date.now().toString());
       return users;
     } catch (error: any) {
       if (isQuotaError(error)) {
@@ -1006,8 +1097,8 @@ export const api = {
         if (data.key) settings[data.key] = data.value;
       });
       
-      localStorage.setItem('cached_settings', JSON.stringify(settings));
-      localStorage.setItem('last_settings_fetch', Date.now().toString());
+      safeLocalStorageSetItem('cached_settings', JSON.stringify(settings));
+      safeLocalStorageSetItem('last_settings_fetch', Date.now().toString());
       return settings;
     } catch (error: any) {
       if (isQuotaError(error)) {
@@ -1044,8 +1135,8 @@ export const api = {
         } catch (e) {}
       }
       const updatedCached = { ...currentCached, ...settings };
-      localStorage.setItem('cached_settings', JSON.stringify(updatedCached));
-      localStorage.setItem('last_settings_fetch', Date.now().toString());
+      safeLocalStorageSetItem('cached_settings', JSON.stringify(updatedCached));
+      safeLocalStorageSetItem('last_settings_fetch', Date.now().toString());
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }
@@ -1069,73 +1160,105 @@ export const api = {
   },
 
   async getDbStats(): Promise<any> {
+    const collections = ['users', 'trips', 'bookings', 'pilgrims', 'logs'];
+    
+    // Helper to count items in cache for a collection
+    const getCacheCount = (colName: string): number => {
+      try {
+        const cached = localStorage.getItem(`cached_${colName}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return Array.isArray(parsed) ? parsed.length : 0;
+        }
+      } catch (_) {}
+      return 0;
+    };
+
     try {
-      // If quota exceeded, return limited stats immediately
+      const stats: any = {
+        dbType: 'Cloud (Firestore)',
+        health: quotaExceeded ? 'Limited (Quota Exceeded - Using Cache)' : 'Excellent',
+        uptime: '99.9%'
+      };
+
       if (quotaExceeded) {
-        return {
-          dbType: 'Cloud (Firestore)',
-          health: 'Limited (Quota Exceeded - Using Cache)',
-          uptime: '99.9%',
-          totalDocs: '---',
-          dbSize: '---'
-        };
+        let totalDocs = 0;
+        collections.forEach(col => {
+          const count = getCacheCount(col);
+          stats[col] = count;
+          totalDocs += count;
+        });
+        stats.totalDocs = totalDocs;
+        stats.dbSize = totalDocs * 500; // estimated 500 bytes per document
+        return stats;
       }
 
       await this.ensureAuth();
       
-      const collections = ['users', 'trips', 'bookings', 'pilgrims', 'logs'];
-      const stats: any = {
-        dbType: 'Cloud (Firestore)',
-        health: 'Excellent',
-        uptime: '99.9%'
-      };
-
       const results = await Promise.all(collections.map(async (col) => {
         try {
           // Try server first
           const snap = await getDocs(collection(db, col));
-          return { name: col, size: snap.size };
+          return { name: col, size: snap.size, cached: false };
         } catch (e: any) {
-          // Fallback to cache if quota exceeded
-          const errorMsg = e.message || String(e);
-          if (errorMsg.includes('Quota exceeded')) {
-            try {
-              const cacheSnap = await getDocsFromCache(collection(db, col));
-              return { name: col, size: cacheSnap.size, cached: true };
-            } catch (cacheErr) {
-              return { name: col, size: 0, error: true };
-            }
+          const errorMsg = (e.message || String(e)).toLowerCase();
+          
+          if (errorMsg.includes('quota') || errorMsg.includes('resource-exhausted') || errorMsg.includes('limitation')) {
+            const count = getCacheCount(col);
+            return { name: col, size: count, cached: true };
           }
           
           // Handle permission denied gracefully
-          if (errorMsg.includes('permissions') || errorMsg.includes('permission-denied')) {
+          if (errorMsg.includes('permissions') || errorMsg.includes('permission-denied') || errorMsg.includes('insufficient')) {
             return { name: col, size: 0, restricted: true };
           }
 
-          throw e;
+          // Any other error (e.g. offline), fallback to cached count gracefully
+          const count = getCacheCount(col);
+          return { name: col, size: count, cached: true };
         }
       }));
 
+      let anyCached = false;
       results.forEach(res => {
         stats[res.name] = res.size;
-        if (res.cached) stats.health = 'Limited (Quota Exceeded - Using Cache)';
+        if (res.cached) {
+          anyCached = true;
+          stats[res.name] = `${res.size} (مؤقت)`;
+        }
         if (res.restricted) stats[res.name] = 'Restricted';
       });
 
-      const totalDocs = results.reduce((acc, res) => acc + res.size, 0);
+      if (anyCached) {
+        stats.health = 'Limited (Quota Exceeded - Using Cache)';
+      }
+
+      const totalDocs = results.reduce((acc, res) => acc + (typeof res.size === 'number' ? res.size : 0), 0);
       stats.totalDocs = totalDocs;
       stats.dbSize = totalDocs * 500;
 
       return stats;
     } catch (error: any) {
-      console.error('Error getting DB stats:', error);
-      // Return a partial object if we can't get everything
-      return { 
-        dbType: 'Cloud (Firestore)', 
-        health: error.message?.includes('Quota exceeded') ? 'Quota Exceeded' : 'Error',
-        error: error.message || String(error),
-        uptime: '---'
+      console.error('Error getting DB stats in try-catch:', error);
+      
+      const stats: any = {
+        dbType: 'Cloud (Firestore)',
+        health: 'Limited (Offline/Cache)',
+        uptime: '---',
+        totalDocs: 0,
+        dbSize: 0
       };
+      
+      let totalDocs = 0;
+      collections.forEach(col => {
+        const count = getCacheCount(col);
+        stats[col] = count;
+        totalDocs += count;
+      });
+      stats.totalDocs = totalDocs;
+      stats.dbSize = totalDocs * 500;
+      
+      return stats;
     }
   },
 
@@ -1221,16 +1344,12 @@ export const api = {
     const companyId = this.getCompanyId();
     try {
       await this.ensureAuth();
-      let q = query(
-        collection(db, path), 
-        orderBy("timestamp", "desc"), 
-        limit(limitCount)
-      );
+      let q = query(collection(db, path));
       if (companyId) {
         q = query(q, where("companyId", "==", companyId));
       }
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => {
+      let logs = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -1238,6 +1357,15 @@ export const api = {
           timestamp: data.timestamp?.toDate?.()?.toISOString() || data.timestamp
         } as unknown as AuditLog;
       });
+
+      // Sort logs by timestamp descending in memory (Index-free and robust)
+      logs.sort((a, b) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      return logs.slice(0, limitCount);
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
       return [];
@@ -1291,11 +1419,7 @@ export const api = {
       });
 
       if (!bookingId) {
-        try {
-          localStorage.setItem('cached_pilgrims', JSON.stringify(pilgrims));
-        } catch (e) {
-          console.warn('Failed to cache pilgrims in localStorage');
-        }
+        safeLocalStorageSetItem('cached_pilgrims', JSON.stringify(pilgrims));
       }
       return pilgrims;
     } catch (error: any) {
@@ -1348,11 +1472,7 @@ export const api = {
       }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       if (!userId) {
-        try {
-          localStorage.setItem('cached_notifications', JSON.stringify(notifications));
-        } catch (e) {
-          console.warn('Failed to cache notifications in localStorage (Quota Exceeded)');
-        }
+        safeLocalStorageSetItem('cached_notifications', JSON.stringify(notifications));
       }
       return notifications;
     } catch (error: any) {
@@ -1486,11 +1606,7 @@ export const api = {
         } as unknown as UmrahOffer;
       });
 
-      try {
-        localStorage.setItem('cached_umrah_offers', JSON.stringify(offers));
-      } catch (error: any) {
-        console.warn('Failed to cache umrah offers in localStorage');
-      }
+      safeLocalStorageSetItem('cached_umrah_offers', JSON.stringify(offers));
       return offers;
     } catch (error: any) {
       if (isQuotaError(error)) {
@@ -1655,11 +1771,7 @@ export const api = {
       const querySnapshot = await getDocs(q);
       const customers = querySnapshot.docs.map(doc => mapDocData<Customer>(doc));
 
-      try {
-        localStorage.setItem('cached_customers', JSON.stringify(customers));
-      } catch (error: any) {
-        console.warn('Failed to cache customers in localStorage');
-      }
+      safeLocalStorageSetItem('cached_customers', JSON.stringify(customers));
       return customers;
     } catch (error: any) {
       if (isQuotaError(error)) {
@@ -1932,15 +2044,20 @@ export const api = {
       const userObj = userStr ? JSON.parse(userStr) : null;
       if (companyId && userObj?.role !== 'admin') {
         q = query(q, where('companyId', '==', companyId));
-      } else {
-        q = query(q, orderBy('createdAt', 'desc'));
       }
       
       const querySnapshot = await this.withRetry(() => getDocs(q));
       const hotels = querySnapshot.docs.map(doc => mapDocData<Hotel>(doc));
       
-      localStorage.setItem('cached_hotels', JSON.stringify(hotels));
-      localStorage.setItem('last_hotels_fetch', Date.now().toString());
+      // Sort hotels by createdAt descending in memory (Index-free and robust)
+      hotels.sort((a: any, b: any) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      
+      safeLocalStorageSetItem('cached_hotels', JSON.stringify(hotels));
+      safeLocalStorageSetItem('last_hotels_fetch', Date.now().toString());
       return hotels;
     } catch (error: any) {
       if (isQuotaError(error)) {
@@ -2148,19 +2265,20 @@ export const api = {
 
     try {
       await this.ensureAuth();
-      // Try with orderBy first
-      let q = query(collection(db, path), orderBy('createdAt', 'desc'));
-      let querySnapshot = await this.withRetry(() => getDocs(q));
-      
-      // If no results, try without orderBy (in case some docs lack createdAt)
-      if (querySnapshot.empty) {
-        q = query(collection(db, path));
-        querySnapshot = await this.withRetry(() => getDocs(q));
-      }
+      const q = query(collection(db, path));
+      const querySnapshot = await this.withRetry(() => getDocs(q));
       
       const pricings = querySnapshot.docs.map(doc => mapDocData<UmrahPricing>(doc));
-      localStorage.setItem('cached_umrah_pricing', JSON.stringify(pricings));
-      localStorage.setItem('last_pricing_fetch', Date.now().toString());
+      
+      // Sort pricings by createdAt descending in memory (Index-free and robust)
+      pricings.sort((a: any, b: any) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      
+      safeLocalStorageSetItem('cached_umrah_pricing', JSON.stringify(pricings));
+      safeLocalStorageSetItem('last_pricing_fetch', Date.now().toString());
       return pricings;
     } catch (error: any) {
       if (isQuotaError(error)) {

@@ -14,6 +14,49 @@ import { addDays, format, parseISO, isValid } from 'date-fns';
 import { sendWhatsAppMessage, generateTripDetailsMessage } from '../utils/whatsapp';
 import { AnimatePresence } from 'motion/react';
 
+const normalizeTripString = (str: string): string => {
+  if (!str) return '';
+  const arabicNumbers = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+  let normalized = str;
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(arabicNumbers[i], String(i));
+  }
+  normalized = normalized.replace(/[-.\s\\_]+/g, '/');
+  normalized = normalized.trim().toLowerCase();
+  if (/^\d+(\/\d+)+$/.test(normalized)) {
+    normalized = normalized.split('/').map(part => {
+      const parsed = parseInt(part, 10);
+      return isNaN(parsed) ? part : String(parsed);
+    }).join('/');
+  }
+  return normalized;
+};
+
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  // 1. Try exact match first
+  const exactFound = tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    return tId === queryId || tName === queryId || (bTripName && tName === bTripName);
+  });
+  if (exactFound) return exactFound;
+
+  // 2. Try normalized comparison
+  const normQuery = normalizeTripString(queryId);
+  const normBookingName = normalizeTripString(bTripName);
+
+  return tripsList.find(t => {
+    const tId = normalizeTripString(t.id);
+    const tName = normalizeTripString(t.name);
+    return (normQuery && (tId === normQuery || tName === normQuery)) ||
+           (normBookingName && tName === normBookingName);
+  });
+};
+
 export default function ReportsModule({ user }: { user: User }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'master' | 'pilgrims' | 'rooming' | 'visa' | 'finance' | 'reminders'>('master');
@@ -94,7 +137,8 @@ export default function ReportsModule({ user }: { user: User }) {
       
       if (!hasRemaining) return false;
 
-      const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(b.tripId || '').trim().toLowerCase());
+      const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+      const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
       if (!trip || !trip.startDate) return true; // Show if no trip date found but has remaining
 
       const tripDate = parseISO(trip.startDate);
@@ -103,8 +147,10 @@ export default function ReportsModule({ user }: { user: User }) {
       
       return diffDays <= 15; // Show reminders for trips starting within 15 days
     }).sort((a, b) => {
-      const tripA = trips.find(t => String(t.id).trim().toLowerCase() === String(a.tripId || '').trim().toLowerCase());
-      const tripB = trips.find(t => String(t.id).trim().toLowerCase() === String(b.tripId || '').trim().toLowerCase());
+      const tripIdA = String(a.tripId || (a as any).tripid || (a as any).trip_id || (a as any).tripName || '').trim().toLowerCase();
+      const tripIdB = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+      const tripA = trips.find(t => String(t.id).trim().toLowerCase() === tripIdA);
+      const tripB = trips.find(t => String(t.id).trim().toLowerCase() === tripIdB);
       if (!tripA?.startDate || !tripB?.startDate) return 0;
       return parseISO(tripA.startDate).getTime() - parseISO(tripB.startDate).getTime();
     });
@@ -127,17 +173,29 @@ export default function ReportsModule({ user }: { user: User }) {
   };
   const getTripName = (input: Booking | string) => {
     if (typeof input === 'object' && (input as any).tripName) return (input as any).tripName;
-    const tripId = typeof input === 'string' ? input : (input.tripId || (input as any).tripid || (input as any).trip_id);
-    const trip = trips.find(t => String(t.id).trim().toLowerCase() === String(tripId).trim().toLowerCase());
+    const tripId = typeof input === 'string' ? input : (input.tripId || (input as any).tripid || (input as any).trip_id || (input as any).tripName);
+    const trip = findTripRobust(trips, tripId, typeof input === 'object' ? input : undefined);
     return trip ? trip.name : 'رحلة غير معروفة';
   };
 
   const baseFilteredBookings = bookings.filter(b => {
-    const bTripId = String(b.tripId || '').trim().toLowerCase();
-    const sTripId = String(selectedTripId || '').trim().toLowerCase();
-    const matchesTrip = !sTripId || bTripId === sTripId;
+    const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
     
-    const trip = trips.find(t => String(t.id).trim().toLowerCase() === bTripId);
+    let matchesTrip = !selectedTripId;
+    if (selectedTripId) {
+      const selectedTrip = findTripRobust(trips, selectedTripId);
+      if (selectedTrip && trip) {
+        matchesTrip = (selectedTrip.id === trip.id);
+      } else {
+        const normSelected = normalizeTripString(selectedTripId);
+        const bTripId = b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '';
+        const normTripRef = normalizeTripString(bTripId);
+        if (normSelected && normTripRef && normSelected === normTripRef) {
+          matchesTrip = true;
+        }
+      }
+    }
+    
     const matchesAirline = !selectedAirline || trip?.airline === selectedAirline;
     const matchesStatus = !selectedStatus || b.status === selectedStatus;
     const matchesGroup = !selectedGroupNo || b.groupNo === selectedGroupNo;
@@ -292,7 +350,7 @@ export default function ReportsModule({ user }: { user: User }) {
         const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
         const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
         const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
-        const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+        const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
         const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
                         p.roomType === 'Triple' ? 'ثلاثية' : 
@@ -331,7 +389,7 @@ export default function ReportsModule({ user }: { user: User }) {
       filename = `Dara_Master_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     } else if (activeTab === 'rooming') {
       data = roomingFilteredBookings.map(b => {
-        const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+        const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
         const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
                         p.roomType === 'Triple' ? 'ثلاثية' : 
@@ -359,7 +417,7 @@ export default function ReportsModule({ user }: { user: User }) {
       filename = `Dara_Rooming_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     } else if (activeTab === 'visa') {
       data = filteredPilgrims.map(p => {
-        const trip = trips.find(t => String(t.id).trim() === String(p.tripId || (p as any).tripid || (p as any).trip_id).trim());
+        const trip = findTripRobust(trips, p.tripId || (p as any).tripid || (p as any).trip_id || (p as any).tripName, p);
         return {
           'اسم المعتمر': p.name || '---',
           'رقم الجواز': p.passportNo || '---',
@@ -376,7 +434,7 @@ export default function ReportsModule({ user }: { user: User }) {
         const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
         const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
         const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
-        const trip = trips.find(t => String(t.id) === String(b.tripId || (b as any).tripid || (b as any).trip_id));
+        const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
         const roomSummary = (b.pilgrims || []).map(p => {
           const label = p.roomType === 'Double' ? 'ثنائية' : 
                         p.roomType === 'Triple' ? 'ثلاثية' : 
@@ -556,7 +614,7 @@ export default function ReportsModule({ user }: { user: User }) {
             const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
             const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
             const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
-            const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+            const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
             const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
                             p.roomType === 'Triple' ? 'ثلاثية' : 
@@ -584,7 +642,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: right; color: ${remainingUSD > 0 ? '#dc2626' : '#059669'}; font-weight: bold;">${remainingUSD.toLocaleString()}</td>
             </tr>
           `}).join('') : activeTab === 'rooming' ? roomingFilteredBookings.map((b, idx) => {
-            const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+            const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
             const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
                             p.roomType === 'Triple' ? 'ثلاثية' : 
@@ -610,7 +668,7 @@ export default function ReportsModule({ user }: { user: User }) {
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; color: #2b8a3e;">${calculateCheckOut(b.madinahCheckIn, b.madinahNights)}</td>
             </tr>
           `; }).join('') : activeTab === 'visa' ? filteredPilgrims.map((p, idx) => {
-            const trip = trips.find(t => String(t.id).trim() === String(p.tripId || (p as any).tripid || (p as any).trip_id).trim());
+            const trip = findTripRobust(trips, p.tripId || (p as any).tripid || (p as any).trip_id || (p as any).tripName, p);
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
               <td style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold;">${p.name || '---'}</td>
@@ -625,7 +683,7 @@ export default function ReportsModule({ user }: { user: User }) {
             const actualTotalUSD = b.totals?.baseTotalUSD ? b.totals.totalUSD : ((b.totals?.totalUSD || 0) - ((b as any).discountUSD || (b.totals as any)?.discountUSD || 0));
             const remainingLYD = actualTotalLYD - (b.paidLYD || 0);
             const remainingUSD = actualTotalUSD - (b.paidUSD || 0);
-            const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+            const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
             const roomSummary = (b.pilgrims || []).map(p => {
               const label = p.roomType === 'Double' ? 'ثنائية' : 
                             p.roomType === 'Triple' ? 'ثلاثية' : 
@@ -1100,7 +1158,7 @@ export default function ReportsModule({ user }: { user: User }) {
                         <div className="flex gap-2 justify-end">
                           <button 
                             onClick={() => {
-                              const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+                              const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
                               if (b.phone && trip) {
                                 const msg = generateTripDetailsMessage(b, trip);
                                 sendWhatsAppMessage(b.phone, msg);
@@ -1338,7 +1396,7 @@ export default function ReportsModule({ user }: { user: User }) {
                         <td className="px-4 py-4">
                           <div className="text-gold">{getTripName(b)}</div>
                           <div className="text-[10px] text-white/40">
-                            {trips.find(t => String(t.id) === String(b.tripId))?.startDate || '---'}
+                            {findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b)?.startDate || '---'}
                           </div>
                         </td>
                         <td className="px-4 py-4">

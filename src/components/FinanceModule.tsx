@@ -9,6 +9,49 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import Logo from './Logo';
 
+const normalizeTripString = (str: string): string => {
+  if (!str) return '';
+  const arabicNumbers = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+  let normalized = str;
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(arabicNumbers[i], String(i));
+  }
+  normalized = normalized.replace(/[-.\s\\_]+/g, '/');
+  normalized = normalized.trim().toLowerCase();
+  if (/^\d+(\/\d+)+$/.test(normalized)) {
+    normalized = normalized.split('/').map(part => {
+      const parsed = parseInt(part, 10);
+      return isNaN(parsed) ? part : String(parsed);
+    }).join('/');
+  }
+  return normalized;
+};
+
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  // 1. Try exact match first
+  const exactFound = tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    return tId === queryId || tName === queryId || (bTripName && tName === bTripName);
+  });
+  if (exactFound) return exactFound;
+
+  // 2. Try normalized comparison
+  const normQuery = normalizeTripString(queryId);
+  const normBookingName = normalizeTripString(bTripName);
+
+  return tripsList.find(t => {
+    const tId = normalizeTripString(t.id);
+    const tName = normalizeTripString(t.name);
+    return (normQuery && (tId === normQuery || tName === normQuery)) ||
+           (normBookingName && tName === normBookingName);
+  });
+};
+
 export default function FinanceModule({ user }: { user: User }) {
   const permissions = getRolePermissions(user.role);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -61,10 +104,16 @@ export default function FinanceModule({ user }: { user: User }) {
         let filtered = allBookings;
         
         if (selectedTripId) {
-          const sTripId = String(selectedTripId).trim().toLowerCase();
+          const selectedTrip = findTripRobust(trips, selectedTripId);
           filtered = filtered.filter(b => {
-             const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || '').trim().toLowerCase();
-             return bTripId === sTripId;
+            const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
+            if (selectedTrip && trip) {
+              return selectedTrip.id === trip.id;
+            } else {
+              const normSelected = normalizeTripString(selectedTripId);
+              const normTripRef = normalizeTripString(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName);
+              return !!(normSelected && normTripRef && normSelected === normTripRef);
+            }
           });
         }
         
@@ -243,7 +292,7 @@ export default function FinanceModule({ user }: { user: User }) {
             const actualTotalUSD = b.totals.baseTotalUSD ? b.totals.totalUSD : (b.totals.totalUSD - discUSD);
             const remLYD = actualTotalLYD - (b.paidLYD || 0);
             const remUSD = actualTotalUSD - (b.paidUSD || 0);
-            const trip = trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim());
+            const trip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id, b);
             return `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
               <td style="border: 1px solid #dee2e6; padding: 10px; text-align: center; font-weight: bold;">${b.regId}</td>
@@ -430,11 +479,11 @@ export default function FinanceModule({ user }: { user: User }) {
                       <tr key={b.id} className="hover:bg-white/5 transition-colors">
                         <td className="px-2 py-4 font-mono text-[10px] text-gold">{b.regId}</td>
                         <td className="px-2 py-4 text-white/40 text-[10px]">
-                          {trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim())?.name || '---'}
+                          {findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id, b)?.name || '---'}
                         </td>
                         <td className="px-2 py-4 font-medium text-xs">{b.headName}</td>
                         <td className="px-2 py-4 text-[10px] text-white/60">{getRoomSummary(b)}</td>
-                        <td className="px-2 py-4 text-[10px] text-gold font-bold">{b.exchangeRate || (trips.find(t => String(t.id).trim() === String(b.tripId || (b as any).tripid || (b as any).trip_id).trim())?.exchangeRate || '---')}</td>
+                        <td className="px-2 py-4 text-[10px] text-gold font-bold">{b.exchangeRate || (findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id, b)?.exchangeRate || '---')}</td>
                         
                         {/* LYD Section */}
                         <td className="px-2 py-4 bg-red-500/5 text-red-400 font-bold text-[10px]">

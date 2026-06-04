@@ -138,7 +138,22 @@ export default function BookingForm({ user }: { user: User }) {
         if (id) {
           const bookingToEdit = await api.getBookingById(id);
           if (bookingToEdit) {
-            setSelectedTripId(bookingToEdit.tripId);
+            // Locate trip robustly (by ID, by Name, or by tripid variants)
+            let resolvedTripId = bookingToEdit.tripId;
+            const bTripIdInput = String(bookingToEdit.tripId || (bookingToEdit as any).tripid || (bookingToEdit as any).trip_id || '').trim().toLowerCase();
+            const bTripNameInput = String((bookingToEdit as any).tripName || '').trim().toLowerCase();
+            
+            const matchedTrip = tripsData.find(t => 
+              String(t.id).trim().toLowerCase() === bTripIdInput ||
+              String(t.name).trim().toLowerCase() === bTripIdInput ||
+              (bTripNameInput && String(t.name).trim().toLowerCase() === bTripNameInput)
+            );
+            
+            if (matchedTrip) {
+              resolvedTripId = matchedTrip.id;
+            }
+
+            setSelectedTripId(resolvedTripId);
             setPassengerCount(bookingToEdit.passengerCount);
             setPilgrims(bookingToEdit.pilgrims);
             setMakkahHotel(bookingToEdit.makkahHotel || '');

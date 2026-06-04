@@ -6,6 +6,49 @@ import { motion } from 'motion/react';
 import { Search, MapPin, Trash2, FileSpreadsheet, FileText, Download, X, Save, CheckCircle2, Loader2, AlertCircle, CheckCircle, Info, XCircle } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 
+const normalizeTripString = (str: string): string => {
+  if (!str) return '';
+  const arabicNumbers = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+  let normalized = str;
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(arabicNumbers[i], String(i));
+  }
+  normalized = normalized.replace(/[-.\s\\_]+/g, '/');
+  normalized = normalized.trim().toLowerCase();
+  if (/^\d+(\/\d+)+$/.test(normalized)) {
+    normalized = normalized.split('/').map(part => {
+      const parsed = parseInt(part, 10);
+      return isNaN(parsed) ? part : String(parsed);
+    }).join('/');
+  }
+  return normalized;
+};
+
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  // 1. Try exact match first
+  const exactFound = tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    return tId === queryId || tName === queryId || (bTripName && tName === bTripName);
+  });
+  if (exactFound) return exactFound;
+
+  // 2. Try normalized comparison
+  const normQuery = normalizeTripString(queryId);
+  const normBookingName = normalizeTripString(bTripName);
+
+  return tripsList.find(t => {
+    const tId = normalizeTripString(t.id);
+    const tName = normalizeTripString(t.name);
+    return (normQuery && (tId === normQuery || tName === normQuery)) ||
+           (normBookingName && tName === normBookingName);
+  });
+};
+
 // Toast Component
 const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info' | 'warning', onClose: () => void }) => {
   const icons = {
@@ -259,9 +302,24 @@ export default function RoomingModule({ user }: { user: User }) {
     }))
     .filter(b => {
       if (b.pilgrims.length === 0) return false;
-      const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || '').trim().toLowerCase();
+      const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
       const sTripId = String(selectedTripId).trim().toLowerCase();
-      const matchesTrip = !selectedTripId || bTripId === sTripId;
+      
+      let matchesTrip = !selectedTripId;
+      if (selectedTripId) {
+        const selectedTrip = findTripRobust(trips, selectedTripId);
+        const resolvedTrip = findTripRobust(trips, b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName, b);
+        if (selectedTrip && resolvedTrip) {
+          matchesTrip = (selectedTrip.id === resolvedTrip.id);
+        } else {
+          const normSelected = normalizeTripString(selectedTripId);
+          const normTripRef = normalizeTripString(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName);
+          if (normSelected && normTripRef && normSelected === normTripRef) {
+            matchesTrip = true;
+          }
+        }
+      }
+      
       const matchesSearch = (b.headName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                             (b.regId?.toLowerCase() || '').includes(searchTerm.toLowerCase());
       return matchesTrip && matchesSearch;
@@ -283,7 +341,7 @@ export default function RoomingModule({ user }: { user: User }) {
       showToast('يرجى اختيار رحلة أولاً لتصدير البيانات', 'warning');
       return;
     }
-    const tripName = trips.find(t => String(t.id).trim() === String(selectedTripId).trim())?.name || 'رحلة';
+    const tripName = findTripRobust(trips, selectedTripId)?.name || 'رحلة';
     const data = filteredBookings.map(b => ({
       'رقم القيد': b.regId,
       'رب الأسرة': b.headName,
@@ -313,7 +371,7 @@ export default function RoomingModule({ user }: { user: User }) {
       return;
     }
     
-    const trip = trips.find(t => String(t.id) === String(selectedTripId));
+    const trip = findTripRobust(trips, selectedTripId);
     const tripName = trip?.name;
     const reportTitle = tripName ? `تقرير التسكين لرحلة ${tripName}` : 'تقرير التسكين';
     

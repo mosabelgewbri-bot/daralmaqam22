@@ -97,7 +97,29 @@ export const FinanceAnalytics: React.FC = () => {
 
   const filteredBookings = selectedTripId === 'all'
     ? bookings
-    : bookings.filter(b => b.tripId === selectedTripId);
+    : bookings.filter(b => {
+        const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+        const sTripId = String(selectedTripId).trim().toLowerCase();
+        
+        if (bTripId === sTripId) return true;
+        
+        const selectedTrip = trips.find(t => String(t.id).trim().toLowerCase() === sTripId);
+        const selectedTripName = selectedTrip ? String(selectedTrip.name).trim().toLowerCase() : '';
+        
+        if (selectedTripName && bTripId === selectedTripName) return true;
+        if (selectedTripName && (b as any).tripName && String((b as any).tripName).trim().toLowerCase() === selectedTripName) return true;
+        
+        const bookingTrip = trips.find(t => 
+          String(t.id).trim().toLowerCase() === bTripId || 
+          String(t.name).trim().toLowerCase() === bTripId
+        );
+        if (bookingTrip) {
+          const btId = String(bookingTrip.id).trim().toLowerCase();
+          const btName = String(bookingTrip.name).trim().toLowerCase();
+          return btId === sTripId || (selectedTripName && btName === selectedTripName);
+        }
+        return false;
+      });
 
   // Financial Metrics
   const calculateFinancialMetrics = () => {
@@ -393,7 +415,10 @@ export const FinanceAnalytics: React.FC = () => {
 
   const getTripProfitabilityData = () => {
     return trips.slice(0, 8).map(trip => {
-      const tripBookings = bookings.filter(b => b.tripId === trip.id);
+      const tripBookings = bookings.filter(b => {
+         const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || '').trim().toLowerCase();
+         return bTripId === String(trip.id).trim().toLowerCase();
+      });
       const revenue = tripBookings.reduce((sum, b) => sum + (b.paidLYD || 0), 0);
       const cost = trip.costs ? (
         (trip.costs.flightLYD || 0) + 

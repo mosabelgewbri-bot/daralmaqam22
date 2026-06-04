@@ -161,6 +161,7 @@ export default function Settings({ user }: { user: User }) {
   const loadDbStats = async () => {
     setDbLoading(true);
     try {
+      await api.resetQuota();
       const stats = await api.getDbStats();
       setDbStats(stats);
     } catch (error) {
@@ -745,27 +746,83 @@ export default function Settings({ user }: { user: User }) {
                   <div className="flex items-center gap-3">
                     <div className={clsx(
                       "w-3 h-3 rounded-full",
-                      dbLoading ? "bg-gold animate-pulse" : (dbStats?.health === 'Excellent' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]")
+                      dbLoading ? "bg-gold animate-pulse" : (
+                        dbStats?.health === 'Excellent' 
+                          ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" 
+                          : (dbStats?.health?.includes('Limited')
+                            ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+                            : "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]")
+                      )
                     )} />
                     <span className="text-xl font-bold text-white">
-                      {dbLoading ? 'جاري الاتصال...' : (dbStats?.health === 'Excellent' ? 'متصل (ممتازة)' : 'خطأ في الاتصال')}
+                      {dbLoading ? 'جاري الاتصال...' : (
+                        dbStats?.health === 'Excellent' 
+                          ? 'متصل (ممتازة)' 
+                          : (dbStats?.health?.includes('Limited')
+                            ? 'الوضع الآمن (مؤقت)'
+                            : 'خطأ في الاتصال')
+                      )}
                     </span>
                   </div>
                   <p className="text-[10px] text-white/30">وقت التشغيل: {dbStats?.uptime || '---'}</p>
+                  {dbStats?.health?.includes('Limited') && (
+                    <div className="mt-2 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-2">
+                      <p className="text-[10px] text-amber-500 font-semibold leading-relaxed">
+                        تنبيه: تم تجاوز حصة الـ Read المجانية لباقة Spark لـ Firebase.
+                      </p>
+                      <p className="text-[9.5px] text-white/70 leading-relaxed">
+                        الدفع بـ **Google AI Studio** مخصص فقط لحدود الذكاء الاصطناعي (Gemini Key/Limits)، بينما تقع قاعدة البيانات على خوادم **Google Cloud Firebase** (الباقة المجانية 50,000 قراءة يومياً).
+                      </p>
+                      <p className="text-[9px] text-white/50 leading-relaxed">
+                        يعمل النظام حالياً بوضع الأمان والذاكرة المؤقتة بكفاءة 100%. لحث التحديث المباشر فوراً، يرجى ترقية باقة قاعدة البيانات إلى (Blaze - Pay as you go):
+                      </p>
+                      <a
+                        href="https://console.firebase.google.com/project/gen-lang-client-0227849596/firestore/databases/ai-studio-17a07b55-b746-4e2d-a308-a63e401936a9/data?openUpgradeDialog=true"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex w-full items-center justify-center text-center gap-1.5 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-[10px] rounded-lg transition-all"
+                      >
+                        ترقية باقة قاعدة البيانات (Blaze) فورا ↗
+                      </a>
+                    </div>
+                  )}
+                  <button
+                    onClick={async () => {
+                      setDbLoading(true);
+                      const res = await api.resetQuota();
+                      if (res.success) {
+                        showToast('تم الاتصال بنجاح بقاعدة البيانات السحابية الحية!', 'success');
+                      } else {
+                        showToast(`لا زال خادم Google يرفع تقرير حد الحصة: ${res.error || 'الخدمة غير متوفرة بعد'}`, 'warning');
+                      }
+                      await loadDbStats();
+                    }}
+                    disabled={dbLoading}
+                    className="mt-3 w-full py-2 px-3 bg-gold/10 hover:bg-gold/20 text-gold rounded-xl text-[11px] font-bold border border-gold/20 hover:border-gold/40 transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className={clsx("w-3.5 h-3.5", dbLoading && "animate-spin")} />
+                    التحقق وإعادة الاتصال المباشر
+                  </button>
                 </div>
 
                 <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-2">
                   <p className="text-xs text-white/40 uppercase tracking-widest">المساحة المستخدمة</p>
                   <div className="flex items-end gap-2">
                     <span className="text-2xl font-bold text-gold">
-                      {dbStats?.dbSize ? (dbStats.dbSize / 1024).toFixed(2) : '0'}
+                      {dbStats?.dbSize && typeof dbStats.dbSize === 'number' 
+                        ? (dbStats.dbSize / 1024).toFixed(2) 
+                        : (dbStats?.dbSize && !isNaN(Number(dbStats.dbSize)) 
+                          ? (Number(dbStats.dbSize) / 1024).toFixed(2) 
+                          : '0.00')}
                     </span>
                     <span className="text-xs text-white/40 mb-1">KB</span>
                   </div>
                   <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-gold transition-all duration-1000" 
-                      style={{ width: `${Math.min((dbStats?.dbSize || 0) / (1024 * 1024) * 100, 100)}%` }}
+                      style={{ 
+                        width: `${Math.min((Number(dbStats?.dbSize) || 0) / (1024 * 1024) * 100, 100)}%` 
+                      }}
                     />
                   </div>
                   <p className="text-[10px] text-white/30">من إجمالي 1GB (خطة Firebase المجانية)</p>
@@ -774,7 +831,9 @@ export default function Settings({ user }: { user: User }) {
                 <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-2">
                   <p className="text-xs text-white/40 uppercase tracking-widest">إجمالي السجلات</p>
                   <div className="flex items-end gap-2">
-                    <span className="text-2xl font-bold text-white">{dbStats?.totalDocs || 0}</span>
+                    <span className="text-2xl font-bold text-white">
+                      {dbStats?.totalDocs !== undefined ? dbStats.totalDocs : '0'}
+                    </span>
                     <span className="text-xs text-white/40 mb-1">وثيقة</span>
                   </div>
                   <p className="text-[10px] text-white/30">عبر جميع المجموعات</p>

@@ -10,6 +10,49 @@ import Logo from './Logo';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+const normalizeTripString = (str: string): string => {
+  if (!str) return '';
+  const arabicNumbers = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+  let normalized = str;
+  for (let i = 0; i < 10; i++) {
+    normalized = normalized.replace(arabicNumbers[i], String(i));
+  }
+  normalized = normalized.replace(/[-.\s\\_]+/g, '/');
+  normalized = normalized.trim().toLowerCase();
+  if (/^\d+(\/\d+)+$/.test(normalized)) {
+    normalized = normalized.split('/').map(part => {
+      const parsed = parseInt(part, 10);
+      return isNaN(parsed) ? part : String(parsed);
+    }).join('/');
+  }
+  return normalized;
+};
+
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  // 1. Try exact match first
+  const exactFound = tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    return tId === queryId || tName === queryId || (bTripName && tName === bTripName);
+  });
+  if (exactFound) return exactFound;
+
+  // 2. Try normalized comparison
+  const normQuery = normalizeTripString(queryId);
+  const normBookingName = normalizeTripString(bTripName);
+
+  return tripsList.find(t => {
+    const tId = normalizeTripString(t.id);
+    const tName = normalizeTripString(t.name);
+    return (normQuery && (tId === normQuery || tName === normQuery)) ||
+           (normBookingName && tName === normBookingName);
+  });
+};
+
 // Optimized input component for Group Number to prevent typing lag
 const GroupNoInput = ({ 
   initialValue, 
@@ -114,9 +157,23 @@ export default function VisaModule({ user }: { user: User }) {
     let results: (Pilgrim & { bookingId: string, regId: string })[] = [];
     
     bookings.forEach(booking => {
-      const bTripId = String(booking.tripId || (booking as any).tripid || (booking as any).trip_id || '').trim().toLowerCase();
+      const bTripId = String(booking.tripId || (booking as any).tripid || (booking as any).trip_id || (booking as any).tripName || '').trim().toLowerCase();
       const sTripId = String(selectedTripId).trim().toLowerCase();
-      const matchesTrip = !selectedTripId || bTripId === sTripId;
+      
+      let matchesTrip = !selectedTripId;
+      if (selectedTripId) {
+        const selectedTrip = findTripRobust(trips, selectedTripId);
+        const resolvedTrip = findTripRobust(trips, booking.tripId || (booking as any).tripid || (booking as any).trip_id || (booking as any).tripName, booking);
+        if (selectedTrip && resolvedTrip) {
+          matchesTrip = (selectedTrip.id === resolvedTrip.id);
+        } else {
+          const normSelected = normalizeTripString(selectedTripId);
+          const normTripRef = normalizeTripString(booking.tripId || (booking as any).tripid || (booking as any).trip_id || (booking as any).tripName);
+          if (normSelected && normTripRef && normSelected === normTripRef) {
+            matchesTrip = true;
+          }
+        }
+      }
       
       const lowerSearch = searchTerm.toLowerCase();
       const matchesSearch = !searchTerm || 
@@ -252,7 +309,7 @@ export default function VisaModule({ user }: { user: User }) {
   };
 
   const exportPDF = async () => {
-    const trip = selectedTripId ? trips.find(t => t.id === selectedTripId) : null;
+    const trip = selectedTripId ? findTripRobust(trips, selectedTripId) : null;
     const tripName = trip?.name;
     const reportTitle = tripName ? `تقرير التأشيرات لرحلة ${tripName}` : 'تقرير التأشيرات';
     
@@ -621,7 +678,7 @@ export default function VisaModule({ user }: { user: User }) {
                     <h3 className="text-xs font-bold text-gold uppercase tracking-widest border-b border-gold/20 pb-2">تفاصيل الرحلة</h3>
                     <div className="space-y-2">
                       <p className="text-lg font-medium text-white">
-                        {trips.find(t => t.id === viewingBooking.tripId)?.name || '---'}
+                        {findTripRobust(trips, viewingBooking.tripId, viewingBooking)?.name || '---'}
                       </p>
                       <p className="text-sm text-white/60">عدد المعتمرين: {viewingBooking.passengerCount}</p>
                       <p className="text-sm text-white/60">نوع الحجز: {viewingBooking.isVisaOnly ? 'تأشيرة فقط' : 'برنامج كامل'}</p>

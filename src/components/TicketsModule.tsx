@@ -25,6 +25,21 @@ import Logo from './Logo';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
+const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) => {
+  const queryId = String(tripIdOrName || '').trim().toLowerCase();
+  const bTripName = bookingObj ? String(bookingObj.tripName || (bookingObj as any).tripName || '').trim().toLowerCase() : '';
+  if (!queryId && !bTripName) return undefined;
+  
+  return tripsList.find(t => {
+    const tId = String(t.id).trim().toLowerCase();
+    const tName = String(t.name).trim().toLowerCase();
+    
+    return tId === queryId || 
+           tName === queryId || 
+           (bTripName && tName === bTripName);
+  });
+};
+
 export default function TicketsModule({ user }: { user: User }) {
   const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -80,7 +95,35 @@ export default function TicketsModule({ user }: { user: User }) {
     }))
     .filter(b => {
       if (b.pilgrims.length === 0) return false;
-      const matchesTrip = !selectedTripId || b.tripId === selectedTripId;
+      const bTripId = String(b.tripId || (b as any).tripid || (b as any).trip_id || (b as any).tripName || '').trim().toLowerCase();
+      const sTripId = String(selectedTripId).trim().toLowerCase();
+      
+      let matchesTrip = !selectedTripId;
+      if (selectedTripId) {
+        if (bTripId === sTripId) {
+          matchesTrip = true;
+        } else {
+          const selectedTrip = trips.find(t => String(t.id).trim().toLowerCase() === sTripId);
+          const selectedTripName = selectedTrip ? String(selectedTrip.name).trim().toLowerCase() : '';
+          
+          if (selectedTripName && bTripId === selectedTripName) {
+            matchesTrip = true;
+          } else if (selectedTripName && (b as any).tripName && String((b as any).tripName).trim().toLowerCase() === selectedTripName) {
+            matchesTrip = true;
+          } else {
+            const bookingTrip = trips.find(t => 
+              String(t.id).trim().toLowerCase() === bTripId || 
+              String(t.name).trim().toLowerCase() === bTripId
+            );
+            if (bookingTrip) {
+              const btId = String(bookingTrip.id).trim().toLowerCase();
+              const btName = String(bookingTrip.name).trim().toLowerCase();
+              matchesTrip = btId === sTripId || (selectedTripName && btName === selectedTripName);
+            }
+          }
+        }
+      }
+      
       const matchesSearch = !searchTerm || 
         b.headName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.regId.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -200,7 +243,7 @@ export default function TicketsModule({ user }: { user: User }) {
     }
   };
 
-  const selectedTrip = trips.find(t => t.id === selectedTripId);
+  const selectedTrip = findTripRobust(trips, selectedTripId);
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-8 pb-20 text-right" dir="rtl">
@@ -337,7 +380,7 @@ export default function TicketsModule({ user }: { user: User }) {
                     </thead>
                     <tbody className="divide-y divide-white/5 print:divide-gray-300">
                       {(booking.pilgrims || []).map((pilgrim, pIdx) => {
-                        const trip = trips.find(t => t.id === booking.tripId);
+                        const trip = findTripRobust(trips, booking.tripId, booking);
                         return (
                           <tr key={`${booking.id}-${pIdx}`} className="hover:bg-white/[0.02] transition-colors group print:text-black">
                             <td className="px-4 py-4 text-center text-[10px] text-white/20 group-hover:text-gold print:text-gray-400">
