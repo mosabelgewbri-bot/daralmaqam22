@@ -11,6 +11,7 @@
 }
 
 :root {
+  color-scheme: dark !important;
   --primary-gold: #d4af37;
   --primary-gold-light: #f1d592;
   --primary-gold-glow: rgba(212, 175, 55, 0.3);
@@ -44,6 +45,23 @@
     font-family: var(--font-sans);
     direction: rtl;
     background-attachment: fixed;
+  }
+
+  html, body {
+    color-scheme: dark !important;
+  }
+
+  select {
+    background-color: #121212 !important;
+    color: white !important;
+    color-scheme: dark !important;
+  }
+
+  select option {
+    background-color: #121212 !important;
+    color: white !important;
+    color-scheme: dark !important;
+    padding: 8px !important;
   }
 }
 
