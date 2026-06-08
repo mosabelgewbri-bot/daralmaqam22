@@ -8,6 +8,151 @@ import { clsx } from 'clsx';
 import Logo from './Logo';
 import html2canvas from 'html2canvas';
 
+const generateCardSVG = (
+  p: { name?: string; makkahHotel?: string; madinahHotel?: string },
+  makkahRep: string,
+  madinahRep: string,
+  hideDefaultHeader: boolean,
+  cardBackground?: string | null,
+  excludeBackground: boolean = false,
+  textOffset: number = 170
+) => {
+  const width = 400;
+  const height = 564;
+  
+  const cairoFontSvg = `
+    text {
+      font-family: 'Arial', 'Helvetica', 'sans-serif';
+    }
+  `;
+
+  let backgroundMarkup = '';
+  if (cardBackground && !excludeBackground) {
+    backgroundMarkup = `<image href="${cardBackground}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />`;
+  } else {
+    backgroundMarkup = `
+      <!-- Solid White Card Background -->
+      <rect width="${width}" height="${height}" rx="30" fill="#ffffff" stroke="#eeeeee" stroke-width="1.5" />
+    `;
+  }
+
+  let headerMarkup = '';
+  if (!hideDefaultHeader) {
+    headerMarkup = `
+      <!-- Header dark background with curved shape and gold border -->
+      <path d="M 0 0 L 400 0 L 400 125 C 320 155, 80 155, 0 125 Z" fill="#000000" />
+      <path d="M 0 125 C 80 155, 320 155, 400 125" fill="none" stroke="#d5a933" stroke-width="4" />
+      
+      <!-- Brand Text -->
+      <text x="210" y="65" fill="#ffffff" font-size="34" font-weight="900" text-anchor="start">دار</text>
+      <text x="145" y="65" fill="#d5a933" font-size="34" font-weight="900" text-anchor="start">المقام</text>
+      <text x="200" y="98" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle" opacity="0.9">للخدمات السياحية والحج والعمرة</text>
+      
+      <!-- Crescent ornament / Star watermark in header -->
+      <g transform="translate(75, 62) scale(0.65)">
+        <rect x="-22" y="-22" width="44" height="44" rx="5" fill="none" stroke="#d5a933" stroke-width="3" transform="rotate(0)" />
+        <rect x="-22" y="-22" width="44" height="44" rx="5" fill="none" stroke="#d5a933" stroke-width="3" transform="rotate(45)" />
+        <circle cx="0" cy="0" r="11" fill="none" stroke="#d5a933" stroke-width="2" />
+        <path d="M -5 0 L 5 0 M 0 -5 L 0 5" stroke="#d5a933" stroke-width="2" />
+      </g>
+    `;
+  }
+
+  let watermarkMarkup = '';
+  if (!cardBackground || excludeBackground) {
+    watermarkMarkup = `
+      <!-- Centered watermark logo -->
+      <g transform="translate(200, 320) scale(1.8)" opacity="0.04" fill="none" stroke="#d5a933" stroke-width="2" pointer-events="none">
+         <rect x="-30" y="-30" width="60" height="60" rx="6" transform="rotate(0)" />
+         <rect x="-30" y="-30" width="60" height="60" rx="6" transform="rotate(30)" />
+         <rect x="-30" y="-30" width="60" height="60" rx="6" transform="rotate(60)" />
+         <circle cx="0" cy="0" r="15" />
+      </g>
+    `;
+  }
+
+  const escapeXml = (unsafe: string) => {
+    return unsafe.replace(/[<>&'"]/g, (c) => {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '\'': return '&apos;';
+        case '"': return '&quot;';
+        default: return c;
+      }
+    });
+  };
+
+  const nameEscaped = escapeXml(p.name || '---');
+  const makkahHotelEscaped = escapeXml(p.makkahHotel || '---');
+  const madinahHotelEscaped = escapeXml(p.madinahHotel || '---');
+  const makkahRepEscaped = escapeXml(makkahRep || '---');
+  const madinahRepEscaped = escapeXml(madinahRep || '---');
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+  <defs>
+    <style type="text/css">
+      ${cairoFontSvg}
+    </style>
+  </defs>
+  
+  ${backgroundMarkup}
+  
+  ${watermarkMarkup}
+  
+  ${headerMarkup}
+  
+  <!-- Content Area -->
+  <g transform="translate(0, 0)">
+    <!-- Label: Full Name -->
+    <text x="200" y="${hideDefaultHeader ? textOffset : 190}" fill="#d5a933" font-size="13" font-weight="700" text-anchor="middle">الاسم الكامل للمعتمر</text>
+    
+    <!-- Customer Name (Main editable textbox) -->
+    <text x="200" y="${hideDefaultHeader ? textOffset + 35 : 230}" fill="#1a1a1a" font-size="24" font-weight="950" text-anchor="middle" id="editable-name">${nameEscaped}</text>
+    
+    <!-- Underline divider under name -->
+    <line x1="50" y1="${hideDefaultHeader ? textOffset + 55 : 255}" x2="350" y2="${hideDefaultHeader ? textOffset + 55 : 255}" stroke="#f1f1f1" stroke-width="2" />
+    
+    <!-- Makkah Hotel Block -->
+    <g transform="translate(110, ${hideDefaultHeader ? textOffset + 85 : 290})">
+      <circle cx="0" cy="-22" r="11" fill="none" stroke="#d5a933" stroke-width="1.5" />
+      <text x="0" y="-18" fill="#d5a933" font-size="11" font-weight="800" text-anchor="middle">H</text>
+      <text x="0" y="5" fill="#d5a933" font-size="12" font-weight="700" text-anchor="middle">فندق مكة</text>
+      <text x="0" y="32" fill="#333333" font-size="14" font-weight="800" text-anchor="middle">${makkahHotelEscaped}</text>
+      <line x1="-65" y1="44" x2="65" y2="44" stroke="#e0e0e0" stroke-dasharray="3,3" stroke-width="1.5" />
+    </g>
+    
+    <!-- Madinah Hotel Block -->
+    <g transform="translate(290, ${hideDefaultHeader ? textOffset + 85 : 290})">
+      <circle cx="0" cy="-22" r="11" fill="none" stroke="#d5a933" stroke-width="1.5" />
+      <text x="0" y="-18" fill="#d5a933" font-size="11" font-weight="800" text-anchor="middle">H</text>
+      <text x="0" y="5" fill="#d5a933" font-size="12" font-weight="700" text-anchor="middle">فندق المدينة</text>
+      <text x="0" y="32" fill="#333333" font-size="14" font-weight="800" text-anchor="middle">${madinahHotelEscaped}</text>
+      <line x1="-65" y1="44" x2="65" y2="44" stroke="#e0e0e0" stroke-dasharray="3,3" stroke-width="1.5" />
+    </g>
+    
+    <!-- Footer Representatives Container Box -->
+    <g transform="translate(35, ${hideDefaultHeader ? textOffset + 180 : 395})">
+      <rect x="0" y="0" width="330" height="74" rx="18" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" />
+      <line x1="165" y1="12" x2="165" y2="62" stroke="#eeeeee" stroke-width="1.5" />
+      
+      <!-- Makkah Representative block -->
+      <text x="82.5" y="26" fill="#777777" font-size="10" font-weight="700" text-anchor="middle">مندوب مكة</text>
+      <text x="82.5" y="52" fill="#000000" font-size="15" font-weight="900" text-anchor="middle" letter-spacing="0.5">${makkahRepEscaped}</text>
+      
+      <!-- Madinah Representative block -->
+      <text x="247.5" y="26" fill="#777777" font-size="10" font-weight="700" text-anchor="middle">مندوب المدينة</text>
+      <text x="247.5" y="52" fill="#000000" font-size="15" font-weight="900" text-anchor="middle" letter-spacing="0.5">${madinahRepEscaped}</text>
+    </g>
+    
+    <!-- Campaign slogan / Bottom branding -->
+    <text x="200" y="${hideDefaultHeader ? textOffset + 280 : 510}" fill="#777777" font-size="11" font-weight="700" text-anchor="middle">للخدمات السياحية والحج والعمرة</text>
+  </g>
+</svg>`;
+};
+
 export default function PilgrimCardsModule({ user }: { user: User }) {
   const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -18,6 +163,7 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
   const [madinahRep, setMadinahRep] = useState('');
   const [cardBackground, setCardBackground] = useState<string | null>(null);
   const [hideDefaultHeader, setHideDefaultHeader] = useState(false);
+  const [textOffset, setTextOffset] = useState(170);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState<number | null>(null);
 
@@ -54,6 +200,7 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
         if (settings.madinah_rep) setMadinahRep(settings.madinah_rep);
         if (settings.card_background) setCardBackground(settings.card_background);
         if (settings.hide_default_header === 'true') setHideDefaultHeader(true);
+        if (settings.card_text_offset) setTextOffset(Number(settings.card_text_offset));
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -138,29 +285,42 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
     }
   };
 
-  const handleExportToCanva = async (index: number, name: string) => {
+  const handleExportToCanva = async (index: number, name: string, format: 'png' | 'svg' = 'svg') => {
     const cardElement = document.getElementById(`card-${index}`);
     if (!cardElement) return;
 
     setExporting(index);
     try {
-      // Create a high-quality canvas
-      const canvas = await html2canvas(cardElement, {
-        scale: 3, // High resolution for Canva
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
+      if (format === 'svg') {
+        const p = allPilgrims[index];
+        const svgContent = generateCardSVG(p, makkahRep, madinahRep, hideDefaultHeader, cardBackground, true, textOffset);
+        const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `بطاقة_${name}_قابلة_للتعديل.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('تم تحميل تصميم البطاقة (SVG). اسحبه الآن إلى Canva وسيكون النص قابلاً للتعديل بالكامل!', 'success');
+      } else {
+        // Create a high-quality canvas
+        const canvas = await html2canvas(cardElement, {
+          scale: 3, // High resolution for Canva
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
 
-      const imgData = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = `بطاقة_${name}_${new Date().getTime()}.png`;
-      link.href = imgData;
-      link.click();
-      
-      // Optional: Inform user they can now upload to Canva
-      // showToast('تم تحميل البطاقة بجودة عالية. يمكنك الآن رفعها إلى Canva.', 'success');
+        const imgData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `بطاقة_${name}_${new Date().getTime()}.png`;
+        link.href = imgData;
+        link.click();
+        showToast('تم تحميل البطاقة كصورة PNG ثابتة.', 'success');
+      }
     } catch (error) {
       console.error('Export error:', error);
       showToast('حدث خطأ أثناء التصدير', 'error');
@@ -169,31 +329,51 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
     }
   };
 
-  const handleExportAll = async () => {
+  const handleExportAll = async (format: 'png' | 'svg' = 'svg') => {
     if (allPilgrims.length === 0) return;
     setExporting(-1); // Special value for "all"
     
     try {
-      // Create a temporary container for all cards to ensure they are rendered for export
-      for (let i = 0; i < allPilgrims.length; i++) {
-        const p = allPilgrims[i];
-        const cardElement = document.getElementById(`card-${i}`);
-        if (cardElement) {
-          const canvas = await html2canvas(cardElement, {
-            scale: 3,
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: '#ffffff',
-            logging: false
-          });
-          const imgData = canvas.toDataURL('image/png');
+      if (format === 'svg') {
+        for (let i = 0; i < allPilgrims.length; i++) {
+          const p = allPilgrims[i];
+          const svgContent = generateCardSVG(p, makkahRep, madinahRep, hideDefaultHeader, cardBackground, true, textOffset);
+          const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
-          link.download = `بطاقة_${p.name}_${i + 1}.png`;
-          link.href = imgData;
+          link.href = url;
+          link.download = `بطاقة_${p.name || 'معتمر'}_قابلة_للتعديل.svg`;
+          document.body.appendChild(link);
           link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
           // Small delay to prevent browser blocking multiple downloads
-          await new Promise(resolve => setTimeout(resolve, 600));
+          await new Promise(resolve => setTimeout(resolve, 300));
         }
+        showToast('تم تحميل جميع البطاقات كملفات SVG قابلة للتعديل في Canva بنجاح!', 'success');
+      } else {
+        // Create a temporary container for all cards to ensure they are rendered for export
+        for (let i = 0; i < allPilgrims.length; i++) {
+          const p = allPilgrims[i];
+          const cardElement = document.getElementById(`card-${i}`);
+          if (cardElement) {
+            const canvas = await html2canvas(cardElement, {
+              scale: 3,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+              logging: false
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `بطاقة_${p.name}_${i + 1}.png`;
+            link.href = imgData;
+            link.click();
+            // Small delay to prevent browser blocking multiple downloads
+            await new Promise(resolve => setTimeout(resolve, 600));
+          }
+        }
+        showToast('تم تحميل جميع البطاقات كصور PNG بنجاح.', 'success');
       }
     } catch (error) {
       console.error('Export all error:', error);
@@ -203,19 +383,63 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
     }
   };
 
+  const compressAndResizeImage = (base64Str: string, maxWidth = 1200, maxHeight = 1692): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Maintain original aspect ratio but scale down if exceeding limits
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(base64Str);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        // Compress as JPEG with higher quality (0.92) to keep text and fine-print graphics like logos crystal clear
+        const compressed = canvas.toDataURL('image/jpeg', 0.92);
+        resolve(compressed);
+      };
+      img.onerror = (err) => {
+        reject(err);
+      };
+    });
+  };
+
   const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    showToast('جاري معالجة وضغط التصميم المستورد...', 'info');
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
-      setCardBackground(base64);
       try {
-        await api.saveSettings({ card_background: base64 });
+        const optimizedBase64 = await compressAndResizeImage(base64);
+        setCardBackground(optimizedBase64);
+        await api.saveSettings({ card_background: optimizedBase64 });
+        showToast('تم استيراد خلفية Canva وحفظها بنجاح كخلفية لجميع البطاقات!', 'success');
       } catch (err) {
-        console.error('Error saving background:', err);
+        console.error('Error optimizing/saving background:', err);
+        showToast('حدث خطأ أثناء معالجة وحفظ الصورة. يرجى محاولة استخدام صورة أخرى.', 'error');
       }
+    };
+    reader.onerror = () => {
+      showToast('خطأ في قراءة ملف الصورة.', 'error');
     };
     reader.readAsDataURL(file);
   };
@@ -264,12 +488,22 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
             onChange={handleBackgroundUpload}
           />
           <button
-            onClick={handleExportAll}
+            onClick={() => handleExportAll('svg')}
             disabled={exporting !== null || allPilgrims.length === 0}
-            className="flex items-center gap-2 px-6 py-3 bg-white/5 text-white font-bold rounded-xl hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-3 bg-gold/10 text-gold font-bold rounded-xl hover:bg-gold/20 transition-all border border-gold/20 disabled:opacity-50 text-sm"
+            title="تصدير كل البطاقات كملفات SVG قابلة للتعديل بالكامل في Canva"
           >
             {exporting === -1 ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-            تصدير الكل لـ Canva
+            تصدير الكل (SVG قابل للتعديل)
+          </button>
+          <button
+            onClick={() => handleExportAll('png')}
+            disabled={exporting !== null || allPilgrims.length === 0}
+            className="flex items-center gap-2 px-4 py-3 bg-white/5 text-white/80 font-bold rounded-xl hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 text-sm"
+            title="تصدير كل البطاقات كصور PNG ثابتة"
+          >
+            {exporting === -1 ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
+            تصدير الكل (صور PNG)
           </button>
           <button
             onClick={handlePrint}
@@ -318,6 +552,23 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                 >
                   {hideDefaultHeader ? "إظهار الهيدر" : "إخفاء الهيدر"}
                 </button>
+                {hideDefaultHeader && (
+                  <div className="flex flex-col gap-1 px-3 py-1 bg-white/5 rounded-lg border border-white/10 min-w-[200px] justify-center">
+                    <div className="flex justify-between items-center text-[11px] text-white/50">
+                      <span>إزاحة البيانات للأسفل</span>
+                      <span className="text-gold font-bold">{textOffset} بكسل</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="80"
+                      max="280"
+                      step="5"
+                      value={textOffset}
+                      onChange={(e) => setTextOffset(Number(e.target.value))}
+                      className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-gold"
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -383,7 +634,8 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                   await api.saveSettings({ 
                     makkah_rep: makkahRep, 
                     madinah_rep: madinahRep,
-                    hide_default_header: String(hideDefaultHeader)
+                    hide_default_header: String(hideDefaultHeader),
+                    card_text_offset: String(textOffset)
                   });
                   showToast('تم حفظ الإعدادات بنجاح', 'success');
                 } catch (e) {
@@ -406,12 +658,13 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
               <div key={idx} className="space-y-4 no-print-container">
                 <div 
                   id={`card-${idx}`}
-                  className="card mx-auto print:shadow-none print:border-none print:rounded-none print:m-0 print:p-0"
+                  className={clsx("card mx-auto print:shadow-none print:border-none print:rounded-none print:m-0 print:p-0", hideDefaultHeader && "hide-header")}
                   style={{ 
                     pageBreakAfter: 'always',
-                    backgroundImage: cardBackground ? `url(${cardBackground})` : 'none',
+                    backgroundImage: cardBackground ? `url("${cardBackground}")` : 'none',
                     backgroundSize: 'cover',
-                    backgroundPosition: 'center'
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat'
                   }}
                 >
                   {/* الهيدر */}
@@ -430,7 +683,13 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                   )}
 
                   {/* المحتوى */}
-                  <div className={clsx("content", hideDefaultHeader && "pt-24")}>
+                  <div 
+                    className="content"
+                    style={{
+                      paddingTop: hideDefaultHeader ? `${textOffset}px` : '15px',
+                      height: hideDefaultHeader ? '100%' : 'calc(100% - 140px)'
+                    }}
+                  >
                       {!cardBackground && (
                         <svg className="watermark" viewBox="0 0 100 100">
                             <rect width="100" height="100" fill="black"/>
@@ -438,7 +697,7 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                         </svg>
                       )}
 
-                      <span className="field-label">الاسم الكامل للعميل</span>
+                      <span className="field-label">الاسم الكامل للمعتمر</span>
                       <div className="name-display">{p.name || '---'}</div>
 
                       <div className="grid-container">
@@ -476,15 +735,27 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                   </div>
                 </div>
                 
-                <div className="flex justify-center gap-2 no-print">
-                  <button 
-                    onClick={() => handleExportToCanva(idx, p.name || 'معتمر')}
-                    disabled={exporting !== null}
-                    className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg border border-white/10 text-xs font-bold flex items-center justify-center gap-2 transition-all"
-                  >
-                    {exporting === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImageIcon className="w-3 h-3" />}
-                    تصدير لـ Canva
-                  </button>
+                <div className="flex justify-center items-stretch gap-2 no-print w-full">
+                  <div className="flex-1 flex flex-col gap-1.5">
+                    <button 
+                      onClick={() => handleExportToCanva(idx, p.name || 'معتمر', 'svg')}
+                      disabled={exporting !== null}
+                      className="w-full py-1.5 bg-gold/10 hover:bg-gold/20 text-gold rounded-lg border border-gold/20 text-[11px] font-bold flex items-center justify-center gap-1 transition-all"
+                      title="تصدير كـ SVG ليكون النص قابلاً للتعديل في Canva"
+                    >
+                      {exporting === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                      تصميم قابل للتعديل (SVG)
+                    </button>
+                    <button 
+                      onClick={() => handleExportToCanva(idx, p.name || 'معتمر', 'png')}
+                      disabled={exporting !== null}
+                      className="w-full py-1.5 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg border border-white/10 text-[11px] font-bold flex items-center justify-center gap-1 transition-all"
+                      title="تصدير كصورة PNG ثابتة"
+                    >
+                      {exporting === idx ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImageIcon className="w-3 h-3" />}
+                      صورة ثابتة (PNG)
+                    </button>
+                  </div>
                   <button 
                     onClick={() => {
                       // Print single card logic
@@ -531,7 +802,7 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
                         printWindow.document.close();
                       }
                     }}
-                    className="p-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg border border-white/10 transition-all"
+                    className="px-3 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg border border-white/10 transition-all flex items-center justify-center self-stretch"
                     title="طباعة هذه البطاقة"
                   >
                     <Printer className="w-4 h-4" />
@@ -578,7 +849,10 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
             width: 100%;
             max-width: 400px;
             aspect-ratio: 105 / 148;
-            background: var(--light-bg);
+            background-color: var(--light-bg);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             border-radius: 30px;
             overflow: hidden;
             box-shadow: 0 15px 35px rgba(0,0,0,0.1);
@@ -587,6 +861,33 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
             direction: rtl;
             text-align: right;
             font-family: 'Cairo', sans-serif;
+        }
+
+        /* Compact Mode Styling when Custom Canva Background is Selected & Header is Hidden */
+        .card.hide-header .name-display {
+            font-size: 22px;
+            margin-bottom: 12px;
+            padding-bottom: 4px;
+        }
+
+        .card.hide-header .grid-container {
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .card.hide-header .footer-section {
+            margin-top: 5px;
+            margin-bottom: 5px;
+            padding: 10px;
+            background: #ffffff;
+            border: 1.5px solid #e2e8f0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+
+        .card.hide-header .slogan-text {
+            margin-top: auto;
+            padding-top: 2px;
+            font-size: 10px;
         }
 
         .header {
@@ -699,7 +1000,10 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
         }
 
         .info-block {
-            background: #fff;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(4px);
+            border-radius: 12px;
+            padding: 8px 4px;
         }
 
         .info-header {
@@ -733,10 +1037,11 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
         }
 
         .footer-section {
-            background: #fcfcfc;
+            background: #ffffff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             border-radius: 20px;
             padding: 12px;
-            border: 1px solid #f0f0f0;
+            border: 1.5px solid #e2e8f0;
             margin-top: auto;
         }
 
@@ -751,14 +1056,15 @@ export default function PilgrimCardsModule({ user }: { user: User }) {
 
         .rep-label {
             font-size: 10px;
-            color: var(--text-muted);
+            color: #4b5563; /* Deep gray for label contrast */
+            font-weight: 700;
             margin-bottom: 3px;
         }
 
         .phone-val {
-            font-size: 16px;
+            font-size: 18px; /* Larger phone font */
             font-weight: 900;
-            color: var(--text-dark);
+            color: #000000; /* Pure black for supreme contrast */
             direction: ltr;
         }
 

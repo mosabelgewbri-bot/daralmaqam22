@@ -160,6 +160,7 @@ export default function InvoicesModule({ user }: { user: User }) {
     printWindow.style.color = '#000000';
     printWindow.style.padding = '50px';
     printWindow.style.direction = 'rtl';
+    printWindow.style.fontFamily = "'Cairo', 'Arial', 'Segoe UI', sans-serif";
     printWindow.dir = 'rtl';
     
     printWindow.innerHTML = `
@@ -169,63 +170,63 @@ export default function InvoicesModule({ user }: { user: User }) {
         </div>
         <div style="flex: 1;">
           <h1 style="font-size: 56px; color: #d4af37; margin: 0; font-family: 'Amiri', serif; font-weight: bold; line-height: 1.2;">فاتورة حجز إلكترونية</h1>
-          <p style="font-size: 24px; color: #555; margin: 15px 0 0 0; font-weight: 500;">لرحلة ${tripName} - دار المقام لإدارة العمرة</p>
+          <p style="font-size: 26px; color: #555; margin: 15px 0 0 0; font-weight: bold;">لرحلة ${tripName} - دار المقام لإدارة العمرة</p>
         </div>
         <div style="text-align: left; border-right: 2px solid #eee; padding-right: 30px;">
-          <div style="font-size: 16px; color: #999; margin-bottom: 5px;">رقم القيد</div>
-          <div style="font-size: 26px; font-weight: bold; color: #d4af37;">${booking.regId || '---'}</div>
-          <div style="font-size: 12px; color: #ccc; margin-top: 5px;">رقم النظام: ${booking.id}</div>
-          <div style="font-size: 14px; color: #999; margin-top: 10px;">التاريخ: ${new Date(booking.createdAt).toLocaleDateString('ar-LY')}</div>
+          <div style="font-size: 18px; color: #999; margin-bottom: 5px;">رقم القيد</div>
+          <div style="font-size: 28px; font-weight: bold; color: #d4af37;">${booking.regId || '---'}</div>
+          <div style="font-size: 14px; color: #ccc; margin-top: 5px;">رقم النظام: ${booking.id}</div>
+          <div style="font-size: 16px; color: #999; margin-top: 10px;">التاريخ: ${new Date(booking.createdAt).toLocaleDateString('ar-LY')}</div>
         </div>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px;">
-        <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; border: 1px solid #eee;">
-          <h3 style="color: #d4af37; margin-top: 0; border-bottom: 2px solid #d4af37; padding-bottom: 10px; margin-bottom: 15px;">بيانات رب الأسرة</h3>
-          <p style="margin: 5px 0;"><strong>الاسم:</strong> ${booking.headName}</p>
-          <p style="margin: 5px 0;"><strong>رقم القيد:</strong> ${booking.regId}</p>
-          <p style="margin: 5px 0;"><strong>الهاتف:</strong> ${booking.phone}</p>
+        <div style="background: #f9f9f9; padding: 30px; border-radius: 15px; border: 1.5px solid #e0e0e0;">
+          <h3 style="color: #d4af37; font-size: 28px; font-weight: bold; margin-top: 0; border-bottom: 2px solid #d4af37; padding-bottom: 12px; margin-bottom: 20px;">بيانات رب الأسرة</h3>
+          <p style="margin: 12px 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>الاسم:</strong> ${booking.headName}</p>
+          <p style="margin: 12px 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>رقم القيد:</strong> ${booking.regId}</p>
+          <p style="margin: 12px 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>الهاتف:</strong> ${booking.phone}</p>
         </div>
-        <div style="background: #f9f9f9; padding: 25px; border-radius: 15px; border: 1px solid #eee;">
-          <h3 style="color: #d4af37; margin-top: 0; border-bottom: 2px solid #d4af37; padding-bottom: 10px; margin-bottom: 15px;">تفاصيل الرحلة</h3>
-          <p style="margin: 5px 0;"><strong>الرحلة:</strong> ${tripName}</p>
-          <p style="margin: 5px 0;"><strong>شركة الطيران:</strong> ${selectedTrip?.airline}</p>
-          <p style="margin: 5px 0;"><strong>عدد المعتمرين:</strong> ${booking.passengerCount}</p>
+        <div style="background: #f9f9f9; padding: 30px; border-radius: 15px; border: 1.5px solid #e0e0e0;">
+          <h3 style="color: #d4af37; font-size: 28px; font-weight: bold; margin-top: 0; border-bottom: 2px solid #d4af37; padding-bottom: 12px; margin-bottom: 20px;">تفاصيل الرحلة</h3>
+          <p style="margin: 12px 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>الرحلة:</strong> ${tripName}</p>
+          <p style="margin: 12px 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>شركة الطيران:</strong> ${selectedTrip?.airline}</p>
+          <p style="margin: 12px 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>عدد المعتمرين:</strong> ${booking.passengerCount}</p>
         </div>
       </div>
 
-      <div style="background: #fcfaf0; padding: 25px; border-radius: 15px; border: 1px solid #d4af37; margin-bottom: 40px;">
-        <h3 style="color: #d4af37; margin-top: 0; border-bottom: 2px solid #d4af37; padding-bottom: 10px; margin-bottom: 15px;">بيانات الإقامة</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-          <p style="margin: 0;"><strong>فندق مكة:</strong> ${booking.makkahHotel} (${booking.makkahNights} ليالي)</p>
-          <p style="margin: 0;"><strong>فندق المدينة:</strong> ${booking.madinahHotel} (${booking.madinahNights} ليالي)</p>
+      <div style="background: #fcfaf0; padding: 30px; border-radius: 15px; border: 2.5px solid #d4af37; margin-bottom: 40px;">
+        <h3 style="color: #d4af37; font-size: 28px; font-weight: bold; margin-top: 0; border-bottom: 2px solid #d4af37; padding-bottom: 12px; margin-bottom: 20px;">بيانات الإقامة</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 35px;">
+          <p style="margin: 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>فندق مكة:</strong> ${booking.makkahHotel} (${booking.makkahNights} ليالي)</p>
+          <p style="margin: 0; font-size: 22px; color: #111; line-height: 1.6;"><strong>فندق المدينة:</strong> ${booking.madinahHotel} (${booking.madinahNights} ليالي)</p>
         </div>
       </div>
       
-      <table style="width: 100%; border-collapse: collapse; font-size: 12px; font-family: sans-serif; margin-bottom: 40px;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 18px; font-family: sans-serif; margin-bottom: 40px; border: 1px solid #ddd;">
         <thead>
           <tr style="background-color: #1a1a1a; color: #ffffff;">
-            <th style="border: 1px solid #333; padding: 15px; text-align: right;">اسم المعتمر</th>
-            <th style="border: 1px solid #333; padding: 15px; text-align: center;">العلاقة</th>
-            <th style="border: 1px solid #333; padding: 15px; text-align: center;">نوع الغرفة</th>
-            <th style="border: 1px solid #333; padding: 15px; text-align: center;">رقم الجواز</th>
+            <th style="border: 1px solid #333; padding: 18px; text-align: right; font-size: 19px; font-weight: bold;">اسم المعتمر</th>
+            <th style="border: 1px solid #333; padding: 18px; text-align: center; font-size: 19px; font-weight: bold;">العلاقة</th>
+            <th style="border: 1px solid #333; padding: 18px; text-align: center; font-size: 19px; font-weight: bold;">نوع الغرفة</th>
+            <th style="border: 1px solid #333; padding: 18px; text-align: center; font-size: 19px; font-weight: bold;">رقم الجواز</th>
           </tr>
         </thead>
         <tbody>
           ${booking.pilgrims.map((p: any, idx: number) => `
             <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
-              <td style="border: 1px solid #dee2e6; padding: 12px; font-weight: bold; white-space: nowrap;">${p.name}</td>
-              <td style="border: 1px solid #dee2e6; padding: 12px; text-align: center;">${p.relationship === 'Self' ? 'نفسه' : p.relationship === 'Spouse' ? 'زوج/ة' : p.relationship === 'Child' ? 'ابن/ة' : p.relationship === 'Parent' ? 'أب/أم' : 'آخر'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 12px; text-align: center;">${p.roomType === 'Double' ? 'ثنائية' : p.roomType === 'Triple' ? 'ثلاثية' : p.roomType === 'Quad' ? 'رباعية' : p.roomType === 'Quint' ? 'خماسية' : 'تأشيرة فقط'}</td>
-              <td style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-mono: true;">${p.passportNo}</td>
+              <td style="border: 1px solid #dee2e6; padding: 16px; font-weight: bold; font-size: 18px; white-space: nowrap;">${p.name}</td>
+              <td style="border: 1px solid #dee2e6; padding: 16px; text-align: center; font-size: 18px;">${p.relationship === 'Self' ? 'نفسه' : p.relationship === 'Spouse' ? 'زوج/ة' : p.relationship === 'Child' ? 'ابن/ة' : p.relationship === 'Parent' ? 'أب/أم' : 'آخر'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 16px; text-align: center; font-size: 18px;">${p.roomType === 'Double' ? 'ثنائية' : p.roomType === 'Triple' ? 'ثلاثية' : p.roomType === 'Quad' ? 'رباعية' : p.roomType === 'Quint' ? 'خماسية' : 'تأشيرة فقط'}</td>
+              <td style="border: 1px solid #dee2e6; padding: 16px; text-align: center; font-size: 18px; font-family: monospace;">${p.passportNo}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
 
       <div style="display: flex; justify-content: flex-end; margin-bottom: 60px;">
-        <div style="width: 400px; background: #1a1a1a; color: #fff; padding: 30px; border-radius: 20px; border: 4px solid #d4af37;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 16px;">
+        <div style="width: 450px; background: #1a1a1a; color: #fff; padding: 30px; border-radius: 20px; border: 4px solid #d4af37;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 18px;">
             <span>الإجمالي (قبل التخفيض):</span>
             <span>
               ${(booking.totals.baseTotalLYD || booking.totals.totalLYD).toLocaleString()} د.ل
@@ -233,25 +234,25 @@ export default function InvoicesModule({ user }: { user: User }) {
             </span>
           </div>
           ${(booking.discountLYD || booking.totals.discountLYD || 0) > 0 ? `
-          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; color: #ff4d4d;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 18px; color: #ff4d4d;">
             <span>تخفيض (د.ل):</span>
             <span>-${(booking.discountLYD || booking.totals.discountLYD).toLocaleString()} د.ل</span>
           </div>
           ` : ''}
           ${(booking.discountUSD || booking.totals.discountUSD || 0) > 0 ? `
-          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 16px; color: #ff4d4d;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 18px; color: #ff4d4d;">
             <span>تخفيض ($):</span>
             <span>-${(booking.discountUSD || booking.totals.discountUSD).toLocaleString()} دولار</span>
           </div>
           ` : ''}
           <div style="display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #d4af37; margin-top: 15px;">
-            <span style="font-size: 20px; font-weight: bold; color: #d4af37;">الإجمالي النهائي:</span>
+            <span style="font-size: 22px; font-weight: bold; color: #d4af37;">الإجمالي النهائي:</span>
             <div style="text-align: left;">
-              <div style="font-size: 28px; font-weight: bold; color: #d4af37;">
+              <div style="font-size: 30px; font-weight: bold; color: #d4af37;">
                 ${booking.totals.totalLYD.toLocaleString()} د.ل
               </div>
               ${booking.totals.totalUSD > 0 ? `
-                <div style="font-size: 28px; font-weight: bold; color: #d4af37; margin-top: 5px;">
+                <div style="font-size: 30px; font-weight: bold; color: #d4af37; margin-top: 5px;">
                   ${booking.totals.totalUSD.toLocaleString()} دولار
                 </div>
               ` : ''}
@@ -260,18 +261,18 @@ export default function InvoicesModule({ user }: { user: User }) {
         </div>
       </div>
       
-      <div style="display: flex; justify-content: space-between; font-size: 14px; border-top: 2px solid #eee; padding-top: 30px;">
-        <div style="text-align: center; width: 200px;">
-          <div style="font-weight: bold; margin-bottom: 40px;">توقيع المحاسب</div>
+      <div style="display: flex; justify-content: space-between; font-size: 16px; border-top: 2px solid #eee; padding-top: 30px;">
+        <div style="text-align: center; width: 220px;">
+          <div style="font-weight: bold; margin-bottom: 40px; font-size: 18px;">توقيع المحاسب</div>
           <div style="border-bottom: 1px dashed #333; width: 100%;"></div>
         </div>
-        <div style="text-align: center; width: 200px;">
-          <div style="font-weight: bold; margin-bottom: 40px;">ختم الشركة</div>
-          <div style="border: 2px solid #d4af37; width: 100px; height: 100px; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; color: #d4af37; font-size: 10px; opacity: 0.3;">ختم رسمي</div>
+        <div style="text-align: center; width: 220px;">
+          <div style="font-weight: bold; margin-bottom: 40px; font-size: 18px;">ختم الشركة</div>
+          <div style="border: 2px solid #d4af37; width: 100px; height: 100px; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; color: #d4af37; font-size: 12px; opacity: 0.3;">ختم رسمي</div>
         </div>
       </div>
       
-      <div style="position: absolute; bottom: 20px; left: 0; right: 0; text-align: center; font-size: 10px; color: #aaa;">
+      <div style="position: absolute; bottom: 20px; left: 0; right: 0; text-align: center; font-size: 12px; color: #aaa;">
         تم استخراج هذه الفاتورة آلياً بواسطة نظام دار المقام لإدارة العمرة
       </div>
     `;
