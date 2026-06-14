@@ -904,7 +904,16 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           api.getCustomers(),
           api.getUmrahOffers()
         ]);
-        setCustomers(Array.isArray(custData) ? custData : []);
+        let loadedCustomers = Array.isArray(custData) ? custData : [];
+        if (loadedCustomers.length === 0) {
+          try {
+            // Auto-sync from bookings on first-load if database is completely empty
+            loadedCustomers = await api.syncCustomersFromBookings();
+          } catch (syncErr) {
+            console.error('Auto-sync customers from bookings failed:', syncErr);
+          }
+        }
+        setCustomers(loadedCustomers);
         setOffers(Array.isArray(offerData) ? offerData : []);
       }
       setCurrentPage(1);
@@ -1798,7 +1807,7 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                         </div>
                         <div>
                           <p className="text-xs font-bold text-white">{whatsappStatus.user.name || 'الحساب المرتبط'}</p>
-                          <p className="text-[10px] text-white/40">{whatsappStatus.user.id.split(':')[0]}</p>
+                          <p className="text-[10px] text-white/40">{whatsappStatus.user.id ? String(whatsappStatus.user.id).split(':')[0] : (whatsappStatus.user.jid ? String(whatsappStatus.user.jid).split('@')[0] : '')}</p>
                         </div>
                       </div>
                     )}

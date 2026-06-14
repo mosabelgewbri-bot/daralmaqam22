@@ -1909,18 +1909,18 @@ export const api = {
 
     try {
       await this.ensureAuth();
-      let q = query(collection(db, path));
-      
+      const q = query(collection(db, path));
+      const querySnapshot = await getDocs(q);
+      let customers = querySnapshot.docs.map(doc => mapDocData<Customer>(doc));
+
       const userStr = localStorage.getItem('user');
       const userObj = userStr ? JSON.parse(userStr) : null;
       if (companyId && userObj?.role !== 'admin') {
-        q = query(q, where("companyId", "==", companyId));
+        customers = customers.filter(c => c.companyId === companyId || !c.companyId);
       }
-      
-      const querySnapshot = await getDocs(q);
-      const customers = querySnapshot.docs.map(doc => mapDocData<Customer>(doc));
 
       safeLocalStorageSetItem('cached_customers', JSON.stringify(customers));
+      localStorage.setItem('last_customers_fetch', Date.now().toString());
       return customers;
     } catch (error: any) {
       if (isQuotaError(error)) {
