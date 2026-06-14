@@ -329,7 +329,6 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const userToAdd = {
-      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
       name: newUser.name,
       username: newUser.username,
       email: newUser.email,
@@ -353,8 +352,10 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
       setUsers(updatedUsers);
       setIsAddModalOpen(false);
       setNewUser({ name: '', username: '', email: '', role: 'staff', password: '' });
-    } catch (error) {
+      showToast('تم إضافة المستخدم بنجاح', 'success');
+    } catch (error: any) {
       console.error('Error adding user:', error);
+      showToast(error.message || 'حدث خطأ أثناء إضافة المستخدم', 'error');
     }
   };
 
@@ -514,17 +515,6 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs text-white/40 uppercase tracking-widest">البريد الإلكتروني</label>
-                    <input 
-                      required
-                      type="email"
-                      className="input-field w-full"
-                      value={newUser.email}
-                      onChange={e => setNewUser({...newUser, email: e.target.value})}
-                    />
-                  </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs text-white/40 uppercase tracking-widest">كلمة المرور</label>
@@ -551,20 +541,6 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                         <option value="receptionist">موظف استقبال</option>
                       </select>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs text-white/40 uppercase tracking-widest">الشركة</label>
-                    <select 
-                      className="input-field w-full"
-                      value={(newUser as any).companyId || ''}
-                      onChange={e => setNewUser({...newUser, companyId: e.target.value} as any)}
-                    >
-                      <option value="">كل الشركات</option>
-                      {companies.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
                   </div>
 
                   <div className="pt-4">

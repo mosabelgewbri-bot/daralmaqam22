@@ -566,7 +566,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
           // Smart Scan mode (No Token) - only checks format
           if (isFormatValid) {
             validIds.push(id);
-            // We DON'T add to confirmedWhatsAppIds here because it's just format-checked
+            // In Smart Scan (No Token), format-valid numbers are treated as WhatsApp numbers
+            confirmedWhatsAppIds.add(id);
             setVerificationStats(prev => ({ ...prev, valid: prev.valid + 1 }));
           } else {
             invalidIds.push(id);
@@ -892,6 +893,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     try {
       if (forceRefresh) {
         localStorage.removeItem('cached_customers');
+        localStorage.removeItem('last_customers_fetch');
         localStorage.removeItem('cached_umrah_offers');
       }
 

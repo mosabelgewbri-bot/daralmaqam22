@@ -1203,6 +1203,10 @@ export const api = {
       } else {
         await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
       }
+      try {
+        localStorage.removeItem('cached_users');
+        localStorage.removeItem('last_users_fetch');
+      } catch (e) {}
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
     }
@@ -1212,6 +1216,10 @@ export const api = {
     try {
       await this.ensureAuth();
       await deleteDoc(doc(db, path, id));
+      try {
+        localStorage.removeItem('cached_users');
+        localStorage.removeItem('last_users_fetch');
+      } catch (e) {}
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
@@ -1976,6 +1984,10 @@ export const api = {
           await addDoc(collection(db, path), { ...cleanData, createdAt: serverTimestamp() });
         }
       }
+      try {
+        localStorage.removeItem('cached_customers');
+        localStorage.removeItem('last_customers_fetch');
+      } catch (e) {}
     } catch (error) {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
     }
@@ -1985,6 +1997,10 @@ export const api = {
     try {
       await this.ensureAuth();
       await deleteDoc(doc(db, path, id));
+      try {
+        localStorage.removeItem('cached_customers');
+        localStorage.removeItem('last_customers_fetch');
+      } catch (e) {}
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
@@ -2002,6 +2018,10 @@ export const api = {
         });
         await this.withRetry(() => batch.commit());
       }
+      try {
+        localStorage.removeItem('cached_customers');
+        localStorage.removeItem('last_customers_fetch');
+      } catch (e) {}
     } catch (error) {
       console.error('Error in bulkDeleteCustomers:', error);
       handleFirestoreError(error, OperationType.DELETE, path);
@@ -2049,6 +2069,10 @@ export const api = {
 
         await this.withRetry(() => batch.commit());
       }
+      try {
+        localStorage.removeItem('cached_customers');
+        localStorage.removeItem('last_customers_fetch');
+      } catch (e) {}
     } catch (error) {
       console.error('Error in bulkSaveCustomers:', error);
       handleFirestoreError(error, OperationType.WRITE, path);
@@ -2156,6 +2180,11 @@ export const api = {
         
         await batch.commit();
       }
+
+      try {
+        localStorage.removeItem('cached_customers');
+        localStorage.removeItem('last_customers_fetch');
+      } catch (e) {}
 
       // 3. Return updated customers list
       return this.getCustomers();
