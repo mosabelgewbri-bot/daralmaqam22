@@ -79,6 +79,8 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
       madinah: '',
       offer: '',
       meals: 'بدون وجبات',
+      makkahMeals: 'بدون وجبات',
+      madinahMeals: 'بدون وجبات',
       double: 0,
       triple: 0,
       quad: 0,
@@ -94,6 +96,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ 
@@ -147,6 +150,8 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
           madinah: '',
           offer: '',
           meals: 'بدون وجبات',
+          makkahMeals: 'بدون وجبات',
+          madinahMeals: 'بدون وجبات',
           double: 0,
           triple: 0,
           quad: 0,
@@ -167,7 +172,19 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   const handleRowChange = (index: number, field: keyof UmrahOfferRow, value: any) => {
     setCurrentOffer(prev => {
       const newRows = [...(prev.rows || [])];
-      newRows[index] = { ...newRows[index], [field]: value };
+      let updatedRow = { ...newRows[index], [field]: value };
+      
+      if (field === 'makkahMeals' || field === 'madinahMeals') {
+        const mMeals = field === 'makkahMeals' ? value : (updatedRow.makkahMeals || 'بدون وجبات');
+        const dMeals = field === 'madinahMeals' ? value : (updatedRow.madinahMeals || 'بدون وجبات');
+        if (mMeals === 'بدون وجبات' && dMeals === 'بدون وجبات') {
+          updatedRow.meals = 'بدون وجبات';
+        } else {
+          updatedRow.meals = `مكة: ${mMeals} / المدينة: ${dMeals}`;
+        }
+      }
+      
+      newRows[index] = updatedRow;
       return { ...prev, rows: newRows };
     });
   };
@@ -683,6 +700,8 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   madinah: '',
                   offer: '',
                   meals: 'بدون وجبات',
+                  makkahMeals: 'بدون وجبات',
+                  madinahMeals: 'بدون وجبات',
                   double: 0,
                   triple: 0,
                   quad: 0,
@@ -763,10 +782,11 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
             <table className="w-full text-right">
               <thead>
                 <tr className="text-[10px] text-white/20 font-bold border-b border-white/5">
-                  <th className="pb-4 px-2">مكة</th>
-                  <th className="pb-4 px-2">المدينة</th>
+                  <th className="pb-4 px-2">فندق مكة</th>
+                  <th className="pb-4 px-2">وجبات مكة</th>
+                  <th className="pb-4 px-2">فندق المدينة</th>
+                  <th className="pb-4 px-2">وجبات المدينة</th>
                   <th className="pb-4 px-2">العرض (اختياري)</th>
-                  <th className="pb-4 px-2">الوجبات</th>
                   <th className="pb-4 px-2">ثنائية</th>
                   <th className="pb-4 px-2">ثلاثية</th>
                   <th className="pb-4 px-2">رباعية</th>
@@ -778,41 +798,60 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
               <tbody className="divide-y divide-white/5">
                 {currentOffer.rows?.map((row, idx) => (
                   <tr key={idx} className="group">
-                    <td className="py-4 px-2">
+                    <td className="py-4 px-2 min-w-[150px]">
                       <input 
                         type="text" 
                         value={row.makkah}
                         onChange={e => handleRowChange(idx, 'makkah', e.target.value)}
+                        placeholder="فندق مكة"
                         className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
                       />
                     </td>
-                    <td className="py-4 px-2">
-                      <input 
-                        type="text" 
-                        value={row.madinah}
-                        onChange={e => handleRowChange(idx, 'madinah', e.target.value)}
-                        className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
-                      />
-                    </td>
-                    <td className="py-4 px-2">
-                      <input 
-                        type="text" 
-                        value={row.offer}
-                        onChange={e => handleRowChange(idx, 'offer', e.target.value)}
-                        className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
-                      />
-                    </td>
-                    <td className="py-4 px-2">
+                    <td className="py-4 px-2 min-w-[120px]">
                       <select 
-                        value={row.meals}
-                        onChange={e => handleRowChange(idx, 'meals', e.target.value)}
+                        value={row.makkahMeals || 'بدون وجبات'}
+                        onChange={e => handleRowChange(idx, 'makkahMeals', e.target.value)}
                         className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-2 py-2 text-xs text-white focus:border-gold/30 outline-none appearance-none"
                       >
                         <option value="بدون وجبات">بدون وجبات</option>
                         <option value="يشمل الوجبات">يشمل الوجبات</option>
                         <option value="إفطار فقط">إفطار فقط</option>
                         <option value="إفطار وسحور">إفطار وسحور</option>
+                        <option value="فطور وغداء وعشاء">فطور وغداء وعشاء</option>
+                        <option value="نصف إقامة">نصف إقامة</option>
                       </select>
+                    </td>
+                    <td className="py-4 px-2 min-w-[150px]">
+                      <input 
+                        type="text" 
+                        value={row.madinah}
+                        onChange={e => handleRowChange(idx, 'madinah', e.target.value)}
+                        placeholder="فندق المدينة"
+                        className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
+                      />
+                    </td>
+                    <td className="py-4 px-2 min-w-[120px]">
+                      <select 
+                        value={row.madinahMeals || 'بدون وجبات'}
+                        onChange={e => handleRowChange(idx, 'madinahMeals', e.target.value)}
+                        className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-2 py-2 text-xs text-white focus:border-gold/30 outline-none appearance-none"
+                      >
+                        <option value="بدون وجبات">بدون وجبات</option>
+                        <option value="يشمل الوجبات">يشمل الوجبات</option>
+                        <option value="إفطار فقط">إفطار فقط</option>
+                        <option value="إفطار وسحور">إفطار وسحور</option>
+                        <option value="فطور وغداء وعشاء">فطور وغداء وعشاء</option>
+                        <option value="نصف إقامة">نصف إقامة</option>
+                      </select>
+                    </td>
+                    <td className="py-4 px-2 min-w-[120px]">
+                      <input 
+                        type="text" 
+                        value={row.offer || ''}
+                        onChange={e => handleRowChange(idx, 'offer', e.target.value)}
+                        placeholder="خصم، ميزة إضافية..."
+                        className="w-full bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2 text-xs text-white focus:border-gold/30 outline-none"
+                      />
                     </td>
                     <td className="py-4 px-2">
                       <input 
@@ -967,115 +1006,190 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
           </div>
         </motion.div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {offers.map(offer => (
-            <motion.div 
-              key={offer.id}
-              layoutId={offer.id}
-              className="bg-matte-dark border border-white/10 rounded-3xl p-6 hover:border-gold/30 transition-all group relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl -mr-16 -mt-16 group-hover:bg-gold/10 transition-colors" />
-              
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="px-2 py-1 bg-gold/10 text-gold text-[10px] font-bold rounded-lg border border-gold/20 mb-2 inline-block">
-                      {offer.category}
-                    </span>
-                    <h3 className="text-xl font-bold text-white group-hover:text-gold transition-colors">{offer.name}</h3>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => {
-                        const link = `${window.location.origin}/offer/${offer.id}`;
-                        navigator.clipboard.writeText(link);
-                        setCopySuccess(offer.id);
-                        setTimeout(() => setCopySuccess(null), 2000);
-                      }}
-                      className="p-2 text-white/20 hover:text-gold hover:bg-gold/10 rounded-xl transition-all"
-                      title="نسخ رابط العرض"
-                    >
-                      {copySuccess === offer.id ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setCurrentOffer(offer);
-                        setIsEditing(true);
-                      }}
-                      className="p-2 text-white/20 hover:text-blue-400 hover:bg-blue-400/10 rounded-xl transition-all"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(offer.id)}
-                      className="p-2 text-white/20 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/40">عدد الفنادق:</span>
-                    <span className="text-white/80 font-bold">{offer.rows.length}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/40">تاريخ الإنشاء:</span>
-                    <span className="text-white/80">{new Date(offer.createdAt).toLocaleDateString('ar-LY')}</span>
-                  </div>
-                </div>
-
-                <div className="pt-4 flex items-center gap-2">
-                  <button 
-                    onClick={() => {
-                      setSelectedOfferForShare(offer);
-                      setShowPreview(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/[0.03] hover:bg-white/[0.08] text-white/80 rounded-xl text-xs font-bold transition-all border border-white/5"
-                  >
-                    <FileText className="w-4 h-4" />
-                    معاينة
-                  </button>
-                  <button 
-                    onClick={() => copyToClipboard(offer)}
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-matte-dark border border-white/5 p-4 rounded-3xl gap-4">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-none">
+              {[
+                { key: 'all', label: 'الكل' },
+                { key: 'اقتصادي', label: 'اقتصادي' },
+                { key: 'متوسط', label: 'متوسط' },
+                { key: 'فاخرة', label: 'فاخرة' },
+                { key: 'ماسية', label: 'ماسية' },
+              ].map(cat => {
+                const isActive = selectedCategory === cat.key;
+                return (
+                  <button
+                    key={cat.key}
+                    onClick={() => setSelectedCategory(cat.key)}
                     className={clsx(
-                      "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all border",
-                      copySuccess === offer.id 
-                        ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/30" 
-                        : "bg-white/[0.03] hover:bg-white/[0.08] text-white/80 border-white/5"
+                      "px-5 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap",
+                      isActive 
+                        ? "bg-gold text-matte-black shadow-lg shadow-gold/15" 
+                        : "bg-white/[0.03] text-white/60 hover:text-white hover:bg-white/[0.08]"
                     )}
                   >
-                    <Copy className="w-4 h-4" />
-                    {copySuccess === offer.id ? 'تم النسخ' : 'نسخ النص'}
+                    {cat.label}
                   </button>
-                  <button 
-                    onClick={() => {
-                      setSelectedOfferForShare(offer);
-                      setShowShareModal(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-gold/10 hover:bg-gold/20 text-gold rounded-xl text-xs font-bold transition-all border border-gold/20"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    مشاركة
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-
-          {offers.length === 0 && (
-            <div className="col-span-full py-20 flex flex-col items-center justify-center text-white/20 space-y-4 border-2 border-dashed border-white/5 rounded-3xl">
-              <AlertCircle className="w-12 h-12" />
-              <p className="font-bold">لا توجد عروض حالياً</p>
-              <button 
-                onClick={() => setIsEditing(true)}
-                className="text-gold hover:underline font-bold"
-              >
-                أنشئ أول عرض الآن
-              </button>
+                );
+              })}
             </div>
-          )}
+            {offers.length > 0 && (
+              <p className="text-xs text-white/40 font-medium whitespace-nowrap">
+                عرض {
+                  offers.filter(offer => {
+                    if (selectedCategory === 'all') return true;
+                    const cat = (offer.category || '').trim();
+                    if (selectedCategory === 'اقتصادي' && (cat === 'اقتصادي' || cat === 'الاقتصادي')) return true;
+                    if (selectedCategory === 'متوسط' && (cat === 'متوسط' || cat === 'المتوسط')) return true;
+                    if (selectedCategory === 'فاخرة' && (cat === 'فاخرة' || cat === 'الفاخرة')) return true;
+                    if (selectedCategory === 'ماسية' && (cat === 'ماسية' || cat === 'الماسية')) return true;
+                    return cat.toLowerCase() === selectedCategory.toLowerCase();
+                  }).length
+                } من أصل {offers.length} برنامج
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {offers
+              .filter(offer => {
+                if (selectedCategory === 'all') return true;
+                const cat = (offer.category || '').trim();
+                if (selectedCategory === 'اقتصادي' && (cat === 'اقتصادي' || cat === 'الاقتصادي')) return true;
+                if (selectedCategory === 'متوسط' && (cat === 'متوسط' || cat === 'المتوسط')) return true;
+                if (selectedCategory === 'فاخرة' && (cat === 'فاخرة' || cat === 'الفاخرة')) return true;
+                if (selectedCategory === 'ماسية' && (cat === 'ماسية' || cat === 'الماسية')) return true;
+                return cat.toLowerCase() === selectedCategory.toLowerCase();
+              })
+              .map(offer => (
+                <motion.div 
+                  key={offer.id}
+                  layoutId={offer.id}
+                  className="bg-matte-dark border border-white/10 rounded-3xl p-6 hover:border-gold/30 transition-all group relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl -mr-16 -mt-16 group-hover:bg-gold/10 transition-colors" />
+                  
+                  <div className="relative z-10 space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="px-2 py-1 bg-gold/10 text-gold text-[10px] font-bold rounded-lg border border-gold/20 mb-2 inline-block">
+                          {offer.category}
+                        </span>
+                        <h3 className="text-xl font-bold text-white group-hover:text-gold transition-colors">{offer.name}</h3>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => {
+                            const link = `${window.location.origin}/offer/${offer.id}`;
+                            navigator.clipboard.writeText(link);
+                            setCopySuccess(offer.id);
+                            setTimeout(() => setCopySuccess(null), 2000);
+                          }}
+                          className="p-2 text-white/20 hover:text-gold hover:bg-gold/10 rounded-xl transition-all"
+                          title="نسخ رابط العرض"
+                        >
+                          {copySuccess === offer.id ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const mappedRows = (offer.rows || []).map(row => ({
+                              ...row,
+                              makkahMeals: row.makkahMeals || 'بدون وجبات',
+                              madinahMeals: row.madinahMeals || 'بدون وجبات',
+                            }));
+                            setCurrentOffer({ ...offer, rows: mappedRows });
+                            setIsEditing(true);
+                          }}
+                          className="p-2 text-white/20 hover:text-blue-400 hover:bg-blue-400/10 rounded-xl transition-all"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(offer.id)}
+                          className="p-2 text-white/20 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-white/40">عدد الفنادق:</span>
+                        <span className="text-white/80 font-bold">{offer.rows.length}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-white/40">تاريخ الإنشاء:</span>
+                        <span className="text-white/80">{new Date(offer.createdAt).toLocaleDateString('ar-LY')}</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 flex items-center gap-2">
+                      <button 
+                        onClick={() => {
+                          setSelectedOfferForShare(offer);
+                          setShowPreview(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/[0.03] hover:bg-white/[0.08] text-white/80 rounded-xl text-xs font-bold transition-all border border-white/5"
+                      >
+                        <FileText className="w-4 h-4" />
+                        معاينة
+                      </button>
+                      <button 
+                        onClick={() => copyToClipboard(offer)}
+                        className={clsx(
+                          "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold transition-all border",
+                          copySuccess === offer.id 
+                            ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/30" 
+                            : "bg-white/[0.03] hover:bg-white/[0.08] text-white/80 border-white/5"
+                        )}
+                      >
+                        <Copy className="w-4 h-4" />
+                        {copySuccess === offer.id ? 'تم النسخ' : 'نسخ النص'}
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setSelectedOfferForShare(offer);
+                          setShowShareModal(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 bg-gold/10 hover:bg-gold/20 text-gold rounded-xl text-xs font-bold transition-all border border-gold/20"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        مشاركة
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+
+            {offers.length > 0 && offers.filter(offer => {
+              if (selectedCategory === 'all') return true;
+              const cat = (offer.category || '').trim();
+              if (selectedCategory === 'اقتصادي' && (cat === 'اقتصادي' || cat === 'الاقتصادي')) return true;
+              if (selectedCategory === 'متوسط' && (cat === 'متوسط' || cat === 'المتوسط')) return true;
+              if (selectedCategory === 'فاخرة' && (cat === 'فاخرة' || cat === 'الفاخرة')) return true;
+              if (selectedCategory === 'ماسية' && (cat === 'ماسية' || cat === 'الماسية')) return true;
+              return cat.toLowerCase() === selectedCategory.toLowerCase();
+            }).length === 0 && (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center text-white/20 space-y-4 border-2 border-dashed border-white/5 rounded-3xl">
+                <AlertCircle className="w-12 h-12" />
+                <p className="font-bold">لا توجد عروض تطابق هذه الفئة حالياً</p>
+              </div>
+            )}
+
+            {offers.length === 0 && (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center text-white/20 space-y-4 border-2 border-dashed border-white/5 rounded-3xl">
+                <AlertCircle className="w-12 h-12" />
+                <p className="font-bold">لا توجد عروض حالياً</p>
+                <button 
+                  onClick={() => setIsEditing(true)}
+                  className="text-gold hover:underline font-bold"
+                >
+                  أنشئ أول عرض الآن
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

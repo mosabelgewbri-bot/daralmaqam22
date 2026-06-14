@@ -169,6 +169,8 @@ export interface UmrahOfferRow {
   madinah: string;
   offer?: string;
   meals: string;
+  makkahMeals?: string;
+  madinahMeals?: string;
   double: number;
   triple: number;
   quad: number;
