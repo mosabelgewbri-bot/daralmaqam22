@@ -456,6 +456,50 @@ export const api = {
     return true;
   },
 
+  getDataScope(): 'all' | 'own' {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) return 'all';
+    try {
+      const userObj = JSON.parse(userStr);
+      if (!userObj || !userObj.role) return 'all';
+      if (userObj.role === 'admin' || userObj.role === 'manager') return 'all';
+      
+      const saved = localStorage.getItem('role_permissions');
+      if (saved) {
+        const permissions = JSON.parse(saved) as RolePermissions[];
+        const found = permissions.find(p => p.role === userObj.role);
+        if (found && found.dataScope) {
+          return found.dataScope;
+        }
+      }
+      if (userObj.role === 'staff' || userObj.role === 'receptionist') {
+         return 'own';
+      }
+    } catch (e) {
+      console.error('Error getting data scope:', e);
+    }
+    return 'all';
+  },
+
+  getCurrentUserId(): string | null {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) return null;
+    try {
+      const userObj = JSON.parse(userStr);
+      return userObj ? userObj.id : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  filterBookingsByScope(bookings: Booking[]): Booking[] {
+    const dataScope = this.getDataScope();
+    if (dataScope !== 'own') return bookings;
+    const userId = this.getCurrentUserId();
+    if (!userId) return bookings;
+    return bookings.filter(b => !b.createdBy || b.createdBy === userId);
+  },
+
   async deepReset() {
     console.log('Starting deep reset...');
     console.log('Project Identity:', {
@@ -759,13 +803,16 @@ export const api = {
         // Extend cache validity during quota issues
         const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 600000 : 60000;
         if (Date.now() - lastFetch < cacheTTL) {
-           return limitCount ? all.slice(0, limitCount) : all;
+           const filtered = this.filterBookingsByScope(all);
+           return limitCount ? filtered.slice(0, limitCount) : filtered;
         }
       } catch (e) {}
     }
 
     if (quotaExceeded && !canMakeRequest()) {
-      return cachedStr ? JSON.parse(cachedStr).slice(0, limitCount || 1000) : [];
+      const all = cachedStr ? JSON.parse(cachedStr) as Booking[] : [];
+      const filtered = this.filterBookingsByScope(all);
+      return filtered.slice(0, limitCount || 1000);
     }
 
     try {
@@ -810,10 +857,6 @@ export const api = {
 
       bookings = deduplicateBookings(bookings, trips);
 
-      if (limitCount) {
-        bookings = bookings.slice(0, limitCount);
-      }
-
       if (!limitCount) {
         // Strip heavy passportImage from cached_bookings to prevent exceeding LocalStorage quota
         const lightweightBookings = bookings.map(b => ({
@@ -829,14 +872,26 @@ export const api = {
         safeLocalStorageSetItem('cached_bookings', JSON.stringify(lightweightBookings));
         safeLocalStorageSetItem('last_bookings_fetch', Date.now().toString());
       }
-      return bookings;
+
+      if (limitCount) {
+        bookings = bookings.slice(0, limitCount);
+      }
+
+      return this.filterBookingsByScope(bookings);
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        if (cachedStr) return JSON.parse(cachedStr).slice(0, limitCount || 1000);
+        if (cachedStr) {
+          const all = JSON.parse(cachedStr) as Booking[];
+          const filtered = this.filterBookingsByScope(all);
+          return filtered.slice(0, limitCount || 1000);
+        }
       }
       handleFirestoreError(error, OperationType.LIST, path);
-      if (cachedStr) return JSON.parse(cachedStr);
+      if (cachedStr) {
+        const all = JSON.parse(cachedStr) as Booking[];
+        return this.filterBookingsByScope(all);
+      }
       return [];
     }
   },
@@ -1529,77 +1584,93 @@ export const api = {
 
    async getPilgrims(bookingId?: string): Promise<Pilgrim[]> {
     const path = 'pilgrims';
+    let pilgrims: Pilgrim[] = [];
+    let loaded = false;
     
     // Proactively check quota
     const cachedStr = localStorage.getItem('cached_pilgrims');
-    if (cachedStr && !bookingId) {
+    const lastFetch = Number(localStorage.getItem('last_pilgrims_fetch') || 0);
+    const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 900000 : 180000; // 15 mins vs 3 mins
+
+    if (cachedStr && !bookingId && (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest()))) {
       try {
-        const lastFetch = Number(localStorage.getItem('last_pilgrims_fetch') || 0);
-        const cacheTTL = (quotaExceeded && !canMakeRequest()) ? 900000 : 180000; // 15 mins vs 3 mins
-        if (Date.now() - lastFetch < cacheTTL || (quotaExceeded && !canMakeRequest())) {
-          return JSON.parse(cachedStr);
-        }
+        pilgrims = JSON.parse(cachedStr);
+        loaded = true;
       } catch (e) {}
     }
 
-    if (quotaExceeded && !canMakeRequest()) {
+    if (!loaded && quotaExceeded && !canMakeRequest()) {
       if (cachedStr) {
         try {
-          const all = JSON.parse(cachedStr) as Pilgrim[];
-          if (Array.isArray(all)) {
-            return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
-          }
+          pilgrims = JSON.parse(cachedStr) as Pilgrim[];
+          loaded = true;
         } catch (e) {}
       }
-      return [];
     }
 
-    try {
-      await this.ensureAuth();
-      let q = query(collection(db, path));
-      if (bookingId) {
-        q = query(collection(db, path), where("bookingId", "==", bookingId));
-      }
-      const querySnapshot = await getDocs(q);
-      const pilgrims = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          name: String(data.name || ''),
-          phone: String(data.phone || ''),
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-        } as unknown as Pilgrim;
-      });
+    if (!loaded) {
+      try {
+        await this.ensureAuth();
+        let q = query(collection(db, path));
+        if (bookingId) {
+          q = query(collection(db, path), where("bookingId", "==", bookingId));
+        }
+        const querySnapshot = await getDocs(q);
+        pilgrims = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            name: String(data.name || ''),
+            phone: String(data.phone || ''),
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          } as unknown as Pilgrim;
+        });
 
-      if (!bookingId) {
-        // Strip heavy passportImage from cached_pilgrims to prevent exceeding LocalStorage quota
-        const lightweightPilgrims = pilgrims.map(({ passportImage, ...rest }) => rest);
-        safeLocalStorageSetItem('cached_pilgrims', JSON.stringify(lightweightPilgrims));
+        if (!bookingId) {
+          // Strip heavy passportImage from cached_pilgrims to prevent exceeding LocalStorage quota
+          const lightweightPilgrims = pilgrims.map(({ passportImage, ...rest }) => rest);
+          safeLocalStorageSetItem('cached_pilgrims', JSON.stringify(lightweightPilgrims));
+          safeLocalStorageSetItem('last_pilgrims_fetch', Date.now().toString());
+        }
+        loaded = true;
+      } catch (error: any) {
+        if (isQuotaError(error)) {
+          quotaExceeded = true;
+          lastError = error.message || String(error);
+          console.warn('Quota exceeded in getPilgrims, switching to cache');
+        } else {
+          console.error('Error in getPilgrims:', error);
+        }
+        
+        if (cachedStr) {
+          try {
+            pilgrims = JSON.parse(cachedStr) as Pilgrim[];
+            loaded = true;
+          } catch (e) {}
+        }
+        handleFirestoreError(error, OperationType.LIST, path);
       }
-      return pilgrims;
-    } catch (error: any) {
-      if (isQuotaError(error)) {
-        quotaExceeded = true;
-        lastError = error.message || String(error);
-        console.warn('Quota exceeded in getPilgrims, switching to cache');
-      } else {
-        console.error('Error in getPilgrims:', error);
-      }
-      
-      const cached = localStorage.getItem('cached_pilgrims');
-      if (cached) {
-        try {
-          const all = JSON.parse(cached) as Pilgrim[];
-          if (Array.isArray(all)) {
-            return bookingId ? all.filter(p => p.bookingId === bookingId) : all;
-          }
-        } catch (e) {}
-      }
-      handleFirestoreError(error, OperationType.LIST, path);
-      return [];
     }
+
+    // Filter by bookingId if provided (for when we obtained full cache list)
+    if (bookingId) {
+      pilgrims = pilgrims.filter(p => p.bookingId === bookingId);
+    }
+
+    // Filter by role dataScope 'own'
+    if (this.getDataScope() === 'own') {
+      try {
+        const allowedBookings = await this.getBookings();
+        const allowedIds = new Set(allowedBookings.map(b => b.id));
+        pilgrims = pilgrims.filter(p => allowedIds.has(p.bookingId));
+      } catch (e) {
+        console.error('Error filtering pilgrims by allowed bookings:', e);
+      }
+    }
+
+    return pilgrims;
   },
 
   async getNotifications(userId?: string): Promise<Notification[]> {

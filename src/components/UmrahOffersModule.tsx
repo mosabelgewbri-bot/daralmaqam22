@@ -247,6 +247,101 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
           if (clonedElement) {
             clonedElement.style.letterSpacing = '0';
             clonedElement.style.wordSpacing = '0';
+            
+            // Apply darker colors and larger fonts specifically for high contrast exports
+            clonedElement.style.color = '#000000';
+            
+            // Target elements inside the cloned element
+            const allTds = clonedElement.getElementsByTagName('td');
+            for (let i = 0; i < allTds.length; i++) {
+              const td = allTds[i] as HTMLElement;
+              td.style.color = '#000000';
+              td.style.fontWeight = '900'; // Extra bold
+              td.style.fontSize = '20px'; // Made larger
+            }
+
+            const allThs = clonedElement.getElementsByTagName('th');
+            for (let i = 0; i < allThs.length; i++) {
+              const th = allThs[i] as HTMLElement;
+              th.style.fontWeight = '950'; // Pitch black borders & headers
+              th.style.fontSize = '18px'; // Enlarge
+              th.style.color = '#ffffff';
+            }
+
+            // High contrast for the specific gold colors on the output
+            const goldElements = clonedElement.querySelectorAll('.text-\\[\\#d4af37\\], .text-\\[\\#b79626\\]');
+            goldElements.forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.style.color = '#967205'; // Darker premium gold/bronze for beautiful, high contrast printing
+              htmlEl.style.fontWeight = '950';
+              htmlEl.style.fontSize = '24px';
+            });
+
+            // Make document title and offer name bolder and darker
+            const docTitle = clonedElement.querySelector('h2');
+            if (docTitle) {
+              docTitle.style.color = '#000000';
+              docTitle.style.fontWeight = '955';
+              docTitle.style.fontSize = '42px';
+            }
+
+            const offerName = clonedElement.querySelector('h3');
+            if (offerName) {
+              offerName.style.color = '#000000';
+              offerName.style.fontWeight = '955';
+              offerName.style.fontSize = '50px';
+            }
+
+            // Note/Fixed block
+            const noteHeading = clonedElement.querySelector('.space-y-6 h4');
+            if (noteHeading) {
+              const h4Node = noteHeading as HTMLElement;
+              h4Node.style.fontWeight = '955';
+              h4Node.style.fontSize = '22px';
+              h4Node.style.color = '#000000';
+            }
+
+            const noteContent = clonedElement.querySelector('.whitespace-pre-wrap');
+            if (noteContent) {
+              const noteDiv = noteContent as HTMLElement;
+              noteDiv.style.color = '#000000';
+              noteDiv.style.fontWeight = '800'; // Make bolder
+              noteDiv.style.fontSize = '17px'; // Make larger
+              noteDiv.style.lineHeight = '1.8';
+            }
+
+            // Contact block
+            const contactHeading = clonedElement.querySelector('.text-right.space-y-4 h4');
+            if (contactHeading) {
+              const h4Node = contactHeading as HTMLElement;
+              h4Node.style.fontWeight = '955';
+              h4Node.style.fontSize = '22px';
+              h4Node.style.color = '#000000';
+            }
+
+            const contactParagraphs = clonedElement.querySelectorAll('.pt-6.flex.gap-8 span');
+            contactParagraphs.forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.style.color = '#967205';
+              htmlEl.style.fontWeight = '955';
+              htmlEl.style.fontSize = '22px';
+            });
+
+            const contactAddressLines = clonedElement.querySelectorAll('.space-y-1 p');
+            contactAddressLines.forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.style.color = '#000000';
+              htmlEl.style.fontWeight = '900';
+              htmlEl.style.fontSize = '18px';
+            });
+
+            const footerDate = clonedElement.querySelector('.text-xs.font-bold.italic');
+            if (footerDate) {
+              const dateEl = footerDate as HTMLElement;
+              dateEl.style.color = '#000000';
+              dateEl.style.fontWeight = '900';
+              dateEl.style.fontSize = '15px';
+            }
           }
         }
       });
@@ -279,7 +374,7 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
 
       const element = previewRef.current;
       
-      // Use onclone to prepare the element for perfect A4 capture
+      // Use onclone to prepare the element for perfect A4 single-page capture
       const canvas = await html2canvas(element, {
         scale: 3, // Higher quality
         useCORS: true,
@@ -288,56 +383,121 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
         onclone: (clonedDoc) => {
           const clonedElement = clonedDoc.getElementById('umrah-offer-preview');
           if (clonedElement) {
-            // Force A4-friendly width for consistent layout
-            clonedElement.style.width = '850px';
-            clonedElement.style.height = 'auto';
-            clonedElement.style.maxHeight = 'none';
-            clonedElement.style.overflow = 'visible';
-            
-            // Add extra padding at bottom to prevent cutting
-            clonedElement.style.paddingBottom = '100px';
+            // Force exact A4 single-page dimensions (Ratio 1 : 1.414)
+            clonedElement.style.width = '1000px';
+            clonedElement.style.height = '1414px';
+            clonedElement.style.minHeight = '1414px';
+            clonedElement.style.maxHeight = '1414px';
+            clonedElement.style.overflow = 'hidden';
+            clonedElement.style.padding = '45px';
             clonedElement.style.letterSpacing = '0';
             clonedElement.style.wordSpacing = '0';
             
-            // Calculate height to fill A4 pages
-            const actualHeight = clonedElement.scrollHeight;
-            const a4Ratio = 1.4142;
-            const a4PageHeight = 850 * a4Ratio;
-            const totalPages = Math.ceil(actualHeight / a4PageHeight);
-            const targetHeight = totalPages * a4PageHeight;
+            // Apply darker colors and larger fonts specifically for high contrast PDF printing
+            clonedElement.style.color = '#000000';
             
-            // Set height to exactly match multiple of A4 pages
-            // This ensures the background pattern fills the entire page
-            clonedElement.style.height = `${targetHeight}px`;
-            clonedElement.style.minHeight = `${targetHeight}px`;
+            // Target elements inside the cloned element
+            const allTds = clonedElement.getElementsByTagName('td');
+            for (let i = 0; i < allTds.length; i++) {
+              const td = allTds[i] as HTMLElement;
+              td.style.color = '#000000';
+              td.style.fontWeight = '900'; // Make font darker/bolder
+              td.style.fontSize = '20px'; // Make font larger in PDF
+            }
+
+            const allThs = clonedElement.getElementsByTagName('th');
+            for (let i = 0; i < allThs.length; i++) {
+              const th = allThs[i] as HTMLElement;
+              th.style.fontWeight = '955'; // Extra heavy bold headers
+              th.style.fontSize = '18px'; // Larger headers
+              th.style.color = '#ffffff';
+            }
+
+            // High contrast for the specific gold colors on the output
+            const goldElements = clonedElement.querySelectorAll('.text-\\[\\#d4af37\\], .text-\\[\\#b79626\\]');
+            goldElements.forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.style.color = '#967205'; // Darker premium gold/bronze for beautiful, high contrast printing
+              htmlEl.style.fontWeight = '955';
+              htmlEl.style.fontSize = '24px';
+            });
+
+            // Make document title and offer name bolder and darker
+            const docTitle = clonedElement.querySelector('h2');
+            if (docTitle) {
+              docTitle.style.color = '#000000';
+              docTitle.style.fontWeight = '955';
+              docTitle.style.fontSize = '42px';
+            }
+
+            const offerName = clonedElement.querySelector('h3');
+            if (offerName) {
+              offerName.style.color = '#000000';
+              offerName.style.fontWeight = '955';
+              offerName.style.fontSize = '50px';
+            }
+
+            // Note/Fixed block
+            const noteHeading = clonedElement.querySelector('.space-y-6 h4');
+            if (noteHeading) {
+              const h4Node = noteHeading as HTMLElement;
+              h4Node.style.fontWeight = '955';
+              h4Node.style.fontSize = '22px';
+              h4Node.style.color = '#000000';
+            }
+
+            const noteContent = clonedElement.querySelector('.whitespace-pre-wrap');
+            if (noteContent) {
+              const noteDiv = noteContent as HTMLElement;
+              noteDiv.style.color = '#000000';
+              noteDiv.style.fontWeight = '800'; // Make bolder
+              noteDiv.style.fontSize = '17px'; // Make larger
+              noteDiv.style.lineHeight = '1.8';
+            }
+
+            // Contact block
+            const contactHeading = clonedElement.querySelector('.text-right.space-y-4 h4');
+            if (contactHeading) {
+              const h4Node = contactHeading as HTMLElement;
+              h4Node.style.fontWeight = '955';
+              h4Node.style.fontSize = '22px';
+              h4Node.style.color = '#000000';
+            }
+
+            const contactParagraphs = clonedElement.querySelectorAll('.pt-6.flex.gap-8 span');
+            contactParagraphs.forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.style.color = '#967205';
+              htmlEl.style.fontWeight = '955';
+              htmlEl.style.fontSize = '22px';
+            });
+
+            const contactAddressLines = clonedElement.querySelectorAll('.space-y-1 p');
+            contactAddressLines.forEach((el) => {
+              const htmlEl = el as HTMLElement;
+              htmlEl.style.color = '#000000';
+              htmlEl.style.fontWeight = '900';
+              htmlEl.style.fontSize = '18px';
+            });
+
+            const footerDate = clonedElement.querySelector('.text-xs.font-bold.italic');
+            if (footerDate) {
+              const dateEl = footerDate as HTMLElement;
+              dateEl.style.color = '#000000';
+              dateEl.style.fontWeight = '900';
+              dateEl.style.fontSize = '15px';
+            }
           }
         }
       });
       
       const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       
-      // Calculate image dimensions to fit A4 width
-      const imgWidth = pdfWidth;
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      let heightLeft = imgHeight;
-      let position = 0;
-      
-      // Add pages
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-      
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
-      }
-
+      // Render layout exactly on a single A4 page
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`عرض_عمرة_${offer.name}.pdf`);
     } catch (error) {
       console.error('Error exporting PDF:', error);
@@ -1277,12 +1437,12 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                     <div className="inline-flex items-center gap-4">
                       <div className="h-px w-12 bg-[#d4af37] opacity-30" />
                       <div className="px-8 py-2 rounded-full" style={{ backgroundColor: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.4)' }}>
-                        <span className="text-[#d4af37] font-black text-sm">{selectedOfferForShare.category}</span>
+                        <span className="text-[#a67c05] font-black text-base">{selectedOfferForShare.category}</span>
                       </div>
                       <div className="h-px w-12 bg-[#d4af37] opacity-30" />
                     </div>
                     <h3 className="text-5xl font-black text-[#1a1a1a] leading-tight" style={{ fontFamily: '"Amiri", serif' }}>{selectedOfferForShare.name}</h3>
-                    <div className="flex items-center justify-center gap-6 font-bold text-base" style={{ color: '#6b7280' }}>
+                    <div className="flex items-center justify-center gap-6 font-bold text-base" style={{ color: '#111111' }}>
                       <span className="w-16 h-[1px]" style={{ backgroundColor: 'rgba(212, 175, 55, 0.2)' }} />
                       <span style={{ fontFamily: '"Amiri", serif' }}>عام 1447 هـ / 2026 م</span>
                       <span className="w-16 h-[1px]" style={{ backgroundColor: 'rgba(212, 175, 55, 0.2)' }} />
@@ -1290,32 +1450,32 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   </div>
 
                   {/* Table Section */}
-                  <div className="rounded-[2rem] overflow-hidden mb-10" style={{ border: '1px solid rgba(212, 175, 55, 0.2)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+                  <div className="rounded-[2rem] overflow-hidden mb-10" style={{ border: '2px solid rgba(0, 0, 0, 0.8)', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
                     <table className="w-full text-right border-collapse">
                       <thead>
                         <tr style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>
-                          <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>مكة المكرمة</th>
-                          <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>المدينة المنورة</th>
-                          {(selectedOfferForShare.rows || []).some(r => r.offer) && <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>العرض</th>}
-                          <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>الوجبات</th>
-                          <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>ثنائية</th>
-                          <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>ثلاثية</th>
-                          <th className="p-6 font-black text-sm" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>رباعية</th>
-                          {(selectedOfferForShare.rows || []).some(r => r.quint) && <th className="p-6 font-black text-sm" style={{ fontFamily: '"Amiri", serif' }}>خماسية</th>}
+                          <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>مكة المكرمة</th>
+                          <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>المدينة المنورة</th>
+                          {(selectedOfferForShare.rows || []).some(r => r.offer) && <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>العرض</th>}
+                          <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>الوجبات</th>
+                          <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>ثنائية</th>
+                          <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>ثلاثية</th>
+                          <th className="p-6 font-black text-base" style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', fontFamily: '"Amiri", serif' }}>رباعية</th>
+                          {(selectedOfferForShare.rows || []).some(r => r.quint) && <th className="p-6 font-black text-base" style={{ fontFamily: '"Amiri", serif' }}>خماسية</th>}
                         </tr>
                       </thead>
-                      <tbody style={{ color: '#374151' }}>
+                      <tbody style={{ color: '#000000' }}>
                         {(selectedOfferForShare.rows || []).map((row, idx) => (
-                          <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? "#ffffff" : "rgba(212, 175, 55, 0.02)", borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
-                            <td className="p-6 font-bold text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.makkah}</td>
-                            <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.madinah}</td>
-                            {(selectedOfferForShare.rows || []).some(r => r.offer) && <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.offer || '-'}</td>}
-                            <td className="p-6 text-base" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.meals}</td>
-                            <td className="p-6 font-black text-[#d4af37] text-lg" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.currency === 'USD' ? '$' : ''}{row.double.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
-                            <td className="p-6 font-black text-[#d4af37] text-lg" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.currency === 'USD' ? '$' : ''}{row.triple.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
-                            <td className="p-6 font-black text-[#d4af37] text-lg" style={{ borderLeft: '1px solid rgba(212, 175, 55, 0.05)' }}>{row.currency === 'USD' ? '$' : ''}{row.quad.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
+                          <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? "#ffffff" : "rgba(0, 0, 0, 0.03)", borderBottom: '2px solid rgba(0, 0, 0, 0.15)' }}>
+                            <td className="p-6 font-black text-lg text-black" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.makkah}</td>
+                            <td className="p-6 font-extrabold text-lg text-black/90" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.madinah}</td>
+                            {(selectedOfferForShare.rows || []).some(r => r.offer) && <td className="p-6 font-extrabold text-lg text-black/90" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.offer || '-'}</td>}
+                            <td className="p-6 font-extrabold text-lg text-black/90" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.meals}</td>
+                            <td className="p-6 font-black text-[#a67c05] text-[20px]" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.currency === 'USD' ? '$' : ''}{row.double.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
+                            <td className="p-6 font-black text-[#a67c05] text-[20px]" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.currency === 'USD' ? '$' : ''}{row.triple.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
+                            <td className="p-6 font-black text-[#a67c05] text-[20px]" style={{ borderLeft: '1px solid rgba(0, 0, 0, 0.1)' }}>{row.currency === 'USD' ? '$' : ''}{row.quad.toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}</td>
                             {(selectedOfferForShare.rows || []).some(r => r.quint) && (
-                              <td className="p-6 font-black text-[#d4af37] text-lg">
+                              <td className="p-6 font-black text-[#a67c05] text-[20px]">
                                 {row.currency === 'USD' ? '$' : ''}{(row.quint || 0).toLocaleString()}{row.currency === 'LYD' ? ' د.ل' : ''}
                               </td>
                             )}
@@ -1326,26 +1486,26 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   </div>
 
                   {/* Footer Section */}
-                  <div className="grid grid-cols-2 gap-16 pt-8" style={{ borderTop: '3px double rgba(212, 175, 55, 0.2)' }}>
+                  <div className="grid grid-cols-2 gap-16 pt-8" style={{ borderTop: '3px double rgba(0, 0, 0, 0.3)' }}>
                     <div className="space-y-6">
-                      <h4 className="text-[#1a1a1a] font-black text-lg pr-4" style={{ borderRight: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>ملاحظة:</h4>
-                      <div className="text-xs leading-relaxed whitespace-pre-wrap font-medium" style={{ color: '#4b5563' }}>
+                      <h4 className="text-black font-black text-xl pr-4" style={{ borderRight: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>ملاحظة:</h4>
+                      <div className="text-sm leading-relaxed whitespace-pre-wrap font-bold" style={{ color: '#000000' }}>
                         {selectedOfferForShare.fixedText || DEFAULT_FIXED_TEXT}
                       </div>
                     </div>
                     <div className="flex flex-col items-end justify-between">
                       <div className="text-right space-y-4">
-                        <h4 className="text-[#1a1a1a] font-black text-lg pl-4 mb-6" style={{ borderLeft: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>تواصل معنا</h4>
+                        <h4 className="text-black font-black text-xl pl-4 mb-6" style={{ borderLeft: '5px solid #d4af37', fontFamily: '"Amiri", serif' }}>تواصل معنا</h4>
                         <div className="space-y-1">
-                          <p className="text-sm font-bold" style={{ color: '#6b7280' }}>زاوية الدهماني بالقرب من سوق الشط</p>
-                          <p className="text-sm font-bold" style={{ color: '#6b7280' }}>طرابلس - ليبيا</p>
+                          <p className="text-base font-extrabold" style={{ color: '#1a1a1a' }}>زاوية الدهماني بالقرب من سوق الشط</p>
+                          <p className="text-base font-extrabold" style={{ color: '#1a1a1a' }}>طرابلس - ليبيا</p>
                         </div>
-                        <div className="pt-6 flex gap-8 text-[#d4af37] font-black text-lg">
+                        <div className="pt-6 flex gap-8 text-[#a67c05] font-black text-[20px]">
                           <span>0948470011</span>
                           <span>0947470010</span>
                         </div>
                       </div>
-                      <div className="text-xs font-bold italic mt-12" style={{ color: 'rgba(212, 175, 55, 0.4)', fontFamily: '"Amiri", serif' }}>
+                      <div className="text-sm font-extrabold italic mt-12" style={{ color: 'rgba(0, 0, 0, 0.6)', fontFamily: '"Amiri", serif' }}>
                         تم إنشاء هذا العرض بتاريخ {new Date().toLocaleDateString('ar-LY')}
                       </div>
                     </div>
