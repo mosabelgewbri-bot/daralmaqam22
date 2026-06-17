@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../services/api';
+import { getRolePermissions } from '../utils/dataUtils';
 import { User, UmrahOffer, UmrahOfferRow, Booking, Pilgrim } from '../types';
 import { clsx } from 'clsx';
 import jsPDF from 'jspdf';
@@ -67,6 +68,7 @@ const DEFAULT_FIXED_TEXT = `
 `;
 
 export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
+  const permissions = getRolePermissions(user.role);
   const [offers, setOffers] = useState<UmrahOffer[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [currentOffer, setCurrentOffer] = useState<Partial<UmrahOffer>>({
@@ -190,6 +192,10 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   };
 
   const handleSave = async () => {
+    if (!permissions.canEdit) {
+      showToast('ليس لديك صلاحية تعديل أو إضافة عروض العمرة', 'error');
+      return;
+    }
     if (!currentOffer.name) {
       showToast('يرجى إدخال اسم العرض', 'warning');
       return;
@@ -204,6 +210,10 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
   };
 
   const handleDelete = async (id: string) => {
+    if (!permissions.canDelete) {
+      showToast('ليس لديك صلاحية حذف عروض العمرة', 'error');
+      return;
+    }
     setConfirmModal({
       title: 'حذف العرض',
       message: 'هل أنت متأكد من حذف هذا العرض؟ لا يمكن التراجع عن هذا الإجراء.',

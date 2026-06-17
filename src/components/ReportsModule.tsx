@@ -1525,12 +1525,15 @@ export default function ReportsModule({ user }: { user: User }) {
                           </>
                         ) : (
                           <>
-                            <button 
-                              onClick={() => setEditingPilgrim({ bookingId: p.bookingId, pilgrimIdx: p.pilgrimIdx, data: { name: p.name, passportNo: p.passportNo } })}
-                              className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded-lg"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
+                            {permissions.canEdit && (
+                              <button 
+                                onClick={() => setEditingPilgrim({ bookingId: p.bookingId, pilgrimIdx: p.pilgrimIdx, data: { name: p.name, passportNo: p.passportNo } })}
+                                className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded-lg"
+                                title="تعديل المعتمر"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
                             {permissions.canDelete && (
                               <button
                                 onClick={() => {

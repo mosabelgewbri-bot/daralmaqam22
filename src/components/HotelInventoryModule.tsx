@@ -41,6 +41,7 @@ import domtoimage from 'dom-to-image-more';
 
 import { User, Hotel, HotelRoom } from '../types';
 import { api } from '../services/api';
+import { getRolePermissions } from '../utils/dataUtils';
 import { clsx } from 'clsx';
 import { 
   format, 
@@ -63,6 +64,7 @@ interface HotelInventoryModuleProps {
 }
 
 export default function HotelInventoryModule({ user }: HotelInventoryModuleProps) {
+  const permissions = getRolePermissions(user.role);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [rooms, setRooms] = useState<HotelRoom[]>([]);
   const [selectedHotelId, setSelectedHotelId] = useState<string>('all');
@@ -124,6 +126,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
 
   const handleSaveHotel = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!permissions.canEdit || !permissions.canManageRooms) {
+      showToast('ليس لديك صلاحية لتعديل أو إضافة الفنادق والغرف', 'error');
+      return;
+    }
     if (!editingHotel) return;
     try {
       if (!editingHotel.name) {
@@ -176,6 +182,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
   };
 
   const handleDeleteHotel = async (id: string) => {
+    if (!permissions.canDelete || !permissions.canManageRooms) {
+      showToast('ليس لديك صلاحية لحذف الفنادق والغرف', 'error');
+      return;
+    }
     try {
       await api.deleteHotel(id);
       showToast('تم حذف الفندق بنجاح');
@@ -189,6 +199,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
 
   const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!permissions.canEdit || !permissions.canManageRooms) {
+      showToast('ليس لديك صلاحية لتعديل أو إضافة الفنادق والغرف', 'error');
+      return;
+    }
     if (!editingRoom) return;
 
     if (!editingRoom.hotelId) {
@@ -237,6 +251,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
   };
 
   const handleDeleteRoom = async (id: string) => {
+    if (!permissions.canDelete || !permissions.canManageRooms) {
+      showToast('ليس لديك صلاحية لحذف الفنادق والغرف', 'error');
+      return;
+    }
     try {
       await api.deleteRoom(id);
       showToast('تم حذف الغرفة بنجاح');
@@ -248,6 +266,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
   };
 
   const handleDeleteAllRooms = async () => {
+    if (!permissions.canDelete || !permissions.canManageRooms) {
+      showToast('ليس لديك صلاحية لحذف الفنادق والغرف', 'error');
+      return;
+    }
     if (filteredRooms.length === 0) return;
     try {
       const ids = filteredRooms.map(r => r.id);
@@ -261,6 +283,10 @@ export default function HotelInventoryModule({ user }: HotelInventoryModuleProps
   };
 
   const handleUpdateRange = async (roomId: string, dates: string[], status: 'booked' | 'available' | 'inactive', price: number, customerName: string) => {
+    if (!permissions.canEdit || !permissions.canManageRooms) {
+      showToast('ليس لديك صلاحية لتعديل حالة الغرف', 'error');
+      return;
+    }
     const room = rooms.find(r => r.id === roomId);
     if (!room) return;
 

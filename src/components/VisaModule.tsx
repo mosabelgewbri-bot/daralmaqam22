@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Pilgrim, Booking, Trip } from '../types';
 import { api } from '../services/api';
-import { deduplicateBookings } from '../utils/dataUtils';
+import { deduplicateBookings, getRolePermissions } from '../utils/dataUtils';
 import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare, Zap, CheckCircle2, Eye, X as CloseIcon, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
@@ -56,10 +56,12 @@ const findTripRobust = (tripsList: Trip[], tripIdOrName: any, bookingObj?: any) 
 // Optimized input component for Group Number to prevent typing lag
 const GroupNoInput = ({ 
   initialValue, 
-  onSave 
+  onSave,
+  disabled
 }: { 
   initialValue: string, 
-  onSave: (val: string) => void 
+  onSave: (val: string) => void,
+  disabled?: boolean
 }) => {
   const [localValue, setLocalValue] = useState(initialValue || '');
 
@@ -70,7 +72,8 @@ const GroupNoInput = ({
   return (
     <input 
       type="text" 
-      className="input-field w-32 py-1 text-sm"
+      disabled={disabled}
+      className="input-field w-32 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
       value={localValue}
       onChange={(e) => setLocalValue(e.target.value)}
       onBlur={() => {
@@ -89,6 +92,7 @@ const GroupNoInput = ({
 };
 
 export default function VisaModule({ user }: { user: User }) {
+  const permissions = getRolePermissions(user.role);
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -213,6 +217,10 @@ export default function VisaModule({ user }: { user: User }) {
   }, [selectedTripId, searchTerm, bookings]);
 
   const updateStatus = async (bookingId: string, passportNo: string, newStatus: Pilgrim['visaStatus']) => {
+    if (!permissions.canChangeVisaStatus && !permissions.canEdit) {
+      showToast('ليس لديك صلاحية لتعديل حالة التأشيرة', 'error');
+      return;
+    }
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
@@ -237,6 +245,10 @@ export default function VisaModule({ user }: { user: User }) {
   };
 
   const updateGroup = async (bookingId: string, passportNo: string, groupNo: string) => {
+    if (!permissions.canEdit) {
+      showToast('ليس لديك صلاحية لتعديل رقم المجموعة', 'error');
+      return;
+    }
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
@@ -261,6 +273,10 @@ export default function VisaModule({ user }: { user: User }) {
   };
 
   const handleBulkUpdate = async () => {
+    if (!permissions.canChangeVisaStatus && !permissions.canEdit) {
+      showToast('ليس لديك صلاحية لتعديل حالة التأشيرة', 'error');
+      return;
+    }
     if (!bulkStatus || selectedPilgrims.length === 0) return;
 
     const updatedBookings = [...bookings];
@@ -589,6 +605,7 @@ export default function VisaModule({ user }: { user: User }) {
                     <GroupNoInput 
                       initialValue={p.groupNo || ''} 
                       onSave={(val) => updateGroup(p.bookingId, p.passportNo, val)} 
+                      disabled={!permissions.canEdit}
                     />
                   </td>
                   <td className="px-6 py-4">
@@ -596,8 +613,9 @@ export default function VisaModule({ user }: { user: User }) {
                       <select
                         value={p.visaStatus || 'Pending'}
                         onChange={(e) => updateStatus(p.bookingId, p.passportNo, e.target.value as any)}
+                        disabled={!permissions.canChangeVisaStatus && !permissions.canEdit}
                         className={clsx(
-                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-transparent outline-none cursor-pointer",
+                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-transparent outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                           p.visaStatus === 'Pending' && "text-yellow-500 border-yellow-500/20",
                           p.visaStatus === 'Processed' && "text-blue-500 border-blue-500/20",
                           p.visaStatus === 'Visa Issued' && "text-emerald-500 border-emerald-500/20"

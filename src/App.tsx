@@ -449,7 +449,7 @@ export default function App() {
     return () => {
       window.removeEventListener('settings_updated', applyTheme);
     };
-  }, [user]);
+  }, [user, firebaseReady]);
 
   const handleLogin = (userData: User) => {
     setUser(userData);

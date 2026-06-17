@@ -177,7 +177,7 @@ export default function TripForm({ user }: { user: User }) {
   };
   const [showForm, setShowForm] = useState(false);
   const permissions = getRolePermissions(user.role);
-  const canManage = permissions.canEditTrips || user.role === 'admin' || user.role === 'manager';
+  const canManage = permissions.canEditTrips;
 
   useEffect(() => {
     const loadTrips = async () => {
