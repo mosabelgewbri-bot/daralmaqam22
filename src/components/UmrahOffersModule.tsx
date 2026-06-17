@@ -292,6 +292,23 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
               offerName.style.fontSize = '50px';
             }
 
+            // Style category badge and text for high print contrast and readability in Image Export
+            const categoryBadge = clonedElement.querySelector('.offer-category-badge');
+            if (categoryBadge) {
+              const badgeEl = categoryBadge as HTMLElement;
+              badgeEl.style.backgroundColor = 'rgba(212, 175, 55, 0.25)';
+              badgeEl.style.border = '3px solid #7d5c03';
+              badgeEl.style.padding = '12px 36px';
+            }
+
+            const categorySpan = clonedElement.querySelector('.offer-category-span');
+            if (categorySpan) {
+              const spanEl = categorySpan as HTMLElement;
+              spanEl.style.fontSize = '34px';
+              spanEl.style.color = '#7d5c03';
+              spanEl.style.fontWeight = '955';
+            }
+
             // Note/Fixed block
             const noteHeading = clonedElement.querySelector('.space-y-6 h4');
             if (noteHeading) {
@@ -435,6 +452,23 @@ export default function UmrahOffersModule({ user }: UmrahOffersModuleProps) {
               offerName.style.color = '#000000';
               offerName.style.fontWeight = '955';
               offerName.style.fontSize = '50px';
+            }
+
+            // Style category badge and text for high print contrast and readability in PDF
+            const categoryBadge = clonedElement.querySelector('.offer-category-badge');
+            if (categoryBadge) {
+              const badgeEl = categoryBadge as HTMLElement;
+              badgeEl.style.backgroundColor = 'rgba(212, 175, 55, 0.25)';
+              badgeEl.style.border = '3px solid #7d5c03';
+              badgeEl.style.padding = '12px 36px';
+            }
+
+            const categorySpan = clonedElement.querySelector('.offer-category-span');
+            if (categorySpan) {
+              const spanEl = categorySpan as HTMLElement;
+              spanEl.style.fontSize = '34px';
+              spanEl.style.color = '#7d5c03';
+              spanEl.style.fontWeight = '955';
             }
 
             // Note/Fixed block
@@ -1436,8 +1470,8 @@ ${offer.fixedText || DEFAULT_FIXED_TEXT}
                   <div className="text-center mb-10 space-y-4">
                     <div className="inline-flex items-center gap-4">
                       <div className="h-px w-12 bg-[#d4af37] opacity-30" />
-                      <div className="px-8 py-2 rounded-full" style={{ backgroundColor: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.4)' }}>
-                        <span className="text-[#a67c05] font-black text-base">{selectedOfferForShare.category}</span>
+                      <div className="px-12 py-3 rounded-full offer-category-badge" style={{ backgroundColor: 'rgba(212, 175, 55, 0.15)', border: '2px solid rgba(212, 175, 55, 0.7)' }}>
+                        <span className="text-[#8c6703] font-black text-3xl offer-category-span">{selectedOfferForShare.category}</span>
                       </div>
                       <div className="h-px w-12 bg-[#d4af37] opacity-30" />
                     </div>

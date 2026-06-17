@@ -13,6 +13,7 @@ import {
   Calendar,
   Lock,
   Trash2,
+  PlusCircle,
   Edit2,
   ArrowLeft,
   ChevronRight,
@@ -202,6 +203,12 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
   const [editFormData, setEditFormData] = useState<Partial<User> & { password?: string }>({});
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddRoleModalOpen, setIsAddRoleModalOpen] = useState(false);
+  const [newRoleData, setNewRoleData] = useState({
+    roleId: '',
+    roleDisplayName: '',
+    copyFrom: 'staff'
+  });
   const [newUser, setNewUser] = useState({
     name: '',
     username: '',
@@ -323,6 +330,110 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
       window.dispatchEvent(new Event('permissions_updated'));
     } catch (error) {
       console.error('Error saving permission:', error);
+    }
+  };
+
+  const handleCreateRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoleData.roleId.trim() || !newRoleData.roleDisplayName.trim()) {
+      showToast('يرجى ملء جميع الحقول المطلوبة', 'error');
+      return;
+    }
+
+    const cleanRoleId = newRoleData.roleId.trim().toLowerCase().replace(/\s+/g, '_');
+    
+    // Check if role already exists
+    if (rolePermissions.some(rp => rp.role === cleanRoleId)) {
+      showToast('معرف الدور هذا مستخدم بالفعل. يرجى اختيار معرف آخر.', 'error');
+      return;
+    }
+
+    // copy template permissions if copyFrom is specified, else create empty
+    const templateRp = rolePermissions.find(rp => rp.role === newRoleData.copyFrom);
+    
+    const newRole: RolePermissions = {
+      role: cleanRoleId,
+      roleDisplayName: newRoleData.roleDisplayName.trim(),
+      allowedScreens: templateRp ? [...templateRp.allowedScreens] : ['dashboard'],
+      canEdit: templateRp ? templateRp.canEdit : false,
+      canDelete: templateRp ? templateRp.canDelete : false,
+      canExport: templateRp ? templateRp.canExport : false,
+      canViewFinance: templateRp ? templateRp.canViewFinance : false,
+      canApproveBookings: templateRp ? templateRp.canApproveBookings : false,
+      canManageUsers: templateRp ? templateRp.canManageUsers : false,
+      canEditTrips: templateRp ? templateRp.canEditTrips : false,
+      canViewReports: templateRp ? templateRp.canViewReports : false,
+      canManageSettings: templateRp ? templateRp.canManageSettings : false,
+      canManageFinance: templateRp ? templateRp.canManageFinance : false,
+      canChangeVisaStatus: templateRp ? templateRp.canChangeVisaStatus : false,
+      canManageRooms: templateRp ? templateRp.canManageRooms : false,
+      canViewLogs: templateRp ? templateRp.canViewLogs : false,
+      dataScope: templateRp ? templateRp.dataScope : 'own'
+    };
+
+    try {
+      await api.savePermission(newRole);
+      
+      const updatedPerms = [...rolePermissions, newRole];
+      setRolePermissions(updatedPerms);
+      localStorage.setItem('role_permissions', JSON.stringify(updatedPerms));
+      window.dispatchEvent(new Event('permissions_updated'));
+      
+      // Audit Log
+      await api.logAction(
+        currentUser.id,
+        currentUser.name,
+        'إضافة دور جديد',
+        `تم إضافة دور جديد: ${newRoleData.roleDisplayName} (${cleanRoleId})`
+      );
+
+      showToast('تمت إضافة الدور الجديد وصلاحياته بنجاح', 'success');
+      setIsAddRoleModalOpen(false);
+      setNewRoleData({ roleId: '', roleDisplayName: '', copyFrom: 'staff' });
+    } catch (err: any) {
+      console.error('Error creating role:', err);
+      showToast(err.message || 'حدث خطأ أثناء إضافة الدور الجديد', 'error');
+    }
+  };
+
+  const handleDeleteRole = async (role: string) => {
+    const protectedRoles = ['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'];
+    if (protectedRoles.includes(role)) {
+      showToast('لا يمكن حذف الأدوار الافتراضية للنظام', 'error');
+      return;
+    }
+
+    const usersWithRole = users.filter(u => u.role === role);
+    if (usersWithRole.length > 0) {
+      showToast(`لا يمكن حذف هذا الدور لوجود مستخدمين معينين به (${usersWithRole.length} مستخدمين). يرجى تغيير أدوارهم أولاً.`, 'error');
+      return;
+    }
+
+    try {
+      const rp = rolePermissions.find(p => p.role === role);
+      if (rp) {
+        const id = (rp as any).id;
+        if (id) {
+          await api.deletePermission(id);
+        }
+      }
+      
+      const updatedPerms = rolePermissions.filter(rp => rp.role !== role);
+      setRolePermissions(updatedPerms);
+      localStorage.setItem('role_permissions', JSON.stringify(updatedPerms));
+      window.dispatchEvent(new Event('permissions_updated'));
+
+      await api.logAction(
+        currentUser.id,
+        currentUser.name,
+        'حذف دور',
+        `تم حذف دور الصلاحيات: ${role}`
+      );
+
+      showToast('تم حذف الدور بنجاح', 'success');
+    } catch (err: any) {
+      console.error('Error deleting role:', err);
+      showToast(err.message || 'حدث خطأ أثناء حذف الدور', 'error');
     }
   };
 
@@ -458,13 +569,23 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                 </button>
               )}
             </div>
-            <button 
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold transition-all"
-            >
-              <UserPlus className="w-5 h-5" />
-              إضافة مستخدم جديد
-            </button>
+            {activeTab === 'users' ? (
+              <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-gold/10"
+              >
+                <UserPlus className="w-5 h-5" />
+                إضافة مستخدم جديد
+              </button>
+            ) : activeTab === 'permissions' ? (
+              <button 
+                onClick={() => setIsAddRoleModalOpen(true)}
+                className="flex items-center gap-2 bg-gold hover:bg-gold/90 text-black px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-gold/10"
+              >
+                <PlusCircle className="w-5 h-5" />
+                إضافة دور جديد
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -533,12 +654,17 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                         value={newUser.role}
                         onChange={e => setNewUser({...newUser, role: e.target.value as Role})}
                       >
-                        <option value="staff">موظف</option>
-                        <option value="accountant">محاسب</option>
-                        <option value="admin">مدير</option>
-                        <option value="manager">مدير فرع</option>
-                        <option value="visa_specialist">مسؤول تأشيرات</option>
-                        <option value="receptionist">موظف استقبال</option>
+                        {rolePermissions.map(rp => (
+                          <option key={rp.role} value={rp.role}>
+                            {rp.role === 'admin' ? 'المدير العام' : 
+                             rp.role === 'staff' ? 'موظف عمليات' : 
+                             rp.role === 'accountant' ? 'المحاسب المالي' :
+                             rp.role === 'manager' ? 'مدير فرع' :
+                             rp.role === 'visa_specialist' ? 'مسؤول تأشيرات' : 
+                             rp.role === 'receptionist' ? 'موظف استقبال' : 
+                             rp.roleDisplayName || rp.role}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -546,6 +672,84 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                   <div className="pt-4">
                     <button type="submit" className="btn-gold w-full py-4 font-bold text-lg">
                       تأكيد الإضافة
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+
+          {isAddRoleModalOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsAddRoleModalOpen(false)}
+                className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative glass-card w-full max-w-lg p-8 space-y-6"
+              >
+                <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                  <h3 className="text-xl font-bold text-gold">إضافة دور جديد مخصص</h3>
+                  <button onClick={() => setIsAddRoleModalOpen(false)} className="text-white/40 hover:text-white">
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateRole} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest text-right block">اسم الدور (باللغة العربية)</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="مثال: مشرف نقل، مسؤول حافلات، إلخ..."
+                      className="input-field w-full text-right"
+                      value={newRoleData.roleDisplayName}
+                      onChange={e => setNewRoleData({...newRoleData, roleDisplayName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest text-right block">معرف الدور البرمجي (ID بالإنجليزية)</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="مثال: transport_supervisor"
+                      className="input-field w-full text-left"
+                      value={newRoleData.roleId}
+                      onChange={e => setNewRoleData({...newRoleData, roleId: e.target.value.toLowerCase().trim().replace(/\s+/g, '_')})}
+                    />
+                    <p className="text-[10px] text-white/30 text-right">سيتم تحويل هذا الرمز تلقائياً إلى صيغة برمجية مناسبة</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/40 uppercase tracking-widest text-right block">نسخ صلاحيات مبدئية من دور سابق</label>
+                    <select 
+                      className="input-field w-full"
+                      value={newRoleData.copyFrom}
+                      onChange={e => setNewRoleData({...newRoleData, copyFrom: e.target.value})}
+                    >
+                      {rolePermissions.map((rp) => (
+                        <option key={rp.role} value={rp.role}>
+                          {rp.role === 'admin' ? 'المدير العام' : 
+                           rp.role === 'staff' ? 'موظف عمليات' : 
+                           rp.role === 'accountant' ? 'المحاسب المالي' :
+                           rp.role === 'manager' ? 'مدير فرع' :
+                           rp.role === 'visa_specialist' ? 'مسؤول تأشيرات' : 
+                           rp.role === 'receptionist' ? 'موظف استقبال' : 
+                           rp.roleDisplayName || rp.role}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="pt-4">
+                    <button type="submit" className="btn-gold w-full py-4 font-bold text-lg">
+                      تأكيد إنشاء الدور وصلاحياته
                     </button>
                   </div>
                 </form>
@@ -687,14 +891,34 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                     <div className="p-6 border-b border-white/10 bg-white/[0.02]">
                       <div className="flex items-center justify-between mb-4">
                         <Shield className="w-8 h-8 text-gold" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">صلاحيات الدور</span>
+                        {!['admin', 'staff', 'accountant', 'manager', 'visa_specialist', 'receptionist'].includes(rp.role) ? (
+                          <button 
+                            onClick={() => {
+                              setConfirmModal({
+                                show: true,
+                                title: 'حذف دور وصلاحيات',
+                                message: `هل أنت متأكد من حذف الدور المخصص "${rp.roleDisplayName || rp.role}"؟ سيتم حذف جميع صلاحياته المحددة، ولا يمكن التراجع عن هذا الإجراء.`,
+                                type: 'danger',
+                                onConfirm: () => handleDeleteRole(rp.role)
+                              });
+                            }}
+                            className="p-2 hover:bg-red-500/10 rounded-lg text-white/40 hover:text-red-400 transition-all border border-transparent hover:border-red-500/20"
+                            title="حذف هذا الدور"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">دور أساسي</span>
+                        )}
                       </div>
                       <h3 className="text-xl font-bold text-white capitalize">
                         {rp.role === 'admin' ? 'المدير العام' : 
                          rp.role === 'staff' ? 'موظف عمليات' : 
                          rp.role === 'accountant' ? 'المحاسب المالي' :
                          rp.role === 'manager' ? 'مدير فرع' :
-                         rp.role === 'visa_specialist' ? 'مسؤول تأشيرات' : 'موظف استقبال'}
+                         rp.role === 'visa_specialist' ? 'مسؤول تأشيرات' : 
+                         rp.role === 'receptionist' ? 'موظف استقبال' : 
+                         rp.roleDisplayName || rp.role}
                       </h3>
                     </div>
                     <div className="p-6 flex-1 space-y-8">
@@ -766,6 +990,20 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                     </div>
                   </div>
                 ))}
+                
+                {/* Add Role Card Button */}
+                <div 
+                  onClick={() => setIsAddRoleModalOpen(true)}
+                  className="bg-white/5 hover:bg-white/[0.08] hover:scale-[1.02] border-2 border-dashed border-white/10 hover:border-gold/30 rounded-3xl p-8 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all duration-300 min-h-[300px]"
+                >
+                  <div className="w-16 h-16 rounded-full bg-gold/10 flex items-center justify-center text-gold shadow-lg shadow-gold/10">
+                    <PlusCircle className="w-8 h-8" />
+                  </div>
+                  <div className="text-center">
+                    <h4 className="text-lg font-bold text-white">إضافة دور جديد مخصص</h4>
+                    <p className="text-xs text-white/40 mt-1 max-w-[200px] mx-auto">إضافة دور مخصص جديد في نظام الصلاحيات وتحديد شاشاته وإجراءاته يدوياً</p>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-6">
@@ -935,12 +1173,17 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                             value={editFormData.role || 'staff'}
                             onChange={e => setEditFormData({...editFormData, role: e.target.value as Role})}
                           >
-                            <option value="staff">موظف</option>
-                            <option value="accountant">محاسب</option>
-                            <option value="admin">مدير</option>
-                            <option value="manager">مدير فرع</option>
-                            <option value="visa_specialist">مسؤول تأشيرات</option>
-                            <option value="receptionist">موظف استقبال</option>
+                            {rolePermissions.map(rp => (
+                              <option key={rp.role} value={rp.role}>
+                                {rp.role === 'admin' ? 'المدير العام' : 
+                                 rp.role === 'staff' ? 'موظف عمليات' : 
+                                 rp.role === 'accountant' ? 'المحاسب المالي' :
+                                 rp.role === 'manager' ? 'مدير فرع' :
+                                 rp.role === 'visa_specialist' ? 'مسؤول تأشيرات' : 
+                                 rp.role === 'receptionist' ? 'موظف استقبال' : 
+                                 rp.roleDisplayName || rp.role}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         <div className="space-y-2">
@@ -1006,7 +1249,15 @@ export default function UsersManagement({ user: currentUser }: { user: User }) {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
                           <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Role</p>
-                          <p className="font-bold text-white capitalize">{selectedUser.role}</p>
+                          <p className="font-bold text-white capitalize">
+                            {selectedUser.role === 'admin' ? 'المدير العام' : 
+                             selectedUser.role === 'staff' ? 'موظف عمليات' : 
+                             selectedUser.role === 'accountant' ? 'المحاسب المالي' :
+                             selectedUser.role === 'manager' ? 'مدير فرع' :
+                             selectedUser.role === 'visa_specialist' ? 'مسؤول تأشيرات' : 
+                             selectedUser.role === 'receptionist' ? 'موظف استقبال' : 
+                             (rolePermissions.find(p => p.role === selectedUser.role)?.roleDisplayName || selectedUser.role)}
+                          </p>
                         </div>
                         <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
                           <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Last Login</p>

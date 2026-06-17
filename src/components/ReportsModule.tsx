@@ -131,6 +131,10 @@ export default function ReportsModule({ user }: { user: User }) {
 
   const getPaymentReminders = () => {
     return bookings.filter(b => {
+      // Filter by role dataScope 'own' (only show reminders for bookings entered by this user)
+      const matchesScope = permissions.dataScope !== 'own' || !b.createdBy || b.createdBy === user.id;
+      if (!matchesScope) return false;
+
       const remainingLYD = (b.totals?.totalLYD || 0) - (b.paidLYD || 0);
       const remainingUSD = (b.totals?.totalUSD || 0) - (b.paidUSD || 0);
       const hasRemaining = remainingLYD > 0 || remainingUSD > 0;
@@ -222,7 +226,10 @@ export default function ReportsModule({ user }: { user: User }) {
     const hasRemaining = remainingLYD > 0 || remainingUSD > 0;
     const matchesRemainingFilter = !filterRemainingOnly || hasRemaining;
 
-    return matchesTrip && matchesAirline && matchesStatus && matchesGroup && matchesGroupExistence && matchesRoomingExistence && matchesDateFrom && matchesDateTo && matchesRemainingFilter;
+    // Filter by role dataScope 'own' (only show bookings entered by this user)
+    const matchesScope = permissions.dataScope !== 'own' || !b.createdBy || b.createdBy === user.id;
+
+    return matchesTrip && matchesAirline && matchesStatus && matchesGroup && matchesGroupExistence && matchesRoomingExistence && matchesDateFrom && matchesDateTo && matchesRemainingFilter && matchesScope;
   });
 
   const filteredBookings = baseFilteredBookings.filter(b => 

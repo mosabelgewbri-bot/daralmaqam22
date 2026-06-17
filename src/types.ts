@@ -110,7 +110,7 @@ export interface Pilgrim {
   serviceType?: "Full" | "TicketOnly" | "AccommodationOnly" | "TicketAndAccommodation" | "VisaOnly" | "AccommodationAndVisa" | "TicketAndVisa";
 }
 
-export type Role = "admin" | "staff" | "accountant" | "manager" | "visa_specialist" | "receptionist";
+export type Role = "admin" | "staff" | "accountant" | "manager" | "visa_specialist" | "receptionist" | (string & {});
 
 export interface User {
   id: string;
@@ -126,6 +126,7 @@ export interface User {
 
 export interface RolePermissions {
   role: Role;
+  roleDisplayName?: string;
   allowedScreens: string[]; // e.g. ['dashboard', 'booking', 'rooming', 'visa', 'reports', 'users', 'trips', 'settings', 'logs']
   canEdit: boolean;
   canDelete: boolean;

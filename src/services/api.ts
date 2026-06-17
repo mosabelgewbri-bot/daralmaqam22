@@ -1198,6 +1198,15 @@ export const api = {
       handleFirestoreError(error, id ? OperationType.UPDATE : OperationType.CREATE, path);
     }
   },
+  async deletePermission(id: string): Promise<void> {
+    const path = 'permissions';
+    try {
+      await this.ensureAuth();
+      await deleteDoc(doc(db, path, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
 
   // Users
   async getUsers(): Promise<User[]> {
@@ -1254,7 +1263,18 @@ export const api = {
     try {
       await this.ensureAuth();
       if (id && id !== 'new') {
-        await updateDoc(doc(db, path, id), { ...cleanData, updatedAt: serverTimestamp() });
+        const docRef = doc(db, path, id);
+        let docSnap;
+        try {
+          docSnap = await getDocFromServer(docRef);
+        } catch (e) {
+          // Ignore error and try to check or fallback
+        }
+        if (docSnap && docSnap.exists()) {
+          await updateDoc(docRef, { ...cleanData, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(docRef, { ...cleanData, companyId, createdAt: serverTimestamp() });
+        }
       } else {
         await addDoc(collection(db, path), { ...cleanData, companyId, createdAt: serverTimestamp() });
       }
