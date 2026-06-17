@@ -3,7 +3,7 @@ import { User, Booking, Trip, Pilgrim } from '../types';
 import { api } from '../services/api';
 import { getRolePermissions } from '../utils/dataUtils';
 import { motion } from 'motion/react';
-import { Search, FileSpreadsheet, FileText, Filter, ArrowLeft, Users, FileBarChart, Trash2, Edit2, Check, X, Hotel, ShieldCheck, DollarSign, MessageSquare, CheckCircle2, AlertCircle, Zap, Shield, Loader2, AlertTriangle } from 'lucide-react';
+import { Search, FileSpreadsheet, FileText, Filter, ArrowLeft, Users, FileBarChart, Trash2, Edit2, Check, X, Hotel, ShieldCheck, DollarSign, MessageSquare, CheckCircle2, AlertCircle, Zap, Shield, Loader2, AlertTriangle, Eye } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -1110,6 +1110,7 @@ export default function ReportsModule({ user }: { user: User }) {
                         <button 
                           onClick={() => navigate(`/booking/${b.id}`)}
                           className="hover:underline"
+                          title={permissions.canEdit ? "تعديل الحجز" : "عرض تفاصيل الحجز"}
                         >
                           {b.regId || '---'}
                         </button>
@@ -1178,9 +1179,13 @@ export default function ReportsModule({ user }: { user: User }) {
                           </button>
                           <button 
                             onClick={() => navigate(`/booking/${b.id}`)}
-                            className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded-lg"
+                            className={clsx(
+                              "p-1.5 rounded-lg transition-colors",
+                              permissions.canEdit ? "text-blue-400 hover:bg-blue-400/10" : "text-amber-400 hover:bg-amber-400/10"
+                            )}
+                            title={permissions.canEdit ? "تعديل الحجز" : "عرض تفاصيل الحجز"}
                           >
-                            <Edit2 className="w-4 h-4" />
+                            {permissions.canEdit ? <Edit2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                           {permissions.canDelete && (
                             <button

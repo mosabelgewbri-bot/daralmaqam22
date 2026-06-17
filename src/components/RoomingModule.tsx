@@ -666,7 +666,8 @@ export default function RoomingModule({ user }: { user: User }) {
               <p className="text-xs text-white/40">{new Date().toLocaleDateString('ar-LY')}</p>
             </div>
           </div>
-          <table className="w-full text-right text-[10px]">
+          <fieldset disabled={!permissions.canEdit} className="contents">
+            <table className="w-full text-right text-[10px]">
             <thead className="bg-white/5 uppercase text-white/40">
               <tr>
                 <th className="px-2 py-3">رقم القيد</th>
@@ -812,6 +813,7 @@ export default function RoomingModule({ user }: { user: User }) {
               )}
             </tbody>
           </table>
+          </fieldset>
         </div>
       </div>
 

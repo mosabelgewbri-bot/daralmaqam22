@@ -790,6 +790,10 @@ export default function BookingForm({ user }: { user: User }) {
   }
 
   const handleSave = async () => {
+    if (id && !permissions.canEdit) {
+      setFormError('ليس لديك صلاحية لتعديل هذا الحجز');
+      return;
+    }
     console.log('handleSave triggered');
     if (loading) {
       console.log('Already loading, skipping');
@@ -947,6 +951,7 @@ export default function BookingForm({ user }: { user: User }) {
 
   const permissions = getRolePermissions(user.role);
   const canSave = !id || permissions.canEdit;
+  const isReadOnly = id ? !permissions.canEdit : false;
 
   return (
     <>
@@ -974,7 +979,8 @@ export default function BookingForm({ user }: { user: User }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <fieldset disabled={isReadOnly} className="space-y-8" style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="glass-card p-6 space-y-4">
             <h3 className="font-semibold text-gold flex items-center gap-2">
               <AlertCircle className="w-4 h-4" /> اختيار الرحلة
@@ -1684,7 +1690,8 @@ export default function BookingForm({ user }: { user: User }) {
           </div>
 
         </div>
-      </motion.div>
+      </fieldset>
+    </motion.div>
 
       <AnimatePresence>
         {viewingPassport && (
