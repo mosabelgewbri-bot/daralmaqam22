@@ -29,7 +29,7 @@ import Sidebar from './components/Sidebar';
 import InvoicesModule from './components/InvoicesModule';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBell from './components/NotificationBell';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, AlertTriangle, AlertCircle, RefreshCw } from 'lucide-react';
@@ -325,6 +325,33 @@ export default function App() {
       }
     };
 
+    const syncCurrentUser = async () => {
+      if (!user || api.isQuotaExceeded() || !firebaseReady) return;
+      try {
+        await api.ensureAuth();
+        const userRef = doc(db, 'users', user.id);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const freshUser = { id: userSnap.id, ...userSnap.data() } as User;
+          
+          if (freshUser.status === 'inactive') {
+            setUser(null);
+            localStorage.removeItem('user');
+            toast.error('تم إيقاف تفعيل حسابك من قبل مدير النظام');
+            return;
+          }
+          
+          if (freshUser.role !== user.role || freshUser.name !== user.name || freshUser.username !== user.username) {
+            setUser(freshUser);
+            localStorage.setItem('user', JSON.stringify(freshUser));
+            window.dispatchEvent(new Event('permissions_updated'));
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing current user profile:', error);
+      }
+    };
+
     const applyTheme = async () => {
       try {
         await api.ensureAuth();
@@ -441,13 +468,23 @@ export default function App() {
     bootstrapData();
 
     if (user) {
+      syncCurrentUser();
       syncPermissions();
       applyTheme();
     }
     
+    const handleWindowFocus = () => {
+      if (user) {
+        syncCurrentUser();
+        syncPermissions();
+      }
+    };
+
     window.addEventListener('settings_updated', applyTheme);
+    window.addEventListener('focus', handleWindowFocus);
     return () => {
       window.removeEventListener('settings_updated', applyTheme);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, [user, firebaseReady]);
 

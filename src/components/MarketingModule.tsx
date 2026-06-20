@@ -44,6 +44,18 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 import { resizeImage } from '../utils/image';
 
+const ensureAbsoluteUrl = (url: string): string => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.includes('.') || trimmed.startsWith('localhost')) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+};
+
 interface MarketingModuleProps {
   user: User;
 }
@@ -129,7 +141,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
               setWhatsappStatus(data);
             }
           } else {
-            const baseUrl = whatsappApiUrl.replace(/\/+$/, '');
+            const absoluteUrl = ensureAbsoluteUrl(whatsappApiUrl);
+            const baseUrl = absoluteUrl.replace(/\/+$/, '');
             const res = await fetchWhatsApp(`${baseUrl}/status`);
             if (res.ok) {
               const data = await res.json();
@@ -322,7 +335,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
 
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId.trim();
-    let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    let baseUrl = (ensureAbsoluteUrl(whatsappApiUrl) || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
     
     // Clean baseUrl for UltraMsg if it already contains instance ID
     if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
@@ -683,7 +696,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     const prefixes = targetPrefix === 'all' ? ['091', '092'] : [targetPrefix];
     const trimmedToken = whatsappApiKey.trim();
     const trimmedInstance = whatsappInstanceId?.trim();
-    let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+    let baseUrl = (ensureAbsoluteUrl(whatsappApiUrl) || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
     
     // Clean baseUrl for UltraMsg if it already contains instance ID
     if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
@@ -1287,7 +1300,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       }
     } else if (whatsappService === 'remote') {
       try {
-        const sendUrl = `${whatsappApiUrl.replace(/\/+$/, '')}/send`;
+        const sendUrl = `${ensureAbsoluteUrl(whatsappApiUrl).replace(/\/+$/, '')}/send`;
         const res = await fetchWhatsApp(sendUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1551,6 +1564,15 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                                 type="text"
                                 value={whatsappApiUrl}
                                 onChange={(e) => setWhatsappApiUrl(e.target.value)}
+                                onBlur={() => {
+                                  if (whatsappApiUrl) {
+                                    const formatted = ensureAbsoluteUrl(whatsappApiUrl);
+                                    if (formatted !== whatsappApiUrl) {
+                                      setWhatsappApiUrl(formatted);
+                                      localStorage.setItem('whatsapp_api_url', formatted);
+                                    }
+                                  }
+                                }}
                                 placeholder="https://wa.daralmaqam.com"
                                 className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white dir-ltr font-mono focus:border-gold/30 transition-all outline-none"
                               />
@@ -1558,7 +1580,8 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
                             <button
                               onClick={async () => {
                                 if (!whatsappApiUrl) return showToast('يرجى إدخال الرابط أولاً', 'error');
-                                const cleanUrl = whatsappApiUrl.replace(/\/$/, "");
+                                const absoluteUrl = ensureAbsoluteUrl(whatsappApiUrl);
+                                const cleanUrl = absoluteUrl.replace(/\/$/, "");
                                 showToast('جاري فحص حالة السيرفر...', 'info');
                                 try {
                                   const resp = await fetchWhatsApp(`${cleanUrl}/status`);
@@ -1747,7 +1770,7 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                       <div className="flex items-center gap-3">
                         {whatsappService === 'remote' && whatsappStatus?.status !== 'connected' && (
                           <button
-                            onClick={() => window.open(`${whatsappApiUrl.replace(/\/+$/, '')}/qr`, '_blank')}
+                            onClick={() => window.open(`${ensureAbsoluteUrl(whatsappApiUrl).replace(/\/+$/, '')}/qr`, '_blank')}
                             className="px-3 py-1 bg-gold text-black rounded-lg text-[10px] font-bold hover:bg-gold/90 transition-all"
                           >
                             فتح صفحة المسح (QR)
@@ -1849,6 +1872,15 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                       setWhatsappApiUrl(val);
                       localStorage.setItem('whatsapp_api_url', val);
                     }}
+                    onBlur={() => {
+                      if (whatsappApiUrl) {
+                        const formatted = ensureAbsoluteUrl(whatsappApiUrl);
+                        if (formatted !== whatsappApiUrl) {
+                          setWhatsappApiUrl(formatted);
+                          localStorage.setItem('whatsapp_api_url', formatted);
+                        }
+                      }
+                    }}
                     placeholder={whatsappService === 'whapi' ? "https://gate.whapi.cloud" : "https://api.ultramsg.com"}
                     className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-4 text-white text-sm focus:border-gold/50 transition-all outline-none"
                   />
@@ -1904,7 +1936,7 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                     
                     const trimmedToken = whatsappApiKey.trim();
                     const trimmedInstance = whatsappInstanceId.trim();
-                    let baseUrl = (whatsappApiUrl || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
+                    let baseUrl = (ensureAbsoluteUrl(whatsappApiUrl) || (whatsappService === 'whapi' ? 'https://gate.whapi.cloud' : 'https://api.ultramsg.com')).replace(/\/+$/, '');
                     
                     // Clean baseUrl for UltraMsg if it already contains instance ID
                     if (whatsappService === 'ultramsg' && baseUrl.includes('/instance')) {
@@ -1938,7 +1970,7 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                     if (whatsappService === 'remote') {
                       setIsTestingConnection(true);
                       try {
-                        const statusUrl = `${whatsappApiUrl.replace(/\/+$/, '')}/status`;
+                        const statusUrl = `${ensureAbsoluteUrl(whatsappApiUrl).replace(/\/+$/, '')}/status`;
                         const res = await fetchWhatsApp(statusUrl);
                         if (res.ok) {
                           const data = await res.json();

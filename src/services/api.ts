@@ -695,7 +695,7 @@ export const api = {
   },
 
   // Trips
-  async getTrips(): Promise<Trip[]> {
+  async getTrips(includeDeleted = false): Promise<Trip[]> {
     const path = 'trips';
     const companyId = this.getCompanyId();
     
@@ -706,12 +706,15 @@ export const api = {
         const all = JSON.parse(cachedStr) as Trip[];
         const lastFetch = Number(localStorage.getItem('last_trips_fetch') || 0);
         const isFresh = Date.now() - lastFetch < (quotaExceeded ? 300000 : 120000); // 5 mins if quota error, 2 mins normally
-        if (isFresh || (quotaExceeded && !canMakeRequest())) return all;
+        if (isFresh || (quotaExceeded && !canMakeRequest())) {
+          return includeDeleted ? all : all.filter(t => !t.isDeleted);
+        }
       } catch (e) {}
     }
 
     if (quotaExceeded && !canMakeRequest()) {
-      return cachedStr ? JSON.parse(cachedStr) : [];
+      const all = cachedStr ? (JSON.parse(cachedStr) as Trip[]) : [];
+      return includeDeleted ? all : all.filter(t => !t.isDeleted);
     }
 
     try {
@@ -739,14 +742,20 @@ export const api = {
       safeLocalStorageSetItem('cached_trips', JSON.stringify(trips));
       safeLocalStorageSetItem('last_trips_fetch', Date.now().toString());
       
-      return trips;
+      return includeDeleted ? trips : trips.filter(t => !t.isDeleted);
     } catch (error: any) {
       if (isQuotaError(error)) {
         quotaExceeded = true;
-        if (cachedStr) return JSON.parse(cachedStr);
+        if (cachedStr) {
+          const all = JSON.parse(cachedStr) as Trip[];
+          return includeDeleted ? all : all.filter(t => !t.isDeleted);
+        }
       }
       handleFirestoreError(error, OperationType.LIST, path);
-      if (cachedStr) return JSON.parse(cachedStr);
+      if (cachedStr) {
+        const all = JSON.parse(cachedStr) as Trip[];
+        return includeDeleted ? all : all.filter(t => !t.isDeleted);
+      }
       return [];
     }
   },
@@ -784,9 +793,20 @@ export const api = {
     const path = 'trips';
     try {
       await this.ensureAuth();
-      await deleteDoc(doc(db, path, id));
+      // Soft-delete by setting isDeleted: true instead of removing the document completely
+      await updateDoc(doc(db, path, id), { isDeleted: true, updatedAt: serverTimestamp() });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  },
+
+  async restoreTrip(id: string): Promise<void> {
+    const path = 'trips';
+    try {
+      await this.ensureAuth();
+      await updateDoc(doc(db, path, id), { isDeleted: false, updatedAt: serverTimestamp() });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
 
@@ -862,9 +882,13 @@ export const api = {
         const lightweightBookings = bookings.map(b => ({
           ...b,
           pilgrims: (b.pilgrims || []).map(p => {
-            if (p && 'passportImage' in p) {
+            if (p) {
+              const hasImg = typeof p.passportImage === 'string' && p.passportImage.length > 0;
               const { passportImage, ...rest } = p;
-              return rest;
+              return { 
+                ...rest, 
+                hasPassportImage: hasImg || !!(p as any).hasPassportImage 
+              };
             }
             return p;
           })
@@ -1650,7 +1674,14 @@ export const api = {
 
         if (!bookingId) {
           // Strip heavy passportImage from cached_pilgrims to prevent exceeding LocalStorage quota
-          const lightweightPilgrims = pilgrims.map(({ passportImage, ...rest }) => rest);
+          const lightweightPilgrims = pilgrims.map(p => {
+            const hasImg = typeof p.passportImage === 'string' && p.passportImage.length > 0;
+            const { passportImage, ...rest } = p;
+            return {
+              ...rest,
+              hasPassportImage: hasImg || !!(p as any).hasPassportImage
+            };
+          });
           safeLocalStorageSetItem('cached_pilgrims', JSON.stringify(lightweightPilgrims));
           safeLocalStorageSetItem('last_pilgrims_fetch', Date.now().toString());
         }

@@ -12,6 +12,7 @@ export interface Trip {
   startDate?: string;
   departureDate?: string;
   companyId?: string;
+  isDeleted?: boolean;
   costs?: {
     flightLYD: number;
     hotelLYD: number;
@@ -104,6 +105,7 @@ export interface Pilgrim {
   makkahRoom?: string;
   madinahRoom?: string;
   passportImage?: string;
+  hasPassportImage?: boolean;
   englishName?: string;
   gender?: "Male" | "Female";
   isChild?: boolean;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Pilgrim, Booking, Trip } from '../types';
 import { api } from '../services/api';
 import { deduplicateBookings, getRolePermissions } from '../utils/dataUtils';
-import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare, Zap, CheckCircle2, Eye, X as CloseIcon, Download } from 'lucide-react';
+import { Shield, CheckCircle, Clock, AlertCircle, ArrowLeft, Search, FileText, CheckSquare, Square, MoreHorizontal, MessageSquare, Zap, CheckCircle2, Eye, X as CloseIcon, Download, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { useNavigate } from 'react-router-dom';
@@ -118,6 +118,81 @@ export default function VisaModule({ user }: { user: User }) {
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
+  const [fetchingPassportId, setFetchingPassportId] = useState<string | null>(null);
+
+  const getPassportImageOnDemand = async (p: any): Promise<string | null> => {
+    if (p.passportImage) return p.passportImage;
+    setFetchingPassportId(p.passportNo);
+    try {
+      const fullBooking = await api.getBookingById(p.bookingId);
+      if (fullBooking) {
+        const pilgrim = fullBooking.pilgrims?.find((pilg: any) => pilg.passportNo === p.passportNo);
+        if (pilgrim?.passportImage) {
+          // Cache it in current filtered list so we don't fetch it again on next click
+          setFilteredPilgrims(prev => prev.map(item => 
+            item.passportNo === p.passportNo ? { ...item, passportImage: pilgrim.passportImage } : item
+          ));
+          return pilgrim.passportImage;
+        }
+      }
+      showToast('لم يتم العثور على صورة جواز السفر المخزنة لهذا المعتمر', 'error');
+      return null;
+    } catch (err) {
+      console.error('Error fetching passport image on demand:', err);
+      showToast('حدث خطأ أثناء تحميل صورة الجواز من السيرفر', 'error');
+      return null;
+    } finally {
+      setFetchingPassportId(null);
+    }
+  };
+
+  const handleViewPassport = async (p: any) => {
+    const img = await getPassportImageOnDemand(p);
+    if (img) {
+      setViewingPassport({ image: img, name: p.name });
+    }
+  };
+
+  const handleDownloadPassport = async (p: any) => {
+    const img = await getPassportImageOnDemand(p);
+    if (img) {
+      await downloadPassportImage(img, p.name);
+    }
+  };
+
+  const downloadPassportImage = async (imageUrl: string, name: string) => {
+    try {
+      if (imageUrl.startsWith('data:')) {
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = `passport_${name.trim().replace(/\s+/g, '_')}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `passport_${name.trim().replace(/\s+/g, '_')}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Blob download failed, fallback to direct:', error);
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.target = '_blank';
+      link.download = `passport_${name.trim().replace(/\s+/g, '_')}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const sendWhatsAppMessage = (pilgrim: any) => {
@@ -577,14 +652,32 @@ export default function VisaModule({ user }: { user: User }) {
                   <td className="px-6 py-4 font-medium">
                     <div className="flex items-center gap-2">
                       {p.name}
-                      {p.passportImage && (
-                        <button 
-                          onClick={() => setViewingPassport({ image: p.passportImage!, name: p.name })}
-                          className="p-1 hover:bg-gold/10 text-gold rounded transition-colors"
-                          title="عرض صورة الجواز"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                      {(p.passportImage || p.hasPassportImage) && (
+                        <div className="flex items-center gap-1">
+                          {fetchingPassportId === p.passportNo ? (
+                            <span className="text-xs text-gold/60 animate-pulse flex items-center gap-1 font-sans">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              جاري التحميل...
+                            </span>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={() => handleViewPassport(p)}
+                                className="p-1 hover:bg-gold/10 text-gold rounded transition-colors"
+                                title="عرض صورة الجواز"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => handleDownloadPassport(p)}
+                                className="p-1 hover:bg-gold/10 text-gold rounded transition-colors"
+                                title="تنزيل صورة الجواز"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
                   </td>
@@ -795,14 +888,7 @@ export default function VisaModule({ user }: { user: User }) {
                 <h3 className="font-bold text-white">صورة جواز: {viewingPassport.name}</h3>
                 <div className="flex items-center gap-2">
                   <button 
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = viewingPassport.image;
-                      link.download = `passport_${viewingPassport.name.replace(/\s+/g, '_')}.jpg`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
+                    onClick={() => downloadPassportImage(viewingPassport.image, viewingPassport.name)}
                     className="p-2 hover:bg-gold/20 rounded-full text-gold transition-all"
                     title="حفظ الصورة"
                   >

@@ -66,6 +66,57 @@ export default function TicketsModule({ user }: { user: User }) {
 
   const printRef = useRef<HTMLDivElement>(null);
 
+  const [loadedPassports, setLoadedPassports] = useState<Record<string, string>>({});
+  const [loadingPassports, setLoadingPassports] = useState<Record<string, boolean>>({});
+  const [loadingGroupPassports, setLoadingGroupPassports] = useState<Record<string, boolean>>({});
+
+  const loadPassportImage = async (bookingId: string, passportNo: string) => {
+    if (!passportNo) return;
+    setLoadingPassports(prev => ({ ...prev, [passportNo]: true }));
+    try {
+      const fullBooking = await api.getBookingById(bookingId);
+      if (fullBooking) {
+        const pilgrim = fullBooking.pilgrims?.find(p => p.passportNo === passportNo);
+        if (pilgrim?.passportImage) {
+          setLoadedPassports(prev => ({ ...prev, [passportNo]: pilgrim.passportImage! }));
+        } else {
+          showToast('لم يتم العثور على صورة جواز السفر المخزنة لهذا المعتمر', 'error');
+        }
+      } else {
+        showToast('فشل في تحميل بيانات الفاتورة', 'error');
+      }
+    } catch (err) {
+      console.error('Error fetching passport image:', err);
+      showToast('حدث خطأ أثناء تحميل صورة الجواز', 'error');
+    } finally {
+      setLoadingPassports(prev => ({ ...prev, [passportNo]: false }));
+    }
+  };
+
+  const loadAllBookingPassports = async (bookingId: string) => {
+    setLoadingGroupPassports(prev => ({ ...prev, [bookingId]: true }));
+    try {
+      const fullBooking = await api.getBookingById(bookingId);
+      if (fullBooking && fullBooking.pilgrims) {
+        const newImages: Record<string, string> = {};
+        fullBooking.pilgrims.forEach(p => {
+          if (p.passportNo && p.passportImage) {
+            newImages[p.passportNo] = p.passportImage;
+          }
+        });
+        setLoadedPassports(prev => ({ ...prev, ...newImages }));
+        showToast('تم تحميل صور الجوازات بنجاح', 'success');
+      } else {
+        showToast('فشل في تحميل الصور', 'error');
+      }
+    } catch (err) {
+      console.error('Error loading all passports:', err);
+      showToast('حدث خطأ أثناء تحميل صور المجموعة', 'error');
+    } finally {
+      setLoadingGroupPassports(prev => ({ ...prev, [bookingId]: false }));
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -356,11 +407,39 @@ export default function TicketsModule({ user }: { user: User }) {
                       <p className="text-xs text-white/40 print:text-gray-600">مسؤول المجموعة: <span className="text-gold font-bold">{booking.headName}</span></p>
                     </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-[10px] text-white/40 uppercase font-black print:text-gray-500">تاريخ الحجز</p>
-                    <p className="text-sm font-bold text-white print:text-black">
-                      {booking.createdAt ? format(new Date(booking.createdAt), 'yyyy/MM/dd') : '---'}
-                    </p>
+                  <div className="text-left flex items-center gap-4">
+                    {/* Bulk Load Button */}
+                    {(() => {
+                      const pilgrimsList = booking.pilgrims || [];
+                      const hasAnyImageToLoad = pilgrimsList.some(p => {
+                        const hasImg = p.hasPassportImage || !!p.passportImage;
+                        const isLoaded = p.passportImage || (p.passportNo ? loadedPassports[p.passportNo] : false);
+                        return hasImg && !isLoaded;
+                      });
+                      
+                      if (!hasAnyImageToLoad) return null;
+                      
+                      return (
+                        <button
+                          onClick={() => loadAllBookingPassports(booking.id)}
+                          disabled={loadingGroupPassports[booking.id]}
+                          className="no-print px-3 py-1.5 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/30 hover:border-gold/50 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {loadingGroupPassports[booking.id] ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          )}
+                          تحميل صور المجموعة
+                        </button>
+                      );
+                    })()}
+                    <div>
+                      <p className="text-[10px] text-white/40 uppercase font-black print:text-gray-500">تاريخ الحجز</p>
+                      <p className="text-sm font-bold text-white print:text-black">
+                        {booking.createdAt ? format(new Date(booking.createdAt), 'yyyy/MM/dd') : '---'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -414,32 +493,77 @@ export default function TicketsModule({ user }: { user: User }) {
 
               {/* Passport Images for this specific group */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {(booking.pilgrims || []).map((pilgrim, idx) => (
-                  <div key={`${booking.id}-img-${idx}`} className="glass-card overflow-hidden group hover:border-gold/30 transition-all print:border-gray-200">
-                    <div className="aspect-[4/3] bg-black/40 relative group-hover:bg-black/20 transition-all overflow-hidden border-b border-white/5">
-                      {pilgrim.passportImage ? (
-                        <img 
-                          src={pilgrim.passportImage} 
-                          alt={pilgrim.name} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-white/10">
-                          <ImageIcon className="w-10 h-10" />
-                          <span className="text-[10px] font-black uppercase">No Image</span>
+                {(booking.pilgrims || []).map((pilgrim, idx) => {
+                  const imgSrc = pilgrim.passportImage || (pilgrim.passportNo ? loadedPassports[pilgrim.passportNo] : null);
+                  const hasImg = pilgrim.hasPassportImage || !!pilgrim.passportImage;
+                  const isLoading = pilgrim.passportNo ? loadingPassports[pilgrim.passportNo] : false;
+
+                  return (
+                    <div key={`${booking.id}-img-${idx}`} className="glass-card overflow-hidden group hover:border-gold/30 transition-all print:border-gray-200">
+                      <div className="aspect-[4/3] bg-black/40 relative group-hover:bg-black/20 transition-all overflow-hidden border-b border-white/5">
+                        {imgSrc ? (
+                          <div className="relative w-full h-full group">
+                            <img 
+                              src={imgSrc} 
+                              alt={pilgrim.name} 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                            />
+                            {/* Download on hover */}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 no-print">
+                              <button
+                                onClick={() => {
+                                  const link = document.createElement('a');
+                                  link.href = imgSrc;
+                                  link.download = `passport_${pilgrim.name.replace(/\s+/g, '_')}.jpg`;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                }}
+                                className="p-2 bg-gold text-black rounded-lg hover:bg-gold/90 transition-all font-bold text-xs flex items-center gap-1.5"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                تنزيل
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-white/10 p-4">
+                            {isLoading ? (
+                              <>
+                                <Loader2 className="w-8 h-8 text-gold animate-spin" />
+                                <span className="text-[10px] text-gold/80 font-bold">جاري تحميل صورة الجواز...</span>
+                              </>
+                            ) : hasImg ? (
+                              <>
+                                <ImageIcon className="w-10 h-10 text-gold/30" />
+                                <button
+                                  onClick={() => loadPassportImage(booking.id, pilgrim.passportNo || '')}
+                                  className="no-print mt-2 px-3 py-1 bg-gold hover:bg-gold/90 text-black rounded-lg text-[10px] font-bold transition-all"
+                                >
+                                  تحميل صورة الجواز
+                                </button>
+                                <span className="print:hidden text-[9px] text-white/30">(موجودة على السيرفر)</span>
+                              </>
+                            ) : (
+                              <>
+                                <ImageIcon className="w-10 h-10" />
+                                <span className="text-[10px] font-black uppercase text-white/30">لم يتم إرفاق صورة</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 bg-white/[0.02] flex flex-col gap-1 print:bg-white print:text-black">
+                        <p className="text-[10px] font-black text-white uppercase truncate font-mono print:text-black">{pilgrim.englishName || '---'}</p>
+                        <div className="flex justify-between items-center">
+                          <p className="text-[9px] text-white/40 font-bold print:text-gray-600 truncate">{pilgrim.name}</p>
+                          <p className="text-[9px] font-mono text-gold print:text-black">{pilgrim.passportNo || '---'}</p>
                         </div>
-                      )}
-                    </div>
-                    <div className="p-3 bg-white/[0.02] flex flex-col gap-1 print:bg-white print:text-black">
-                      <p className="text-[10px] font-black text-white uppercase truncate font-mono print:text-black">{pilgrim.englishName || '---'}</p>
-                      <div className="flex justify-between items-center">
-                        <p className="text-[9px] text-white/40 font-bold print:text-gray-600 truncate">{pilgrim.name}</p>
-                        <p className="text-[9px] font-mono text-gold print:text-black">{pilgrim.passportNo || '---'}</p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           ))}

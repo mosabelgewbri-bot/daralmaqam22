@@ -1270,10 +1270,15 @@ app.post("/api/db-upload", upload.single('file'), async (req, res) => {
 
 // WhatsApp API Proxy to bypass CORS
 app.post("/api/whatsapp/proxy", async (req, res) => {
-  const { url, method, headers, body } = req.body;
+  let { url, method, headers, body } = req.body;
   
   if (!url) {
     return res.status(400).json({ error: "URL is required" });
+  }
+
+  // Ensure there's a protocol (http:// or https://)
+  if (typeof url === 'string' && !/^https?:\/\//i.test(url)) {
+    url = 'https://' + url.trim();
   }
 
   console.log(`Proxying ${method || 'GET'} request to: ${url}`);

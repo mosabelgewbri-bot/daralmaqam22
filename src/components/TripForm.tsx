@@ -20,7 +20,9 @@ import {
   CreditCard,
   CheckCircle,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  RotateCcw,
+  History
 } from 'lucide-react';
 
 // Toast Component
@@ -135,6 +137,9 @@ import Logo from './Logo';
 export default function TripForm({ user }: { user: User }) {
   const navigate = useNavigate();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [deletedTrips, setDeletedTrips] = useState<Trip[]>([]);
+  const [missingTripsFromBookings, setMissingTripsFromBookings] = useState<{ id: string; name: string; passengerCount: number }[]>([]);
+  const [activeTab, setActiveTab] = useState<'active' | 'deleted'>('active');
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState<Partial<Trip>>({
@@ -176,18 +181,66 @@ export default function TripForm({ user }: { user: User }) {
     setTimeout(() => setToast(null), 5000);
   };
   const [showForm, setShowForm] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setRefreshKey(prev => prev + 1);
+    window.addEventListener('permissions_updated', handleUpdate);
+    return () => window.removeEventListener('permissions_updated', handleUpdate);
+  }, []);
+
   const permissions = getRolePermissions(user.role);
   const canManage = permissions.canEditTrips;
 
+  const detectMissingTripsFromBookings = async (activeAndDeletedTrips: Trip[]) => {
+    try {
+      const bookings = await api.getBookings();
+      const missing: { [id: string]: { id: string; name: string; passengerCount: number } } = {};
+      
+      const tripidSet = new Set(activeAndDeletedTrips.map(t => t.id.toLowerCase()));
+      const tripNameSet = new Set(activeAndDeletedTrips.map(t => t.name.toLowerCase()));
+      
+      bookings.forEach(b => {
+        const bTripId = b.tripId || (b as any).tripid || (b as any).trip_id || '';
+        const bTripName = (b as any).tripName || '';
+        
+        const referenceValue = (bTripId || bTripName).trim();
+        if (!referenceValue) return;
+        
+        const key = referenceValue.toLowerCase();
+        
+        if (!tripidSet.has(key) && !tripNameSet.has(key)) {
+          if (!missing[key]) {
+            missing[key] = {
+              id: bTripId || referenceValue,
+              name: bTripName || referenceValue,
+              passengerCount: 0
+            };
+          }
+          missing[key].passengerCount += b.passengerCount || (b.pilgrims?.length || 1);
+        }
+      });
+      
+      setMissingTripsFromBookings(Object.values(missing));
+    } catch (error) {
+      console.error('Error checking bookings for missing trips:', error);
+    }
+  };
+
+  const loadTrips = async () => {
+    try {
+      const data = await api.getTrips(true); // Load all trips, including soft-deleted ones
+      const active = data.filter(t => !t.isDeleted);
+      const deleted = data.filter(t => t.isDeleted);
+      setTrips(active);
+      setDeletedTrips(deleted);
+      await detectMissingTripsFromBookings(data);
+    } catch (error) {
+      console.error('Error loading trips:', error);
+    }
+  };
+
   useEffect(() => {
-    const loadTrips = async () => {
-      try {
-        const data = await api.getTrips();
-        setTrips(data);
-      } catch (error) {
-        console.error('Error loading trips:', error);
-      }
-    };
     loadTrips();
   }, []);
 
@@ -240,9 +293,8 @@ export default function TripForm({ user }: { user: User }) {
             `تم تعديل بيانات الرحلة: ${updatedTrip.name} (${updatedTrip.airline})`
           );
 
-          // Re-fetch trips to get the correctly synced availableSeats
-          const refreshedTrips = await api.getTrips();
-          setTrips(refreshedTrips);
+          // Re-fetch trips to get the correctly synced availableSeats & update all trip categories
+          await loadTrips();
           
           setEditingId(null);
           setSuccessMessage('تم تحديث الرحلة بنجاح!');
@@ -277,7 +329,7 @@ export default function TripForm({ user }: { user: User }) {
           `تم إنشاء رحلة جديدة: ${newTrip.name} (${newTrip.airline}) بسعة ${newTrip.totalSeats} مقعد`
         );
 
-        setTrips(prev => [...prev, newTrip]);
+        await loadTrips();
         setSuccessMessage('تم حفظ الرحلة بنجاح!');
         setTimeout(() => {
           setShowForm(false);
@@ -309,13 +361,67 @@ export default function TripForm({ user }: { user: User }) {
         `تم حذف الرحلة: ${tripToDelete?.name || id}`
       );
 
-      setTrips(prev => prev.filter(t => t.id !== id));
+      await loadTrips();
       setConfirmDeleteId(null);
-      showToast('تم حذف الرحلة بنجاح', 'success');
+      showToast('تم نقل الرحلة إلى سلة المحذوفات بنجاح', 'success');
     } catch (error: any) {
       console.error('Error deleting trip:', error);
       showToast(error.message || 'حدث خطأ أثناء حذف الرحلة', 'error');
       setConfirmDeleteId(null);
+    }
+  };
+
+  const handleRestoreTrip = async (id: string) => {
+    setLoading(true);
+    try {
+      await api.restoreTrip(id);
+      const restored = deletedTrips.find(t => t.id === id);
+      if (restored) {
+        await api.logAction(
+          user.id,
+          user.name,
+          'استعادة رحلة',
+          `تم استعادة الرحلة المحذوفة: ${restored.name}`
+        );
+      }
+      showToast('تم استعادة الرحلة بنجاح!', 'success');
+      await loadTrips();
+    } catch (error: any) {
+      console.error('Error restoring trip:', error);
+      showToast(error.message || 'حدث خطأ أثناء استعادة الرحلة', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRecreateMissingTrip = async (id: string, name: string) => {
+    setLoading(true);
+    try {
+      const newTrip: Trip = {
+        id,
+        tripNumber: id.slice(0, 8).toUpperCase(),
+        name,
+        airline: 'خطوط طيران (مستردة من الحجز)',
+        totalSeats: 50,
+        availableSeats: 50,
+        ticketPrice: 0,
+        currency: 'LYD',
+        status: 'Active'
+      };
+      await api.saveTrip(newTrip);
+      await api.logAction(
+        user.id,
+        user.name,
+        'استعادة رحلة مأخوذة من الحجوزات',
+        `تم إعادة إنشاء واستعادة الرحلة المفقودة: ${name}`
+      );
+      showToast('تمت إعادة إنشاء واستعادة الرحلة المفقودة بنجاح!', 'success');
+      await loadTrips();
+    } catch (error: any) {
+      console.error('Error recreating missing trip:', error);
+      showToast(error.message || 'حدث خطأ أثناء استعادة الرحلة مفقودة', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -580,115 +686,289 @@ export default function TripForm({ user }: { user: User }) {
       </AnimatePresence>
       )}
 
-        {/* Table Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="glass-card overflow-hidden"
-        >
-          <div className="p-6 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
-            <h3 className="text-xl font-bold text-gold flex items-center gap-3">
-              <Plane className="w-5 h-5" /> قائمة الرحلات المتاحة
-            </h3>
-            {canManage && !showForm && (
-              <button 
-                onClick={() => {
-                  setShowForm(true);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="text-xs font-bold text-gold hover:text-white flex items-center gap-2 transition-colors bg-gold/10 px-4 py-2 rounded-lg border border-gold/20"
-              >
-                <Plus className="w-4 h-4" /> إضافة رحلة
-              </button>
+        {/* Tabs for Active Trips and Recycle Bin */}
+        <div className="flex gap-4 pb-1 mb-6">
+          <button
+            onClick={() => setActiveTab('active')}
+            className={clsx(
+              "pb-2 font-bold transition-all relative px-4 py-2 rounded-lg text-sm flex items-center gap-2",
+              activeTab === 'active' 
+                ? "bg-gold/20 text-gold border border-gold/30" 
+                : "text-white/40 hover:text-white bg-white/5 border border-transparent"
             )}
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse">
-              <thead>
-                <tr className="bg-white/[0.02] border-b border-white/10">
-                  <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">رقم الرحلة</th>
-                  <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">اسم الرحلة</th>
-                  <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">شركة الطيران</th>
-                  <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">المقاعد</th>
-                  <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">السعر</th>
-                  <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-left">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                <AnimatePresence mode="popLayout">
-                  {trips.length === 0 ? (
-                    <motion.tr 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      <td colSpan={6} className="p-12 text-center text-white/20 italic">
-                        لا توجد رحلات مضافة بعد.
-                      </td>
-                    </motion.tr>
-                  ) : (
-                    trips.map((t) => (
+          >
+            <Plane className="w-4 h-4" />
+            الرحلات النشطة ({trips.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('deleted')}
+            className={clsx(
+              "pb-2 font-bold transition-all relative px-4 py-2 rounded-lg text-sm flex items-center gap-2",
+              activeTab === 'deleted' 
+                ? "bg-gold/20 text-gold border border-gold/30" 
+                : "text-white/40 hover:text-white bg-white/5 border border-transparent"
+            )}
+          >
+            <History className="w-4 h-4" />
+            سلة المحذوفات
+            {(deletedTrips.length > 0 || missingTripsFromBookings.length > 0) && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+                {deletedTrips.length + missingTripsFromBookings.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'active' ? (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="glass-card overflow-hidden"
+          >
+            <div className="p-6 border-b border-white/10 bg-white/[0.02] flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gold flex items-center gap-3">
+                <Plane className="w-5 h-5" /> قائمة الرحلات المتاحة
+              </h3>
+              {canManage && !showForm && (
+                <button 
+                  onClick={() => {
+                    setShowForm(true);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="text-xs font-bold text-gold hover:text-white flex items-center gap-2 transition-colors bg-gold/10 px-4 py-2 rounded-lg border border-gold/20"
+                >
+                  <Plus className="w-4 h-4" /> إضافة رحلة
+                </button>
+              )}
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="bg-white/[0.02] border-b border-white/10">
+                    <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">رقم الرحلة</th>
+                    <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">اسم الرحلة</th>
+                    <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">شركة الطيران</th>
+                    <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">المقاعد</th>
+                    <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">السعر</th>
+                    <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-left">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <AnimatePresence mode="popLayout">
+                    {trips.length === 0 ? (
                       <motion.tr 
-                        key={t.id}
-                        layout
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group"
                       >
-                        <td className="p-4 font-mono text-gold text-xs">{t.tripNumber || '-'}</td>
-                        <td className="p-4 font-medium text-white">{t.name}</td>
-                        <td className="p-4 text-white/60">{t.airline}</td>
-                        <td className="p-4 text-center">
-                          <span className="px-3 py-1 rounded-full bg-gold/10 text-gold text-xs font-bold">
-                            {t.totalSeats}
-                          </span>
-                        </td>
-                        <td className="p-4 text-center">
-                          <span className="text-gold font-mono text-xs">
-                            {t.ticketPrice} {t.currency}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            {canManage && (
-                              <button 
-                                onClick={() => handleEdit(t)}
-                                className="p-2 hover:bg-blue-500/10 rounded-lg text-blue-400 transition-colors"
-                                title="Edit"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                            )}
-                            {canManage && (
-                              <button 
-                                onClick={() => {
-                                  setConfirmModal({
-                                    show: true,
-                                    title: 'حذف رحلة',
-                                    message: `هل أنت متأكد من حذف رحلة ${t.name}؟ لا يمكن التراجع عن هذا الإجراء.`,
-                                    type: 'danger',
-                                    onConfirm: () => handleDelete(t.id)
-                                  });
-                                }}
-                                className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
+                        <td colSpan={6} className="p-12 text-center text-white/20 italic">
+                          لا توجد رحلات مضافة بعد.
                         </td>
                       </motion.tr>
-                    ))
-                  )}
-                </AnimatePresence>
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
+                    ) : (
+                      trips.map((t) => (
+                        <motion.tr 
+                          key={t.id}
+                          layout
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group"
+                        >
+                          <td className="p-4 font-mono text-gold text-xs">{t.tripNumber || '-'}</td>
+                          <td className="p-4 font-medium text-white">{t.name}</td>
+                          <td className="p-4 text-white/60">{t.airline}</td>
+                          <td className="p-4 text-center">
+                            <span className="px-3 py-1 rounded-full bg-gold/10 text-gold text-xs font-bold">
+                              {t.totalSeats}
+                            </span>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="text-gold font-mono text-xs">
+                              {t.ticketPrice} {t.currency}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex justify-end gap-2">
+                              {canManage && (
+                                <button 
+                                  onClick={() => handleEdit(t)}
+                                  className="p-2 hover:bg-blue-500/10 rounded-lg text-blue-400 transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {canManage && (
+                                <button 
+                                  onClick={() => {
+                                    setConfirmModal({
+                                      show: true,
+                                      title: 'حذف رحلة',
+                                      message: `هل أنت متأكد من حذف رحلة ${t.name}؟ سيتم نقلها إلى سلة المحذوفات ويمكن استعادتها لاحقاً.`,
+                                      type: 'danger',
+                                      onConfirm: () => handleDelete(t.id)
+                                    });
+                                  }}
+                                  className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </motion.tr>
+                      ))
+                    )}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="space-y-6"
+          >
+            {/* Soft Deleted Trips List */}
+            <div className="glass-card overflow-hidden">
+              <div className="p-6 border-b border-white/10 bg-white/[0.02]">
+                <h3 className="text-xl font-bold text-red-400 flex items-center gap-3">
+                  <Trash2 className="w-5 h-5" /> الرحلات المحذوفة مؤخراً
+                </h3>
+                <p className="text-sm text-white/40 mt-1">يمكنك استعادة الرحلات المحذوفة من هنا لتعود للعمل بشكل فوري</p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className="bg-white/[0.02] border-b border-white/10">
+                      <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">رقم الرحلة</th>
+                      <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">اسم الرحلة</th>
+                      <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">شركة الطيران</th>
+                      <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">المقاعد</th>
+                      <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">السعر</th>
+                      <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-left">الإجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <AnimatePresence mode="popLayout">
+                      {deletedTrips.length === 0 ? (
+                        <motion.tr 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          <td colSpan={6} className="p-12 text-center text-white/20 italic">
+                            سلة المحذوفات فارغة.
+                          </td>
+                        </motion.tr>
+                      ) : (
+                        deletedTrips.map((t) => (
+                          <motion.tr 
+                            key={t.id}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group"
+                          >
+                            <td className="p-4 font-mono text-gold text-xs">{t.tripNumber || '-'}</td>
+                            <td className="p-4 font-medium text-white/80">{t.name}</td>
+                            <td className="p-4 text-white/50">{t.airline}</td>
+                            <td className="p-4 text-center">
+                              <span className="px-3 py-1 rounded-full bg-white/5 text-white/60 text-xs font-bold">
+                                {t.totalSeats}
+                              </span>
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className="text-white/50 font-mono text-xs">
+                                {t.ticketPrice} {t.currency}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <div className="flex justify-end gap-2">
+                                {canManage && (
+                                  <button 
+                                    onClick={() => handleRestoreTrip(t.id)}
+                                    className="px-4 py-1.5 bg-gold/10 hover:bg-gold/20 text-gold rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                    title="Restore"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    استعادة الرحلة
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </motion.tr>
+                        ))
+                      )}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Heuristic Discovered Bookings Missing Trips */}
+            {missingTripsFromBookings.length > 0 && (
+              <div className="glass-card overflow-hidden border border-amber-500/20 bg-amber-500/[0.02]">
+                <div className="p-6 border-b border-white/10 bg-amber-500/[0.03]">
+                  <h3 className="text-xl font-bold text-amber-400 flex items-center gap-3">
+                    <Info className="w-5 h-5 animate-pulse" /> رحلات مفقودة ومكتشفة في الحجوزات القائمة
+                  </h3>
+                  <p className="text-sm text-white/50 mt-1">
+                    اكتشف النظام حجوزات نشطة ترتبط برحلات غائبة تماماً من النظام (قد تكون حُذِفت بالمسح الكلي). يمكنك بنقرة واحدة إعادتها للحياة لربط الحجوزات تلقائياً بها!
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right border-collapse">
+                    <thead>
+                      <tr className="bg-white/[0.02] border-b border-white/10">
+                        <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">معرف الحجز المرجعي</th>
+                        <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest">الاسم المكتشف للرحلة</th>
+                        <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-center">عدد المقاعد والحجاج المرتبطين</th>
+                        <th className="p-4 text-xs font-bold text-gold uppercase tracking-widest text-left">الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missingTripsFromBookings.map((mt) => (
+                        <tr 
+                          key={mt.id}
+                          className="border-b border-white/5 hover:bg-white/[0.01] transition-colors"
+                        >
+                          <td className="p-4 font-mono text-gold text-xs">{mt.id}</td>
+                          <td className="p-4 font-medium text-white">{mt.name}</td>
+                          <td className="p-4 text-center">
+                            <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold">
+                              {mt.passengerCount} معتمر مرشح
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            {canManage && (
+                              <button 
+                                onClick={() => handleRecreateMissingTrip(mt.id, mt.name)}
+                                className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-500/20"
+                                title="Recreate"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                إعادة إنشاء واستيراد الرحلة
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
 
         <AnimatePresence>
           {toast && (
