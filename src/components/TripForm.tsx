@@ -249,6 +249,10 @@ export default function TripForm({ user }: { user: User }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) {
+      showToast('ليس لديك صلاحية لإضافة أو تعديل الرحلات', 'error');
+      return;
+    }
     console.log('handleSubmit triggered');
     setLoading(true);
     setFormError(null);
@@ -348,6 +352,10 @@ export default function TripForm({ user }: { user: User }) {
 
   const handleDelete = async (id: string) => {
     if (!id) return;
+    if (!canManage) {
+      showToast('ليس لديك صلاحية لحذف الرحلات', 'error');
+      return;
+    }
     try {
       console.log('Deleting trip:', id);
       const tripToDelete = trips.find(t => t.id === id);
@@ -372,6 +380,10 @@ export default function TripForm({ user }: { user: User }) {
   };
 
   const handleRestoreTrip = async (id: string) => {
+    if (!canManage) {
+      showToast('ليس لديك صلاحية لاستعادة الرحلات', 'error');
+      return;
+    }
     setLoading(true);
     try {
       await api.restoreTrip(id);
@@ -481,6 +493,30 @@ export default function TripForm({ user }: { user: User }) {
     });
     setShowForm(false);
   };
+
+  const isScreenAllowed = user.role === 'admin' || (permissions && permissions.allowedScreens && permissions.allowedScreens.includes('trips'));
+
+  if (!isScreenAllowed) {
+    return (
+      <div className="min-h-screen bg-matte-black p-8 flex items-center justify-center">
+        <div className="max-w-md w-full glass-card p-8 text-center space-y-6 border border-white/5 bg-white/[0.02]">
+          <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-2xl flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold text-white">عذرًا، ليس لديك صلاحية</h2>
+          <p className="text-white/60 leading-relaxed font-sans">
+            ليس لديك صلاحية سارية للوصول إلى شاشة إدارة الرحلات. يرجى مراجعة مسؤول النظام لمنحك الصلاحيات اللازمة.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="w-full px-6 py-3 rounded-xl bg-gold text-black font-bold hover:bg-gold/90 transition-all shadow-lg active:scale-95 font-sans"
+          >
+            العودة للوحة التحكم
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-matte-black p-8 space-y-12">

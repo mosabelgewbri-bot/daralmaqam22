@@ -30,7 +30,8 @@ import {
   ShieldCheck,
   User as UserIcon,
   Settings as SettingsIcon,
-  Activity
+  Activity,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
@@ -56,6 +57,15 @@ const ensureAbsoluteUrl = (url: string): string => {
   return trimmed;
 };
 
+const formatPrice = (amount: number, currency?: string): string => {
+  const num = Number(amount) || 0;
+  const curr = currency || 'USD';
+  if (curr === 'LYD') {
+    return `${num.toLocaleString()} د.ل`;
+  }
+  return `${num.toLocaleString()} $`;
+};
+
 interface MarketingModuleProps {
   user: User;
 }
@@ -68,6 +78,9 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [selectedOffer, setSelectedOffer] = useState<UmrahOffer | null>(null);
+  const [selectedOffers, setSelectedOffers] = useState<UmrahOffer[]>([]);
+  const [isAutoSending, setIsAutoSending] = useState(false);
+  const [autoSendCountdown, setAutoSendCountdown] = useState<number | null>(null);
   const [showOfferSelector, setShowOfferSelector] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0, currentName: '', currentPhone: '' });
@@ -1200,9 +1213,27 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     });
   };
 
+  const handleToggleOffer = (offer: UmrahOffer) => {
+    setSelectedOffers(prev => {
+      const exists = prev.some(o => o.id === offer.id);
+      let updated;
+      if (exists) {
+        updated = prev.filter(o => o.id !== offer.id);
+      } else {
+        updated = [...prev, offer];
+      }
+      if (updated.length > 0) {
+        setSelectedOffer(updated[updated.length - 1]);
+      } else {
+        setSelectedOffer(null);
+      }
+      return updated;
+    });
+  };
+
   const handleSendOffer = async () => {
     if (selectedCustomers.length === 0) return;
-    if (!selectedOffer && !customMessage && !imageUrl) return;
+    if (selectedOffers.length === 0 && !selectedOffer && !customMessage && !imageUrl) return;
 
     const selectedCustData = customers.filter(c => selectedCustomers.includes(c.id));
     
@@ -1228,7 +1259,41 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
     // Format offer message
     let message = customMessage ? `${customMessage}\n\n` : '';
     
-    if (selectedOffer) {
+    if (selectedOffers.length > 0) {
+      selectedOffers.forEach((offer, index) => {
+        if (selectedOffers.length > 1) {
+          message += `⭐️ *العرض رقم [${index + 1}]: ${offer.name}* ⭐️\n`;
+          message += `━━━━━━━━━━━━━━━━━\n\n`;
+        }
+        message += `*${offer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
+        message += `*الفئة:* ${offer.category}\n\n`;
+        
+        (offer.rows || []).forEach(row => {
+          message += `📍 *${row.makkah} / ${row.madinah}*\n`;
+          message += `🏨 ${row.offer}\n`;
+          message += `🍽️ ${row.meals}\n`;
+          message += `💰 ثنائي: ${formatPrice(row.double, row.currency)} | ثلاثي: ${formatPrice(row.triple, row.currency)} | رباعي: ${formatPrice(row.quad, row.currency)}\n`;
+          message += `-------------------\n`;
+        });
+
+        if (offer.fixedText) {
+          message += `\n${offer.fixedText}`;
+        }
+
+        // Add public link to message
+        const publicLink = `${window.location.origin}/offer/${offer.id}`;
+        message += `\n\n🔗 لمشاهدة العرض بتصميم احترافي وتحميله:\n${publicLink}`;
+
+        // If the offer itself has an image URL, include it too
+        if (offer.imageUrl) {
+          message += `\n\n🖼️ صورة العرض:\n${offer.imageUrl}`;
+        }
+        
+        message += `\n\n\n`;
+      });
+      // Trim ending whitespace excess
+      message = message.trim();
+    } else if (selectedOffer) {
       message += `*${selectedOffer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
       message += `*الفئة:* ${selectedOffer.category}\n\n`;
       
@@ -1236,7 +1301,7 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
         message += `📍 *${row.makkah} / ${row.madinah}*\n`;
         message += `🏨 ${row.offer}\n`;
         message += `🍽️ ${row.meals}\n`;
-        message += `💰 ثنائي: ${row.double} | ثلاثي: ${row.triple} | رباعي: ${row.quad}\n`;
+        message += `💰 ثنائي: ${formatPrice(row.double, row.currency)} | ثلاثي: ${formatPrice(row.triple, row.currency)} | رباعي: ${formatPrice(row.quad, row.currency)}\n`;
         message += `-------------------\n`;
       });
 
@@ -1344,6 +1409,34 @@ export default function MarketingModule({ user }: MarketingModuleProps) {
       );
     }
   };
+
+  useEffect(() => {
+    let timer: any = null;
+    if (showBulkSender && isAutoSending && isSending && currentSendIndex < sendingQueue.length) {
+      if (autoSendCountdown === null) {
+        // Safe randomized delay (jitter) between 8 and 15 seconds to prevent spam filters from guessing pattern
+        const randomDelay = Math.floor(Math.random() * (15 - 8 + 1)) + 8;
+        setAutoSendCountdown(randomDelay);
+      } else if (autoSendCountdown > 0) {
+        timer = setTimeout(() => {
+          setAutoSendCountdown(prev => (prev !== null ? prev - 1 : null));
+        }, 1000);
+      } else if (autoSendCountdown === 0) {
+        handleSendNext().then(() => {
+          setAutoSendCountdown(null);
+        }).catch(err => {
+          console.error("Auto-send step failed:", err);
+          setIsAutoSending(false);
+          setAutoSendCountdown(null);
+        });
+      }
+    } else {
+      if (autoSendCountdown !== null) setAutoSendCountdown(null);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [showBulkSender, isAutoSending, isSending, currentSendIndex, autoSendCountdown, sendingQueue.length]);
 
   const renderOfferDesign = (offer: UmrahOffer) => {
     return (
@@ -3239,13 +3332,23 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-4">
-                      <h3 className="text-[10px] font-bold text-white/20 px-2">1. اختر العرض المراد إرساله (اختياري)</h3>
-                      <div className="space-y-3">
+                      <div className="flex justify-between items-center px-1">
+                        <h3 className="text-[10px] font-bold text-white/20">1. اختر العرض المراد إرساله (يمكن اختيار أكثر من عرض)</h3>
+                        {selectedOffers.length > 0 && (
+                          <span className="text-[10px] bg-gold/10 text-gold px-2.5 py-0.5 rounded-full font-bold border border-gold/20 animate-pulse">
+                            تم اختيار {selectedOffers.length} {selectedOffers.length === 1 ? 'عرض' : selectedOffers.length <= 10 ? 'عروض' : 'عرضاً'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                         <button
-                          onClick={() => setSelectedOffer(null)}
+                          onClick={() => {
+                            setSelectedOffer(null);
+                            setSelectedOffers([]);
+                          }}
                           className={clsx(
                             "w-full p-4 rounded-2xl border transition-all text-right group",
-                            selectedOffer === null
+                            selectedOffers.length === 0 && selectedOffer === null
                               ? "bg-gold/10 border-gold shadow-lg shadow-gold/5"
                               : "bg-white/5 border-white/10 hover:bg-white/10"
                           )}
@@ -3253,7 +3356,7 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                           <div className="flex items-center gap-3">
                             <div className={clsx(
                               "w-8 h-8 rounded-full flex items-center justify-center border transition-all",
-                              selectedOffer === null ? "bg-gold border-gold text-black" : "bg-white/5 border-white/10 text-white/20"
+                              selectedOffers.length === 0 && selectedOffer === null ? "bg-gold border-gold text-black" : "bg-white/5 border-white/10 text-white/20"
                             )}>
                               <X className="w-4 h-4" />
                             </div>
@@ -3263,31 +3366,47 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                             </div>
                           </div>
                         </button>
-                        {offers.length > 0 && offers.map((offer) => (
-                            <div key={offer.id} className="relative group">
+                        {offers.length > 0 && offers.map((offer) => {
+                          const isSelected = selectedOffers.some(o => o.id === offer.id);
+                          return (
+                            <div key={offer.id} className="relative group/item">
                               <button
-                                onClick={() => setSelectedOffer(offer)}
+                                onClick={() => handleToggleOffer(offer)}
                                 className={clsx(
-                                  "w-full p-4 rounded-2xl border transition-all text-right",
-                                  selectedOffer?.id === offer.id
-                                    ? "bg-gold/10 border-gold shadow-lg shadow-gold/5"
+                                  "w-full p-4 rounded-2xl border transition-all text-right flex items-center justify-between gap-4",
+                                  isSelected
+                                    ? "bg-gold/15 border-gold shadow-lg shadow-gold/10"
                                     : "bg-white/5 border-white/10 hover:bg-white/10"
                                 )}
                               >
-                                <div className="flex items-center justify-between mb-2">
-                                  <h3 className="font-bold text-white group-hover:text-gold transition-colors">
-                                    {offer.name}
-                                  </h3>
-                                  <span className="px-2 py-1 rounded-lg bg-white/10 text-white/60 text-[8px] font-bold">
-                                    {offer.category}
-                                  </span>
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  {/* Beautiful Checkbox Indicator */}
+                                  <div className={clsx(
+                                    "w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0",
+                                    isSelected 
+                                      ? "bg-gold border-gold text-black shadow-lg shadow-gold/20" 
+                                      : "bg-white/5 border-white/10 text-transparent group-hover/item:border-white/35"
+                                  )}>
+                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  </div>
+                                  
+                                  <div className="flex-1 min-w-0 text-right">
+                                    <div className="flex items-center justify-between mb-1 gap-2">
+                                      <h3 className="font-bold text-white group-hover/item:text-gold transition-colors truncate text-sm">
+                                        {offer.name}
+                                      </h3>
+                                      <span className="px-2 py-0.5 rounded-lg bg-white/10 text-white/60 text-[8px] font-black shrink-0">
+                                        {offer.category}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-white/40 line-clamp-1">
+                                      {(offer.rows || []).map(r => `${r.makkah}/${r.madinah}`).join(' - ')}
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="text-[10px] text-white/40 line-clamp-1">
-                                  {(offer.rows || []).map(r => `${r.makkah}/${r.madinah}`).join(' - ')}
-                                </p>
                               </button>
                               
-                              <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="absolute left-10 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -3309,7 +3428,8 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                                 </button>
                               </div>
                             </div>
-                          ))}
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -3326,24 +3446,59 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                             </label>
                             <button
                               onClick={() => {
-                                if (!selectedOffer) return;
                                 let msg = customMessage ? `${customMessage}\n\n` : '';
-                                msg += `*${selectedOffer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
-                                msg += `*الفئة:* ${selectedOffer.category}\n\n`;
-                                (selectedOffer.rows || []).forEach(row => {
-                                  msg += `📍 *${row.makkah} / ${row.madinah}*\n`;
-                                  msg += `🏨 ${row.offer}\n`;
-                                  msg += `🍽️ ${row.meals}\n`;
-                                  msg += `💰 ثنائي: ${row.double} | ثلاثي: ${row.triple} | رباعي: ${row.quad}\n`;
-                                  msg += `-------------------\n`;
-                                });
-                                if (selectedOffer.fixedText) msg += `\n${selectedOffer.fixedText}`;
+                                if (selectedOffers.length > 0) {
+                                  selectedOffers.forEach((offer, idx) => {
+                                    if (selectedOffers.length > 1) {
+                                      msg += `⭐️ *العرض رقم [${idx + 1}]: ${offer.name}* ⭐️\n`;
+                                      msg += `━━━━━━━━━━━━━━━━━\n\n`;
+                                    }
+                                    msg += `*${offer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
+                                    msg += `*الفئة:* ${offer.category}\n\n`;
+                                    (offer.rows || []).forEach(row => {
+                                      msg += `📍 *${row.makkah} / ${row.madinah}*\n`;
+                                      msg += `🏨 ${row.offer}\n`;
+                                      msg += `🍽️ ${row.meals}\n`;
+                                      msg += `💰 ثنائي: ${formatPrice(row.double, row.currency)} | ثلاثي: ${formatPrice(row.triple, row.currency)} | رباعي: ${formatPrice(row.quad, row.currency)}\n`;
+                                      msg += `-------------------\n`;
+                                    });
+                                    if (offer.fixedText) msg += `\n${offer.fixedText}`;
+                                    
+                                    const publicLink = `${window.location.origin}/offer/${offer.id}`;
+                                    msg += `\n\n🔗 لمشاهدة العرض بتصميم احترافي وتحميله:\n${publicLink}`;
+                                    if (offer.imageUrl) {
+                                      msg += `\n\n🖼️ صورة العرض:\n${offer.imageUrl}`;
+                                    }
+                                    msg += `\n\n\n`;
+                                  });
+                                  msg = msg.trim();
+                                } else if (selectedOffer) {
+                                  msg += `*${selectedOffer.documentTitle || 'عرض عمرة جديد'}*\n\n`;
+                                  msg += `*الفئة:* ${selectedOffer.category}\n\n`;
+                                  (selectedOffer.rows || []).forEach(row => {
+                                    msg += `📍 *${row.makkah} / ${row.madinah}*\n`;
+                                    msg += `🏨 ${row.offer}\n`;
+                                    msg += `🍽️ ${row.meals}\n`;
+                                    msg += `💰 ثنائي: ${formatPrice(row.double, row.currency)} | ثلاثي: ${formatPrice(row.triple, row.currency)} | رباعي: ${formatPrice(row.quad, row.currency)}\n`;
+                                    msg += `-------------------\n`;
+                                  });
+                                  if (selectedOffer.fixedText) msg += `\n${selectedOffer.fixedText}`;
+                                  
+                                  const publicLink = `${window.location.origin}/offer/${selectedOffer.id}`;
+                                  msg += `\n\n🔗 لمشاهدة العرض بتصميم احترافي وتحميله:\n${publicLink}`;
+                                  if (selectedOffer.imageUrl) {
+                                    msg += `\n\n🖼️ صورة العرض:\n${selectedOffer.imageUrl}`;
+                                  }
+                                } else {
+                                  showToast('يرجى تحديد عرض أولاً لتوليد النص والروابط.', 'warning');
+                                  return;
+                                }
                                 navigator.clipboard.writeText(msg);
                                 showToast('تم نسخ نص الرسالة! يمكنك لصقه في واتساب.', 'success');
                               }}
                               className="text-[9px] text-gold hover:underline font-bold"
                             >
-                              نسخ نص الرسالة
+                              نسخ نصوص العروض المدمجة
                             </button>
                           </div>
                           <textarea
@@ -3369,9 +3524,8 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                                   const file = e.target.files?.[0];
                                   if (!file) return;
                                   
-                                  // Check file size (max 750KB to stay under Firestore 1MB limit after base64 encoding)
                                   if (file.size > 750 * 1024) {
-                                    showToast('حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 750 كيلوبايت لضمان نجاح الرفع.', 'error');
+                                    showToast('حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 750 كيلوبايت.', 'error');
                                     return;
                                   }
 
@@ -3386,16 +3540,10 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                                       showToast('تم رفع الصورة وتوليد الرابط بنجاح!', 'success');
                                     } catch (error: any) {
                                       console.error('Upload failed:', error);
-                                      const errorMessage = error.message || 'فشل رفع الصورة. تأكد من أن حجم الصورة أقل من 750 كيلوبايت.';
-                                      showToast(errorMessage, 'error');
+                                      showToast('فشل رفع الصورة.', 'error');
                                     } finally {
                                       setIsUploadingImage(false);
                                     }
-                                  };
-                                  reader.onerror = () => {
-                                    console.error('FileReader error');
-                                    setIsUploadingImage(false);
-                                    showToast('حدث خطأ أثناء قراءة الملف', 'error');
                                   };
                                   reader.readAsDataURL(file);
                                 }}
@@ -3433,46 +3581,69 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                           <p className="text-[9px] text-white/20 italic">سيظهر هذا الرابط كصورة في واتساب</p>
                         </div>
                       </div>
+                    </div>
 
-                      <h3 className="text-[10px] font-bold text-white/20 px-2 pt-4">3. معاينة التصميم الاحترافي</h3>
-                      {selectedOffer ? (
+                    <div className="space-y-4">
+                      <h3 className="text-[10px] font-bold text-white/20 px-2 pt-4">3. معاينة التصاميم المحددة لإرسالها</h3>
+                      {selectedOffers.length > 0 || selectedOffer ? (
                         <div className="space-y-4">
+                          {selectedOffers.length > 1 && (
+                            <div className="flex border-b border-white/10 pb-2 overflow-x-auto gap-1.5 no-scrollbar">
+                              {selectedOffers.map((offer) => (
+                                <button
+                                  key={`preview-tab-${offer.id}`}
+                                  type="button"
+                                  onClick={() => setSelectedOffer(offer)}
+                                  className={clsx(
+                                    "px-2.5 py-1.5 rounded-lg text-[9px] font-bold whitespace-nowrap transition-all shrink-0 border",
+                                    selectedOffer?.id === offer.id
+                                      ? "bg-gold/15 border-gold text-gold shadow-md shadow-gold/5"
+                                      : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                                  )}
+                                >
+                                  {offer.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <div className="scale-[0.45] origin-top transform-gpu -mb-[380px] shadow-2xl">
-                            {renderOfferDesign(selectedOffer)}
+                            {selectedOffer && renderOfferDesign(selectedOffer)}
                           </div>
-                          <button
-                            onClick={async () => {
-                              const element = document.getElementById('offer-design-preview');
-                              if (element) {
-                                try {
-                                  const canvas = await html2canvas(element, { 
-                                    scale: 3, 
-                                    useCORS: true,
-                                    backgroundColor: '#ffffff',
-                                    onclone: (clonedDoc) => {
-                                      const clonedElement = clonedDoc.getElementById('offer-design-preview');
-                                      if (clonedElement) {
-                                        clonedElement.style.letterSpacing = '0';
-                                        clonedElement.style.wordSpacing = '0';
+                          {selectedOffer && (
+                            <button
+                              onClick={async () => {
+                                const element = document.getElementById('offer-design-preview');
+                                if (element) {
+                                  try {
+                                    const canvas = await html2canvas(element, { 
+                                      scale: 3, 
+                                      useCORS: true,
+                                      backgroundColor: '#ffffff',
+                                      onclone: (clonedDoc) => {
+                                        const clonedElement = clonedDoc.getElementById('offer-design-preview');
+                                        if (clonedElement) {
+                                          clonedElement.style.letterSpacing = '0';
+                                          clonedElement.style.wordSpacing = '0';
+                                        }
                                       }
-                                    }
-                                  });
-                                  const link = document.createElement('a');
-                                  link.download = `عرض_عمرة_${selectedOffer.name}.png`;
-                                  link.href = canvas.toDataURL('image/png');
-                                  link.click();
-                                } catch (e) {
-                                  console.error('Error generating image:', e);
-                                  showToast('حدث خطأ أثناء إنشاء الصورة. يرجى المحاولة مرة أخرى.', 'error');
+                                    });
+                                    const link = document.createElement('a');
+                                    link.download = `عرض_عمرة_${selectedOffer.name}.png`;
+                                    link.href = canvas.toDataURL('image/png');
+                                    link.click();
+                                  } catch (e) {
+                                    console.error('Error generating image:', e);
+                                    showToast('حدث خطأ أثناء إنشاء الصورة. يرجى المحاولة مرة أخرى.', 'error');
+                                  }
                                 }
-                              }
-                            }}
-                            className="w-full py-4 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-2xl text-gold text-[10px] font-bold flex items-center justify-center gap-3 transition-all active:scale-95"
-                          >
-                            <Download className="w-4 h-4" />
-                            تحميل التصميم كصورة للإرسال
-                          </button>
-                          <p className="text-[9px] text-white/20 text-center italic">* قم بتحميل الصورة ثم إرسالها للعملاء عبر واتساب</p>
+                              }}
+                              className="w-full py-4 bg-gold/10 hover:bg-gold/20 border border-gold/30 rounded-2xl text-gold text-[10px] font-bold flex items-center justify-center gap-3 transition-all active:scale-95"
+                            >
+                              <Download className="w-4 h-4" />
+                              تحميل تصميم ({selectedOffer.name}) كصورة
+                            </button>
+                          )}
+                          <p className="text-[9px] text-white/20 text-center italic">* قم بتحميل الصور ثم إرسالها للعملاء عبر واتساب</p>
                         </div>
                       ) : (
                         <div className="h-[400px] border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-white/20 text-[10px] text-center p-8 gap-4">
@@ -3502,10 +3673,10 @@ app.listen(process.env.PORT || 3000, () => { log('Server listening on port ' + (
                     </button>
                     <button
                       onClick={handleSendOffer}
-                      disabled={!selectedOffer && !customMessage && !imageUrl}
+                      disabled={selectedOffers.length === 0 && !selectedOffer && !customMessage && !imageUrl}
                       className={clsx(
                         "flex items-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg",
-                        (selectedOffer || customMessage || imageUrl)
+                        (selectedOffers.length > 0 || selectedOffer || customMessage || imageUrl)
                           ? "bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/10"
                           : "bg-white/5 text-white/20 cursor-not-allowed"
                       )}
